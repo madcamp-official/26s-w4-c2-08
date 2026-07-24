@@ -11,4 +11,5 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임. git repo 단위로
 
 - [개발 일정 (6일)](./docs/PLAN.md)
 - [아키텍처](./docs/ARCHITECTURE.md)
+- [프론트엔드 (Phaser) 구현](./docs/FRONTEND.md)
 - [API 스펙](./docs/API.md)

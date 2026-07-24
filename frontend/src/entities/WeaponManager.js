@@ -5,7 +5,17 @@ import {
   THROW_PROJECTILE_SPEED,
   STACK_DAMAGE_MULTIPLIER,
   STACK_TINT_COLOR,
+  PORTABLE_WEAPON_SIZE,
 } from '../config/constants.js';
+import { getBaseballBatDimensions } from './weaponSprites.js';
+import { capsuleIntersectsRect } from '../systems/geometry.js';
+
+// 방망이 텍스처는 -45도로 회전된 채 미리 그려져 있어(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고),
+// 손잡이 끝/배럴 끝이 weapon.x,y로부터 이 오프셋만큼씩 대각선으로 떨어져 있다. PORTABLE_WEAPON_SIZE가 바뀌면
+// 그림과 항상 같이 맞도록 getBaseballBatDimensions()에서 계산한다.
+const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
+const BAT_AXIS_OFFSET = BAT_DIMENSIONS.halfLen / Math.SQRT2;
+const BAT_AXIS_RADIUS = BAT_DIMENSIONS.barrelHalfWidth;
 
 export default class WeaponManager {
   constructor(scene, boss, onOverlap) {
@@ -40,7 +50,25 @@ export default class WeaponManager {
 
   handleWeaponOverlap(weapon) {
     if (!this.canDealDamage(weapon)) return;
+    if (this.isPortableWeapon(weapon) && !this.batOverlapsBoss(weapon)) return;
     this.onOverlap();
+  }
+
+  // 방망이의 손잡이 끝→배럴 끝을 잇는 중심축 (world 좌표). 텍스처가 -45도로 고정 회전되어 있어 오프셋이 항상 같다.
+  getBatAxis(weapon) {
+    return {
+      x1: weapon.x - BAT_AXIS_OFFSET,
+      y1: weapon.y + BAT_AXIS_OFFSET,
+      x2: weapon.x + BAT_AXIS_OFFSET,
+      y2: weapon.y - BAT_AXIS_OFFSET,
+      radius: BAT_AXIS_RADIUS,
+    };
+  }
+
+  // 방망이는 대각선 실루엣이라 사각 히트박스 전체 대신, 실제 그림에 맞춘 캡슐(축+두께)로 보스와의 겹침을 판정한다.
+  batOverlapsBoss(weapon) {
+    const { x1, y1, x2, y2, radius } = this.getBatAxis(weapon);
+    return capsuleIntersectsRect(x1, y1, x2, y2, radius, this.boss.sprite.getBounds());
   }
 
   // 설치형
@@ -161,11 +189,16 @@ export default class WeaponManager {
   }
 
   // 실제로 데미지를 주는 대상(설치형/휴대형/투척형 투사체)중 지금 데미지를 줄 수 있는 상태(canDealDamage)이면서
-  // 보스와 겹쳐 있는 것만 모아서 반환 (투척형 발사대 본체는 스스로 데미지를 주지 않으므로 제외)
+  // 보스와 겹쳐 있는 것만 모아서 반환 (투척형 발사대 본체는 스스로 데미지를 주지 않으므로 제외).
+  // 방망이(휴대형)만 사각 히트박스 대신 실제 실루엣에 맞춘 캡슐 판정(batOverlapsBoss)을 쓴다.
   getOverlappingWeapons() {
     const bossBounds = this.boss.sprite.getBounds();
     const damageDealers = [...this.weapons, ...this.portableWeapons, ...this.projectiles];
-    return damageDealers.filter((weapon) => this.canDealDamage(weapon) && Phaser.Geom.Intersects.RectangleToRectangle(bossBounds, weapon.getBounds()));
+    return damageDealers.filter((weapon) => {
+      if (!this.canDealDamage(weapon)) return false;
+      if (this.isPortableWeapon(weapon)) return this.batOverlapsBoss(weapon);
+      return Phaser.Geom.Intersects.RectangleToRectangle(bossBounds, weapon.getBounds());
+    });
   }
 
   countOverlappingWeapons() {

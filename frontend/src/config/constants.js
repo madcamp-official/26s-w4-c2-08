@@ -21,6 +21,7 @@ export const THROW_PROJECTILE_SPEED = 400; // px/s
 export const STACK_DAMAGE_MULTIPLIER = 1.5; // 동일 타입 무기를 겹쳐 합칠 때마다 데미지 배율에 곱해지는 값
 export const STACK_TINT_COLOR = 0x33cc33; // 합쳐진(스택된) 무기를 표시하는 초록색
 export const TRASH_SCORE_BONUS = 5; // 쓰레기통에 무기를 버렸을 때 오르는 점수
+export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
 
 // 타격 이펙트
 export const BOSS_SHAKE_MAGNITUDE = 8; // px

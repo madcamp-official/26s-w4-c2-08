@@ -34,11 +34,9 @@ export function createBaseballCanvas(size) {
 // 캔버스는 정사각(size×size)이 아니라 45도로 눕힌 실루엣을 딱 감싸는 크기로 잡는다 — 겹침/드래그 판정이
 // displayWidth·displayHeight(=캔버스 크기) 기준이라, 정사각으로 두면 그려지지 않는 네 귀퉁이 여백까지
 // 히트박스에 포함되어 실제 그림보다 판정 범위가 커지는 문제가 있었다.
-export function createBaseballBatCanvas(size) {
-  const gripColor = '#1c1c1c';
-  const barrelColor = '#c9ced3';
-  const barrelStrokeColor = '#8a9096';
-
+// createBaseballBatCanvas와 WeaponManager의 정밀 히트박스(캡슐) 계산이 같은 치수를 써야 하므로 분리해 둔다.
+// size 하나 바꾸면 그림과 히트박스가 항상 같이 맞도록.
+export function getBaseballBatDimensions(size) {
   const totalLength = size * 0.92;
   const halfLen = totalLength / 2;
   const handleHalfWidth = size * 0.045;
@@ -56,6 +54,42 @@ export function createBaseballBatCanvas(size) {
 
   // 45도 회전한 막대의 축정렬 경계 상자 한 변 길이 (+2px는 안티에일리어싱 여백). knob<배럴 반두께라 배럴 쪽이 기준.
   const canvasSize = Math.ceil(Math.SQRT2 * (halfLen + barrelHalfWidth)) + 2;
+
+  return {
+    halfLen,
+    handleHalfWidth,
+    knobRadius,
+    knobAxialRadius,
+    barrelHalfWidth,
+    gripLength,
+    knobCenterX,
+    gripEndX,
+    tipCenterX,
+    barrelStartX,
+    taperControlX,
+    canvasSize,
+  };
+}
+
+export function createBaseballBatCanvas(size) {
+  const gripColor = '#1c1c1c';
+  const barrelColor = '#c9ced3';
+  const barrelStrokeColor = '#8a9096';
+
+  const {
+    handleHalfWidth,
+    knobRadius,
+    knobAxialRadius,
+    barrelHalfWidth,
+    gripLength,
+    knobCenterX,
+    gripEndX,
+    tipCenterX,
+    barrelStartX,
+    taperControlX,
+    canvasSize,
+    halfLen,
+  } = getBaseballBatDimensions(size);
 
   const canvas = createCanvas(canvasSize);
   const ctx = canvas.getContext('2d');

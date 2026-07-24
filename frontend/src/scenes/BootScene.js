@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOSS_COLOR } from '../config/constants.js';
+import { BOSS_COLOR, PORTABLE_WEAPON_SIZE } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import { createBossCanvas, createBossHurtCanvas } from '../entities/bossSprite.js';
 import { createBaseballCanvas, createBaseballBatCanvas } from '../entities/weaponSprites.js';
@@ -39,7 +39,7 @@ export default class BootScene extends Phaser.Scene {
 
     g.destroy();
 
-    this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(160));
+    this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
 
     this.createThrowWeaponTexture();
   }

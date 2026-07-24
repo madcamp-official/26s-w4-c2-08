@@ -341,6 +341,14 @@ export const BACKGROUND_STYLES = {
   ERROR: 'error',
 };
 
+// 배경 선택 패널에 표시할 한글 라벨
+export const BACKGROUND_LABELS = {
+  [BACKGROUND_STYLES.CLASSIC]: 'Classic Dark',
+  [BACKGROUND_STYLES.DIFF]: 'Git Diff',
+  [BACKGROUND_STYLES.MATRIX]: 'Matrix Terminal',
+  [BACKGROUND_STYLES.ERROR]: 'Error Chaos',
+};
+
 const RENDERERS = {
   [BACKGROUND_STYLES.CLASSIC]: drawClassic,
   [BACKGROUND_STYLES.DIFF]: drawDiff,

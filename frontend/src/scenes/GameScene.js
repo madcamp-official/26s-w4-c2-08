@@ -8,6 +8,7 @@ import {
   BOOSTED_POPUP_COLOR,
   DEFEAT_POPUP_COLOR,
   UI_FONT_FAMILY,
+  BACKGROUND_STYLE,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -24,12 +25,15 @@ export default class GameScene extends Phaser.Scene {
     this.drawsUsed = 0;
     this.isEnded = false;
 
-    this.add.image(0, 0, 'battleBackground').setOrigin(0, 0);
+    this.currentBackgroundStyle = BACKGROUND_STYLE;
+    this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
 
     this.boss = new Boss(this);
     this.hud = new Hud(this, {
       onDrawButtonClick: () => this.onDrawButtonClick(),
       onEndButtonClick: () => this.onEndButtonClick(),
+      currentBackgroundStyle: this.currentBackgroundStyle,
+      onBackgroundSelect: (style) => this.onBackgroundSelect(style),
     });
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
     this.weaponManager = new WeaponManager(this, this.boss, () => this.combat.handleHit());
@@ -102,6 +106,12 @@ export default class GameScene extends Phaser.Scene {
 
   onRestartButtonClick() {
     this.scene.restart();
+  }
+
+  onBackgroundSelect(style) {
+    if (style === this.currentBackgroundStyle) return;
+    this.currentBackgroundStyle = style;
+    this.backgroundImage.setTexture(`battleBackground_${style}`);
   }
 
   onHit(hits = [], defeated = false, deathPosition = null) {

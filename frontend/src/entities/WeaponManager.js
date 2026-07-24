@@ -182,7 +182,10 @@ export default class WeaponManager {
   }
 
   // 드래그로 옮긴 무기가 같은 타입의 다른 무기와 겹치면 하나로 합쳐서 초록색 강화 무기로 만든다
+  // (투척형/야구공은 겹쳐 쌓이지 않고 각자 따로 발사대로 동작한다)
   tryMergeWeapon(weapon) {
+    if (this.isThrowWeapon(weapon)) return;
+
     const siblings = this.getSameTypeList(weapon).filter((other) => other !== weapon);
     const weaponBounds = weapon.getBounds();
     const target = siblings.find((sibling) => Phaser.Geom.Intersects.RectangleToRectangle(weaponBounds, sibling.getBounds()));
@@ -199,27 +202,31 @@ export default class WeaponManager {
 
   // 보스 드래그 시 설치형/휴대형 무기를 뚫고 지나가지 않도록 막되, 히트 판정용 여백(CONTACT_OVERLAP)은 남긴다
   resolveOverlapForBoss(x, y) {
-    return this.resolveOverlap(x, y, this.boss.displayWidth / 2, [...this.weapons, ...this.portableWeapons]);
+    return this.resolveOverlap(x, y, this.boss.displayWidth / 2, this.boss.displayHeight / 2, [...this.weapons, ...this.portableWeapons]);
   }
 
   // 설치형/휴대형 무기 드래그 시 고정된 보스를 뚫고 지나가지 않도록 막되, 히트 판정용 여백은 남긴다
   resolveOverlapForDraggedWeapon(weapon, x, y) {
-    return this.resolveOverlap(x, y, weapon.displayWidth / 2, [this.boss.sprite]);
+    return this.resolveOverlap(x, y, weapon.displayWidth / 2, weapon.displayHeight / 2, [this.boss.sprite]);
   }
 
-  resolveOverlap(x, y, movingHalf, targets) {
+  // 보스가 폭(90)보다 높이(70)가 짧은 비정사각형이라 x/y를 같은 half값으로 계산하면
+  // 위아래 방향에서 실제 겹침 판정 범위보다 더 멀리 밀려나 데미지가 안 들어가는 문제가 있었다 —
+  // 축마다 자신의 displayWidth/displayHeight를 각각 써서 계산한다.
+  resolveOverlap(x, y, movingHalfW, movingHalfH, targets) {
     for (const target of targets) {
-      const targetHalf = target.displayWidth / 2;
+      const targetHalfW = target.displayWidth / 2;
+      const targetHalfH = target.displayHeight / 2;
       const dx = x - target.x;
       const dy = y - target.y;
-      const overlapX = movingHalf + targetHalf - Math.abs(dx);
-      const overlapY = movingHalf + targetHalf - Math.abs(dy);
+      const overlapX = movingHalfW + targetHalfW - Math.abs(dx);
+      const overlapY = movingHalfH + targetHalfH - Math.abs(dy);
 
       if (overlapX > 0 && overlapY > 0) {
         if (overlapX < overlapY) {
-          x = target.x + Math.sign(dx || 1) * (movingHalf + targetHalf - CONTACT_OVERLAP);
+          x = target.x + Math.sign(dx || 1) * (movingHalfW + targetHalfW - CONTACT_OVERLAP);
         } else {
-          y = target.y + Math.sign(dy || 1) * (movingHalf + targetHalf - CONTACT_OVERLAP);
+          y = target.y + Math.sign(dy || 1) * (movingHalfH + targetHalfH - CONTACT_OVERLAP);
         }
       }
     }

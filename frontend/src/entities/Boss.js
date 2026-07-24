@@ -23,6 +23,10 @@ export default class Boss {
     return this.sprite.displayWidth;
   }
 
+  get displayHeight() {
+    return this.sprite.displayHeight;
+  }
+
   setPosition(x, y) {
     this.sprite.setPosition(x, y);
   }

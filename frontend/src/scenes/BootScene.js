@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { BACKGROUND_STYLE, BOSS_COLOR } from '../config/constants.js';
-import { createBackgroundCanvas } from '../config/backgrounds.js';
+import { BOSS_COLOR } from '../config/constants.js';
+import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import { createBossCanvas, createBossHurtCanvas } from '../entities/bossSprite.js';
 import { createBaseballCanvas } from '../entities/weaponSprites.js';
 
@@ -18,8 +18,11 @@ export default class BootScene extends Phaser.Scene {
     this.scene.start('GameScene');
   }
 
+  // 배경 선택 패널에서 즉시 미리보기/전환할 수 있도록 모든 스타일을 미리 캔버스로 렌더링해 둔다
   createBackgroundTexture() {
-    this.textures.addCanvas('battleBackground', createBackgroundCanvas(BACKGROUND_STYLE));
+    Object.values(BACKGROUND_STYLES).forEach((style) => {
+      this.textures.addCanvas(`battleBackground_${style}`, createBackgroundCanvas(style));
+    });
   }
 
   createBossTexture() {

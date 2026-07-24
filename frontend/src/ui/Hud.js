@@ -1,8 +1,14 @@
 import Phaser from 'phaser';
 import { HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY } from '../config/constants.js';
+import { BACKGROUND_STYLES, BACKGROUND_LABELS } from '../config/backgrounds.js';
+
+const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
+  style,
+  label: BACKGROUND_LABELS[style],
+}));
 
 export default class Hud {
-  constructor(scene, { onDrawButtonClick, onEndButtonClick } = {}) {
+  constructor(scene, { onDrawButtonClick, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
     this.scene = scene;
 
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
@@ -18,6 +24,13 @@ export default class Hud {
     this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
 
     this.drawButton = this.createDrawButton(onDrawButtonClick);
+    this.backgroundPanelOpen = false;
+    this.backgroundButton = this.createBackgroundButton(() => this.toggleBackgroundPanel());
+    this.backgroundPanel = this.createBackgroundPanel(currentBackgroundStyle, (style) => {
+      if (onBackgroundSelect) onBackgroundSelect(style);
+      this.setActiveBackgroundOption(style);
+      this.toggleBackgroundPanel(false);
+    });
     this.trashCan = this.createTrashCan();
     this.endButton = this.createEndButton(onEndButtonClick);
   }
@@ -52,6 +65,125 @@ export default class Hud {
     if (onClick) bg.on('pointerdown', onClick);
 
     return { bg, label };
+  }
+
+  // 뽑기(무기) 버튼 오른쪽, 화면 가장자리에 붙는 배경 변경 버튼
+  createBackgroundButton(onClick) {
+    const size = 40;
+    const x = this.scene.scale.width - size / 2 - 16;
+    const y = TOP_HUD_Y;
+
+    return this.createPillButton(x, y, size, 0x1f8a3d, '🗂️', onClick);
+  }
+
+  // 화면 오른쪽 바깥에 미리 만들어두고, 열릴 때 왼쪽으로 슬라이드시키는 배경 선택 패널
+  createBackgroundPanel(currentStyle, onSelect) {
+    const panelWidth = 200;
+    const height = this.scene.scale.height;
+    // 닫힌 상태에서 패널 테두리(stroke)가 화면 오른쪽 끝에 1px씩 비쳐 보이는 것을 막기 위해
+    // 캔버스 경계보다 여유 있게 더 바깥에서 시작한다.
+    const startX = this.scene.scale.width + 16;
+    const openX = this.scene.scale.width - panelWidth;
+
+    const container = this.scene.add.container(startX, 0).setDepth(1000);
+
+    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
+      .setOrigin(0, 0)
+      .setInteractive();
+    container.add(bg);
+
+    const title = this.scene.add.text(panelWidth / 2, 22, 'BACKGROUND', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5);
+    container.add(title);
+
+    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeButton.on('pointerdown', () => this.toggleBackgroundPanel(false));
+    container.add(closeButton);
+
+    // 목록 영역: 항목이 많아 화면 높이를 넘어가면 이 안에서만 위아래로 스크롤한다
+    const listTop = 50;
+    const listBottom = height - 10;
+    const listContainer = this.scene.add.container(0, 0);
+    container.add(listContainer);
+
+    const thumbW = 140;
+    const thumbH = 105;
+    const rowGap = 18;
+    const rowStep = thumbH + 30 + rowGap;
+    let y = listTop + 6;
+
+    this.backgroundOptionEls = [];
+
+    BACKGROUND_OPTIONS.forEach(({ style, label }) => {
+      const cx = panelWidth / 2;
+      const cy = y + thumbH / 2;
+
+      const thumb = this.scene.add.image(cx, cy, `battleBackground_${style}`)
+        .setDisplaySize(thumbW, thumbH)
+        .setInteractive({ useHandCursor: true });
+      const border = this.scene.add.rectangle(cx, cy, thumbW + 6, thumbH + 6)
+        .setStrokeStyle(3, 0xffaa00, style === currentStyle ? 1 : 0);
+      const labelText = this.scene.add.text(cx, y + thumbH + 12, label, {
+        fontSize: '12px',
+        color: '#ffffff',
+        fontFamily: UI_FONT_FAMILY,
+      }).setOrigin(0.5);
+
+      thumb.on('pointerdown', () => onSelect(style));
+
+      listContainer.add([thumb, border, labelText]);
+      this.backgroundOptionEls.push({ style, border });
+
+      y += rowStep;
+    });
+
+    const contentHeight = BACKGROUND_OPTIONS.length * rowStep - rowGap + listTop;
+    const visibleHeight = listBottom - listTop;
+    const maxScroll = Math.max(0, contentHeight - visibleHeight);
+
+    // 목록이 listTop 위(타이틀/닫기 버튼 영역)로 스크롤되어 겹쳐 보이지 않도록 마스크로 잘라낸다.
+    // 마스크 도형은 화면에 그려지지 않고(make.graphics는 displayList에 추가 안 됨) 슬라이드 tween 때 container와 같이 움직인다.
+    const maskShape = this.scene.make.graphics({ x: startX, y: 0 });
+    maskShape.fillStyle(0xffffff);
+    maskShape.fillRect(0, listTop, panelWidth, visibleHeight);
+    listContainer.setMask(maskShape.createGeometryMask());
+
+    this.scene.input.on('wheel', (pointer, _over, _dx, dy) => {
+      if (!this.backgroundPanelOpen) return;
+      if (pointer.x < this.backgroundPanel.openX) return;
+      const next = Phaser.Math.Clamp(listContainer.y - dy * 0.5, -maxScroll, 0);
+      listContainer.y = next;
+    });
+
+    return { container, listContainer, maskShape, openX, startX, maxScroll };
+  }
+
+  toggleBackgroundPanel(forceOpen) {
+    const shouldOpen = forceOpen === undefined ? !this.backgroundPanelOpen : forceOpen;
+    if (shouldOpen === this.backgroundPanelOpen) return;
+    this.backgroundPanelOpen = shouldOpen;
+
+    const { container, maskShape, openX, startX } = this.backgroundPanel;
+    this.scene.tweens.add({
+      targets: [container, maskShape],
+      x: shouldOpen ? openX : startX,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+    });
+  }
+
+  setActiveBackgroundOption(style) {
+    this.backgroundOptionEls.forEach(({ style: s, border }) => {
+      border.setStrokeStyle(3, 0xffaa00, s === style ? 1 : 0);
+    });
   }
 
   // 종료 버튼 클릭 시 표시하는 결과 화면. online/local 분기 및 리더보드는 webview 연동(3~5일차) 이후 붙일 예정
@@ -149,9 +281,11 @@ export default class Hud {
     return this.trashCan.bg.getBounds();
   }
 
+  // 배경 버튼 왼쪽에 붙는 뽑기(무기) 버튼
   createDrawButton(onClick) {
     const size = 40;
-    const x = this.scene.scale.width - size / 2 - 16;
+    const gap = 10;
+    const x = this.scene.scale.width - size - 16 - gap - size / 2;
     const y = TOP_HUD_Y;
 
     return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);

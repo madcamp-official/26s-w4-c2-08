@@ -39,16 +39,18 @@ export default class GameScene extends Phaser.Scene {
     this.weaponManager = new WeaponManager(this, this.boss, () => this.combat.handleHit());
     this.combat.weaponManager = this.weaponManager;
 
+    this.input.on('dragstart', (pointer, gameObject) => {
+      if (this.weaponManager.isAnyWeapon(gameObject)) gameObject.isDragging = true;
+    });
+
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
       if (this.isEnded) return;
 
       let x = Phaser.Math.Clamp(dragX, 40, this.scale.width - 40);
       let y = Phaser.Math.Clamp(dragY, 40, this.scale.height - 40);
 
-      if (this.weaponManager.isWeapon(gameObject) || this.weaponManager.isPortableWeapon(gameObject)) {
+      if (this.weaponManager.isAnyWeapon(gameObject)) {
         ({ x, y } = this.weaponManager.resolveOverlapForDraggedWeapon(gameObject, x, y));
-      } else if (this.weaponManager.isThrowWeapon(gameObject)) {
-        // 투척형은 데미지를 투사체가 담당하므로 보스와의 충돌 차단이 필요 없이 위치만 옮기면 된다
       } else {
         ({ x, y } = this.weaponManager.resolveOverlapForBoss(x, y));
       }
@@ -57,6 +59,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     this.input.on('dragend', (pointer, gameObject) => {
+      if (this.weaponManager.isAnyWeapon(gameObject)) gameObject.isDragging = false;
       if (this.isEnded) return;
       if (!this.weaponManager.isAnyWeapon(gameObject)) return;
 

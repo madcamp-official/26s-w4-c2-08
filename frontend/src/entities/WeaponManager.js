@@ -118,22 +118,12 @@ export default class WeaponManager {
     }
   }
 
-  // 상점에서 타입을 지정해 구매할 때 사용 (설치형/휴대형/투척형)
-  spawnWeapon(typeId) {
+  spawnRandomWeapon() {
     const x = Phaser.Math.Between(60, this.scene.scale.width - 60);
     const y = Phaser.Math.Between(80, this.scene.scale.height - 60);
-    const spawners = {
-      installed: this.addWeapon.bind(this),
-      portable: this.addPortableWeapon.bind(this),
-      throw: this.addThrowWeapon.bind(this),
-    };
-    return spawners[typeId](x, y);
-  }
-
-  // 게임 시작 시 필드가 비어 있으면 아무것도 살 수 없으므로, 무작위 타입 하나를 무료로 배치
-  spawnRandomWeapon() {
-    const typeIds = ['installed', 'portable', 'throw'];
-    return this.spawnWeapon(Phaser.Utils.Array.GetRandom(typeIds));
+    const spawners = [this.addWeapon.bind(this), this.addPortableWeapon.bind(this), this.addThrowWeapon.bind(this)];
+    const spawn = Phaser.Utils.Array.GetRandom(spawners);
+    return spawn(x, y);
   }
 
   getTotalWeaponCount() {

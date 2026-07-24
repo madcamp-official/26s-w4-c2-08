@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY, WEAPON_TYPES } from '../config/constants.js';
+import { HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY } from '../config/constants.js';
 import { BACKGROUND_STYLES, BACKGROUND_LABELS } from '../config/backgrounds.js';
 
 const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
@@ -8,7 +8,7 @@ const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
 }));
 
 export default class Hud {
-  constructor(scene, { onBuyWeapon, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
+  constructor(scene, { onDrawButtonClick, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
     this.scene = scene;
 
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
@@ -23,7 +23,7 @@ export default class Hud {
     this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00);
     this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
 
-    this.shopButtons = this.createShopPanel(onBuyWeapon);
+    this.drawButton = this.createDrawButton(onDrawButtonClick);
     this.backgroundPanelOpen = false;
     this.backgroundButton = this.createBackgroundButton(() => this.toggleBackgroundPanel());
     this.backgroundPanel = this.createBackgroundPanel(currentBackgroundStyle, (style) => {
@@ -281,27 +281,14 @@ export default class Hud {
     return this.trashCan.bg.getBounds();
   }
 
-  // 배경 버튼 왼쪽에 붙는 무기 구매 버튼 3종 (설치형/휴대형/투척형). 각 타입 아이콘 아래에 가격(커밋)을 표시한다
-  createShopPanel(onBuyWeapon) {
-    const size = 36;
-    const gap = 8;
+  // 배경 버튼 왼쪽에 붙는 뽑기(무기) 버튼
+  createDrawButton(onClick) {
+    const size = 40;
+    const gap = 10;
+    const x = this.scene.scale.width - size - 16 - gap - size / 2;
     const y = TOP_HUD_Y;
-    const backgroundButtonX = this.scene.scale.width - 20 - 16; // createBackgroundButton과 같은 x 계산식(size=40)
-    const panelRightEdge = backgroundButtonX - 20 - gap;
 
-    return WEAPON_TYPES.map((weaponType, index) => {
-      const distanceFromRightEdge = (WEAPON_TYPES.length - 1 - index) * (size + gap) + size / 2;
-      const x = panelRightEdge - distanceFromRightEdge;
-
-      const { bg, label } = this.createPillButton(x, y, size, 0x3366cc, weaponType.icon, () => onBuyWeapon(weaponType.id, weaponType.cost));
-      const costText = this.scene.add.text(x, y + size / 2 + 10, `${weaponType.cost}`, {
-        fontSize: '10px',
-        color: '#ffaa00',
-        fontFamily: UI_FONT_FAMILY,
-      }).setOrigin(0.5);
-
-      return { id: weaponType.id, cost: weaponType.cost, bg, label, costText };
-    });
+    return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);
   }
 
   updateHpBar(boss) {
@@ -313,12 +300,8 @@ export default class Hud {
     this.scoreText.setText(`${score}`);
   }
 
-  updateShopPanel(score) {
-    this.shopButtons.forEach(({ bg, label, costText, cost }) => {
-      const alpha = score >= cost ? 1 : 0.35;
-      bg.setAlpha(alpha);
-      label.setAlpha(alpha);
-      costText.setAlpha(alpha);
-    });
+  updateDrawButton(active) {
+    this.drawButton.bg.setAlpha(active ? 1 : 0.35);
+    this.drawButton.label.setAlpha(active ? 1 : 0.35);
   }
 }

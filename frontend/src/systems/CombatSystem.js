@@ -6,6 +6,7 @@ export default class CombatSystem {
     this.scene = scene;
     this.boss = boss;
     this.onHit = onHit;
+    this.weaponManager = null;
     this.score = 0;
     this.lastHitTime = 0;
   }
@@ -15,15 +16,27 @@ export default class CombatSystem {
     if (now - this.lastHitTime < HIT_COOLDOWN) return;
     this.lastHitTime = now;
 
-    const damage = this.rollDamage();
+    const overlappingWeapons = this.weaponManager.getOverlappingWeapons();
+    const hits = overlappingWeapons.length > 0
+      ? overlappingWeapons.map((weapon) => ({
+        amount: Math.round(this.rollDamage() * weapon.damageMultiplier),
+        isBoosted: weapon.stackLevel > 1,
+        x: weapon.x,
+        y: weapon.y,
+      }))
+      : [{ amount: this.rollDamage(), isBoosted: false, x: this.boss.sprite.x, y: this.boss.sprite.y }];
+
+    const damage = hits.reduce((sum, hit) => sum + hit.amount, 0);
     this.boss.takeDamage(damage);
     this.score += damage;
 
-    if (this.boss.isDead()) {
+    const defeated = this.boss.isDead();
+    const deathPosition = defeated ? { x: this.boss.sprite.x, y: this.boss.sprite.y } : null;
+    if (defeated) {
       this.boss.respawn();
     }
 
-    this.onHit();
+    this.onHit(hits, defeated, deathPosition);
   }
 
   rollDamage() {

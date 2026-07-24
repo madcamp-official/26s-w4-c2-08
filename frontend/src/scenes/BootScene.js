@@ -24,6 +24,11 @@ export default class BootScene extends Phaser.Scene {
     g.fillRect(0, 0, 50, 50);
     g.generateTexture('weapon', 50, 50);
 
+    g.clear();
+    g.fillStyle(0x3366cc, 1);
+    g.fillTriangle(25, 0, 0, 50, 50, 50);
+    g.generateTexture('weapon_portable', 50, 50);
+
     g.destroy();
   }
 }

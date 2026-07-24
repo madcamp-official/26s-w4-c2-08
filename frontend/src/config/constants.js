@@ -1,0 +1,9 @@
+export const HIT_COOLDOWN = 300; // ms
+export const BASE_DAMAGE_MIN = 5;
+export const BASE_DAMAGE_MAX = 15;
+export const HP_BAR_WIDTH = 200;
+export const HP_BAR_X = 400;
+export const HP_BAR_Y = 30;
+export const BOSS_SPAWN = { x: 200, y: 300 };
+export const DRAW_SCORE_STEP = 100;
+export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact so overlap detection still fires

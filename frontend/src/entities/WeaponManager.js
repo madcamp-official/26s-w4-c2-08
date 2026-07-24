@@ -8,7 +8,7 @@ import {
   PORTABLE_WEAPON_SIZE,
 } from '../config/constants.js';
 import { getBaseballBatDimensions } from './weaponSprites.js';
-import { capsuleIntersectsRect } from '../systems/geometry.js';
+import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
 // 방망이 텍스처는 -45도로 회전된 채 미리 그려져 있어(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고),
 // 손잡이 끝/배럴 끝이 weapon.x,y로부터 이 오프셋만큼씩 대각선으로 떨어져 있다. PORTABLE_WEAPON_SIZE가 바뀌면
@@ -248,14 +248,42 @@ export default class WeaponManager {
     target.destroy();
   }
 
-  // 보스 드래그 시 어떤 무기(설치형/휴대형/투척형)도 뚫고 지나가지 않도록 막되, 히트 판정용 여백(CONTACT_OVERLAP)은 남긴다
+  // 보스 드래그 시 어떤 무기(설치형/휴대형/투척형)도 뚫고 지나가지 않도록 막되, 히트 판정용 여백(CONTACT_OVERLAP)은 남긴다.
+  // 방망이는 사각 히트박스가 아니라 실제 대각선 실루엣(캡슐)을 기준으로 밀어낸다.
   resolveOverlapForBoss(x, y) {
-    return this.resolveOverlap(x, y, this.boss.displayWidth / 2, this.boss.displayHeight / 2, [...this.weapons, ...this.portableWeapons, ...this.throwWeapons]);
+    const halfW = this.boss.displayWidth / 2;
+    const halfH = this.boss.displayHeight / 2;
+
+    for (const bat of this.portableWeapons) {
+      const { x1, y1, x2, y2, radius } = this.getBatAxis(bat);
+      ({ x, y } = pushRectOutOfCapsule(x, y, halfW, halfH, x1, y1, x2, y2, radius, CONTACT_OVERLAP));
+    }
+
+    return this.resolveOverlap(x, y, halfW, halfH, [...this.weapons, ...this.throwWeapons]);
   }
 
-  // 무기 드래그 시 고정된 보스를 뚫고 지나가지 않도록 막되, 히트 판정용 여백은 남긴다 (설치형/휴대형/투척형 공통)
+  // 무기 드래그 시 고정된 보스를 뚫고 지나가지 않도록 막되, 히트 판정용 여백은 남긴다.
+  // 방망이를 드래그하는 경우엔 방망이의 사각 프레임이 아니라 실제 실루엣(캡슐)이 보스를 뚫지 못하게 한다.
   resolveOverlapForDraggedWeapon(weapon, x, y) {
+    if (this.isPortableWeapon(weapon)) {
+      return this.resolveBatOverlapForDrag(x, y);
+    }
     return this.resolveOverlap(x, y, weapon.displayWidth / 2, weapon.displayHeight / 2, [this.boss.sprite]);
+  }
+
+  // 방망이 중심 후보 좌표 (x,y)로 캡슐 축을 만들었을 때 보스 사각형과 겹치면, 겹치지 않는 방향으로 (x,y)를 보정.
+  // pushRectOutOfCapsule은 "사각형을 캡슐 밖으로 미는" 함수라, 여기선 보스(사각형) 자리를 고정한 채
+  // 그 결과로 나온 이동량만큼 방망이(캡슐 소유자)를 반대로 밀어내는 식으로 재사용한다.
+  resolveBatOverlapForDrag(x, y) {
+    const boss = this.boss.sprite;
+    const bossHalfW = boss.displayWidth / 2;
+    const bossHalfH = boss.displayHeight / 2;
+    const { x1, y1, x2, y2, radius } = this.getBatAxis({ x, y });
+
+    const pushed = pushRectOutOfCapsule(boss.x, boss.y, bossHalfW, bossHalfH, x1, y1, x2, y2, radius, CONTACT_OVERLAP);
+    const dx = pushed.x - boss.x;
+    const dy = pushed.y - boss.y;
+    return { x: x - dx, y: y - dy };
   }
 
   // 보스가 폭(90)보다 높이(70)가 짧은 비정사각형이라 x/y를 같은 half값으로 계산하면

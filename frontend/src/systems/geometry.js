@@ -62,3 +62,34 @@ export function capsuleIntersectsRect(x1, y1, x2, y2, radius, rect) {
   ];
   return Math.min(...distances) <= radius;
 }
+
+// 중심 (rectX,rectY), 반너비/반높이 (halfW,halfH)인 축정렬 사각형이 고정된 캡슐(x1,y1)-(x2,y2, radius)을
+// contactOverlap만큼만 겹친 채로 남기고 밀려난 위치를 반환 (겹치지 않으면 원래 좌표 그대로).
+//
+// 1) 사각형 중심에서 캡슐 축(선분)에 내린 가장 가까운 점 Q를 구하고
+// 2) Q를 사각형 경계로 클램프한 점 C(=사각형에서 Q에 가장 가까운 점)를 구해
+// 3) C→Q 방향(사각형이 캡슐 축으로부터 밀려나야 할 방향)으로 부족한 만큼 사각형을 밀어낸다.
+// (2단계에서 클램프를 쓰기 때문에 사각형의 모서리 방향으로 접근할 때도 정확하다 — 중심 방향만으로 근사하지 않음)
+export function pushRectOutOfCapsule(rectX, rectY, halfW, halfH, x1, y1, x2, y2, radius, contactOverlap) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq === 0 ? 0 : ((rectX - x1) * dx + (rectY - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const qx = x1 + t * dx;
+  const qy = y1 + t * dy;
+
+  const cx = Math.max(rectX - halfW, Math.min(qx, rectX + halfW));
+  const cy = Math.max(rectY - halfH, Math.min(qy, rectY + halfH));
+  const ndx = cx - qx;
+  const ndy = cy - qy;
+  const dist = Math.hypot(ndx, ndy);
+  const minDist = radius - contactOverlap;
+
+  if (dist >= minDist) return { x: rectX, y: rectY };
+
+  const nx = dist === 0 ? 0 : ndx / dist;
+  const ny = dist === 0 ? -1 : ndy / dist;
+  const push = minDist - dist;
+  return { x: rectX + nx * push, y: rectY + ny * push };
+}

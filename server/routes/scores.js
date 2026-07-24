@@ -9,6 +9,9 @@ const insertScore = db.prepare(
 
 router.post('/scores', (req, res) => {
   const { groupId, userName, score } = req.body;
+  if (!groupId || !userName || typeof score !== 'number') {
+    return res.status(400).json({ ok: false, error: 'groupId, userName, score(number) required' });
+  }
   insertScore.run(groupId, userName, score);
   res.json({ ok: true });
 });

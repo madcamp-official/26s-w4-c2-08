@@ -14,6 +14,9 @@ const getLeaderboard = db.prepare(`
 
 router.get('/leaderboard', (req, res) => {
   const { groupId } = req.query;
+  if (!groupId) {
+    return res.status(400).json({ error: 'groupId required' });
+  }
   const leaderboard = getLeaderboard.all(groupId);
   res.json({ leaderboard });
 });

@@ -7,3 +7,5 @@ export const HP_BAR_Y = 30;
 export const BOSS_SPAWN = { x: 200, y: 300 };
 export const DRAW_SCORE_STEP = 100;
 export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact so overlap detection still fires
+export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles while holding the throw weapon
+export const THROW_PROJECTILE_SPEED = 400; // px/s

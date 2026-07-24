@@ -24,6 +24,8 @@ export default class GameScene extends Phaser.Scene {
     this.drawsUsed = 0;
     this.isEnded = false;
 
+    this.add.image(0, 0, 'battleBackground').setOrigin(0, 0);
+
     this.boss = new Boss(this);
     this.hud = new Hud(this, {
       onDrawButtonClick: () => this.onDrawButtonClick(),
@@ -109,7 +111,8 @@ export default class GameScene extends Phaser.Scene {
 
     if (hits.length > 0) {
       this.boss.shake();
-      this.boss.flash(hits.some((hit) => hit.isBoosted) ? 0x33cc33 : 0xffffff);
+      this.boss.flash(0xffffff);
+      this.boss.showHurtFace();
       hits.forEach((hit) => this.spawnDamagePopup(hit));
     }
     if (defeated) {

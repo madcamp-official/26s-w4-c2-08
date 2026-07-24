@@ -13,8 +13,12 @@ export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바�
 export const TOP_HUD_Y = 30; // Weapon/End 버튼 상단 y 기준 (HP바가 하단으로 빠지면서 별도 상수로 분리)
 export const BOSS_SPAWN = { x: 400, y: 400 };
 export const BOSS_COLOR = '#e8631a'; // 보스 픽셀 스프라이트 몸통 색 (Classic Coral 후보의 진한 주황 버전)
-export const DRAW_SCORE_STEP = 100;
-export const INITIAL_FREE_DRAWS = 1; // 필드에 무기가 하나도 없는 상태로 시작하므로 시작 시 무기 뽑기 1회를 무료로 제공
+// 무기 구매 상점: score를 "커밋" 재화로 재사용해서 타입별 가격으로 직접 골라 구매한다
+export const WEAPON_TYPES = [
+  { id: 'installed', icon: '🐛', cost: 80 },
+  { id: 'portable', icon: '⌨️', cost: 100 },
+  { id: 'throw', icon: '⚾', cost: 150 },
+];
 export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact so overlap detection still fires
 export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles while holding the throw weapon
 export const THROW_PROJECTILE_SPEED = 400; // px/s

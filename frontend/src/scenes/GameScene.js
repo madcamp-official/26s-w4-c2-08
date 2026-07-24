@@ -1,7 +1,5 @@
 import Phaser from 'phaser';
 import {
-  DRAW_SCORE_STEP,
-  INITIAL_FREE_DRAWS,
   TRASH_SCORE_BONUS,
   DAMAGE_POPUP_DURATION,
   DEFEAT_POPUP_DURATION,
@@ -22,7 +20,6 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
-    this.drawsUsed = 0;
     this.isEnded = false;
 
     this.currentBackgroundStyle = BACKGROUND_STYLE;
@@ -30,7 +27,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.boss = new Boss(this);
     this.hud = new Hud(this, {
-      onDrawButtonClick: () => this.onDrawButtonClick(),
+      onBuyWeapon: (typeId, cost) => this.onBuyWeapon(typeId, cost),
       onEndButtonClick: () => this.onEndButtonClick(),
       currentBackgroundStyle: this.currentBackgroundStyle,
       onBackgroundSelect: (style) => this.onBackgroundSelect(style),
@@ -38,6 +35,8 @@ export default class GameScene extends Phaser.Scene {
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
     this.weaponManager = new WeaponManager(this, this.boss, () => this.combat.handleHit());
     this.combat.weaponManager = this.weaponManager;
+
+    this.weaponManager.spawnRandomWeapon(); // 필드가 비어있으면 구매 자체가 불가능하므로 시작 시 무료로 하나 배치
 
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
       if (this.isEnded) return;
@@ -72,23 +71,20 @@ export default class GameScene extends Phaser.Scene {
       this.weaponManager.tryMergeWeapon(gameObject);
     });
 
-    this.hud.updateDrawButton(this.getAvailableDraws() > 0);
+    this.hud.updateShopPanel(this.combat.score);
   }
 
   update() {
     this.weaponManager.updateProjectiles();
   }
 
-  getAvailableDraws() {
-    return INITIAL_FREE_DRAWS + Math.floor(this.combat.score / DRAW_SCORE_STEP) - this.drawsUsed;
-  }
-
-  onDrawButtonClick() {
+  onBuyWeapon(typeId, cost) {
     if (this.isEnded) return;
-    if (this.getAvailableDraws() <= 0) return;
-    this.drawsUsed += 1;
-    this.weaponManager.spawnRandomWeapon();
-    this.hud.updateDrawButton(this.getAvailableDraws() > 0);
+    if (this.combat.score < cost) return;
+    this.combat.score -= cost;
+    this.weaponManager.spawnWeapon(typeId);
+    this.hud.updateScoreText(this.combat.score);
+    this.hud.updateShopPanel(this.combat.score);
   }
 
   // 온라인/로컬 분기(점수 제출, 리더보드 조회)는 webview 연동 이후 붙일 예정 — 지금은 세션을 멈추고 최종 점수만 보여준다
@@ -117,7 +113,7 @@ export default class GameScene extends Phaser.Scene {
   onHit(hits = [], defeated = false, deathPosition = null) {
     this.hud.updateHpBar(this.boss);
     this.hud.updateScoreText(this.combat.score);
-    this.hud.updateDrawButton(this.getAvailableDraws() > 0);
+    this.hud.updateShopPanel(this.combat.score);
 
     if (hits.length > 0) {
       this.boss.shake();

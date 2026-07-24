@@ -26,3 +26,13 @@ export function createEmojiCanvas(emoji, size) {
 export function createBaseballCanvas(size) {
   return createEmojiCanvas('⚾', size);
 }
+
+// 설치형 무기(addWeapon)
+export function createBugCanvas(size) {
+  return createEmojiCanvas('🐛', size);
+}
+
+// 휴대형 무기(addPortableWeapon)
+export function createKeyboardCanvas(size) {
+  return createEmojiCanvas('⌨️', size);
+}

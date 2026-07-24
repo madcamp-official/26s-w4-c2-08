@@ -9,6 +9,8 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 app.use('/api', scoresRouter);
 app.use('/api', leaderboardRouter);
 

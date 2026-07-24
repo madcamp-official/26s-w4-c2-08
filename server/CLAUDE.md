@@ -17,7 +17,7 @@ curl "localhost:3000/api/leaderboard?groupId=test"
 
 ## 파일 맵
 
-- `index.js` — express 세팅, cors/json 미들웨어, 라우터 마운트(`/api`), listen
+- `index.js` — express 세팅, cors/json 미들웨어, `/health`, 라우터 마운트(`/api`), listen
 - `db.js` — better-sqlite3 연결, `scores` 테이블 스키마, WAL 모드. `DB_PATH` env로 경로 변경
 - `routes/scores.js` — `POST /api/scores`, prepared statement로 insert
 - `routes/leaderboard.js` — `GET /api/leaderboard`, groupId 기준 유저별 최고점 정렬 쿼리

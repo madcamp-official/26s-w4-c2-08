@@ -8,9 +8,9 @@ VSCode 확장 안에서 동작하는 보스 클리커 게임 + 그룹 랭킹 서
 
 **게임 (Phaser)**
 - `BootScene`(에셋 로드), `GameScene`(메인 로직) 구성
-- 보스 스프라이트 배치, HP바 구현
-- 클릭 → 랜덤 데미지 계산 → HP 감소 → HP바 갱신
-- HP 0 → 승리 오버레이 표시
+- 보스/무기 스프라이트 배치, HP바 구현
+- 보스 드래그 이동(포인터로 잡아서 옮기기) → 무기와 충돌 시 랜덤 데미지 계산 → HP 감소 → HP바 갱신 → 점수 증가 ([상세](./FRONTEND.md#전투-시스템))
+- HP 0 → 즉시 보스 리스폰 (승리 오버레이 없이 계속 진행, [상세](./FRONTEND.md#점수--보스-리스폰))
 
 **백엔드**
 - Express + `better-sqlite3` 프로젝트 초기화
@@ -26,10 +26,12 @@ VSCode 확장 안에서 동작하는 보스 클리커 게임 + 그룹 랭킹 서
 ## 2일차 — 재미 요소 + API 로직 완성
 
 **게임**
-- 콤보 시스템 (연속 클릭 시간 기반 배율 상승)
-- 크리티컬 히트 (확률 기반 데미지 배수)
+- 무기 종류 3가지 구현: 설치형 / 투척형 / 휴대형 ([상세](./FRONTEND.md#무기-시스템-설치형--투척형--휴대형))
 - 타격 이펙트 (흔들림 tween, 데미지 텍스트 팝업)
-- 사운드 (타격음/크리티컬음/승리음)
+- 사운드 (타격음/보스 처치음)
+- 종료 버튼 UI 추가 (보스가 즉시 리스폰되므로 HP 0이 아니라 수동 종료 시점에 점수 제출)
+
+> 콤보 시스템/크리티컬 히트는 구현하지 않기로 결정 ([FRONTEND.md 구현 현황](./FRONTEND.md#구현-현황) 참고).
 
 **백엔드**
 - `POST /api/scores`: 점수 insert 로직 완성
@@ -38,7 +40,7 @@ VSCode 확장 안에서 동작하는 보스 클리커 게임 + 그룹 랭킹 서
 - Postman/curl로 여러 유저 데이터 넣고 정렬 확인
 
 **체크포인트**
-- [ ] 콤보/사운드까지 붙은 게임 완성
+- [ ] 사운드까지 붙은 게임 완성
 - [ ] 여러 점수 넣었을 때 랭킹 정렬 정상 확인
 
 ---
@@ -81,8 +83,8 @@ Webview 패널 생성 시점에 아래 두 리스너를 함께 등록 (자세한
 
 **webview(game.js) 메시지 핸들러 통합** ⭐
 - `init`(모드 전달), `setPaused`(포커스 상태 전달) 두 메시지 타입을 하나의 `message` 리스너에서 `type` 분기로 처리
-- `setPaused: true` → `game.scene.pause()` + `game.input.enabled = false` (입력도 함께 차단)
-- 클리어 시 `onGameClear`: online이면 점수 제출 + 리더보드 조회, local이면 extension에 `saveLocalScore` 메시지 전송 → extension이 `globalState.update('bestScore', ...)` 처리
+- `setPaused: true` → `game.scene.pause()` + `game.input.enabled = false` (드래그 입력도 함께 차단)
+- 종료 버튼 클릭 시 `onGameEnd`: online이면 점수 제출 + 리더보드 조회, local이면 extension에 `saveLocalScore` 메시지 전송 → extension이 `globalState.update('bestScore', ...)` 처리
 
 **CSP / CORS**
 - CSP `connect-src`에 VM 주소 추가
@@ -91,14 +93,14 @@ Webview 패널 생성 시점에 아래 두 리스너를 함께 등록 (자세한
 **체크포인트**
 - [ ] git remote 있는 repo에서 실행 → 서버로 점수 전송 확인
 - [ ] git remote 없는 폴더에서 실행 → Network 탭에서 서버 요청이 아예 안 나가는지 확인
-- [ ] ⭐ 정지 상태에서 클릭해도 데미지가 안 들어가는지, 정지 중 서버 요청이 잘못 트리거되지 않는지 확인
+- [ ] ⭐ 정지 상태에서 보스를 드래그해도 데미지가 안 들어가는지, 정지 중 서버 요청이 잘못 트리거되지 않는지 확인
 
 ---
 
 ## 5일차 — 리더보드 UI + 일시정지 오버레이 ⭐ + 안정성
 
 **게임**
-- `mode === 'online'`: 클리어 후 `GET /api/leaderboard?groupId=xxx` 호출 → 랭킹 리스트 렌더링
+- `mode === 'online'`: 종료 버튼 클릭 후 `GET /api/leaderboard?groupId=xxx` 호출 → 랭킹 리스트 렌더링
 - `mode === 'local'`: 랭킹 섹션 숨기고 "내 최고 기록: XXX점" 표시 (`globalState`에서 조회)
 - 로딩/에러 상태 UI 처리
 - ⭐ 게임 정지 시 "일시정지" 오버레이 표시 (`showPauseOverlay(paused)`, 사용자가 왜 안 눌리는지 헷갈리지 않도록)

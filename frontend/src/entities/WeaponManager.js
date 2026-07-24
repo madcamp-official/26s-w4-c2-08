@@ -182,9 +182,10 @@ export default class WeaponManager {
   }
 
   // 드래그로 옮긴 무기가 같은 타입의 다른 무기와 겹치면 하나로 합쳐서 초록색 강화 무기로 만든다
-  // (투척형/야구공은 겹쳐 쌓이지 않고 각자 따로 발사대로 동작한다)
+  // (투척형/야구공은 겹쳐 쌓이지 않고 각자 따로 발사대로 동작하고, 휴대형/야구 방망이는 스윙감을 위해 합치기 대상에서 제외)
   tryMergeWeapon(weapon) {
     if (this.isThrowWeapon(weapon)) return;
+    if (this.isPortableWeapon(weapon)) return;
 
     const siblings = this.getSameTypeList(weapon).filter((other) => other !== weapon);
     const weaponBounds = weapon.getBounds();

@@ -15,7 +15,23 @@
         "command": "HitTheAgent.start",
         "title": "Hit the Agent: 게임 시작"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Hit the Agent",
+      "properties": {
+        "hitTheAgent.enableTokenWatchHook": {
+          "type": "boolean",
+          "default": false,
+          "description": "켜면 Claude Code가 매 턴 응답을 마칠 때마다 누적 토큰 사용량을 확인해 임계치를 넘으면 확률적으로 게임 캐릭터가 실시간으로 말을 겁니다. .claude/settings.local.json에 Stop 훅이 등록/해제됩니다. 매 턴마다 훅이 실행되므로 응답 후 약간의 지연이 추가될 수 있습니다."
+        },
+        "hitTheAgent.tokenThreshold": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "이 값(세션 내 input+output 토큰 합계)을 넘겨야 이벤트가 발생할 확률이 생깁니다. 테스트 편의를 위해 기본값을 1로 낮춰둠 — 실서비스에서는 더 큰 값(예: 50000)으로 올릴 것."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

@@ -4,6 +4,9 @@ import {
   DEFEAT_POPUP_DURATION,
   DEFEAT_POPUP_COLOR,
   BOSS_PANEL_PUSH_POPUP_COLOR,
+  AGENT_TAUNT_POPUP_DURATION,
+  AGENT_TAUNT_TYPING_SPEED,
+  getAgentTauntLines,
   UI_FONT_FAMILY,
   BACKGROUND_STYLE,
   BOSS_TYPES,
@@ -14,7 +17,7 @@ import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import Hud from '../ui/Hud.js';
-import { gameContext, postToExtension } from '../vscodeBridge.js';
+import { gameContext, postToExtension, onAgentTaunt } from '../vscodeBridge.js';
 import { submitScore, fetchLeaderboard } from '../api.js';
 
 // 리더보드는 결과 화면 한 화면에 다 넣기엔 길어질 수 있어 상위 5명만 텍스트로 보여준다.
@@ -82,6 +85,9 @@ export default class GameScene extends Phaser.Scene {
     this.input.on('pointerup', () => {
       this.weaponManager.releaseActiveWeapon();
     });
+
+    // SessionEnd 훅(토큰 임계치 초과, extension/scripts/session-end-hook.js)이 발동했을 때 게임 시작 직후 1회 전달됨
+    onAgentTaunt((tokenCount) => this.spawnTauntPopup(tokenCount));
   }
 
   update() {
@@ -283,6 +289,56 @@ export default class GameScene extends Phaser.Scene {
       duration: DEFEAT_POPUP_DURATION,
       ease: 'Cubic.easeOut',
       onComplete: () => text.destroy(),
+    });
+  }
+
+  // 보스 머리 위에 대사 팝업을 잠깐 띄운다. 데미지 팝업과 달리 위치가 고정돼 있고 더 오래 유지된다.
+  // tokenCount(세션 누적 토큰)에 따라 1000/10000 임계치로 대사 톤이 달라진다.
+  spawnTauntPopup(tokenCount) {
+    const line = Phaser.Utils.Array.GetRandom(getAgentTauntLines(tokenCount));
+    const x = this.boss.bodyCenterX;
+    const y = this.boss.sprite.y - this.boss.displayHeight / 2 - 20;
+    const style = {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: UI_FONT_FAMILY,
+      backgroundColor: '#000000cc',
+      padding: { x: 10, y: 6 },
+    };
+
+    // 완성된 문장의 폭을 미리 재서 왼쪽 끝을 고정해야, 글자가 늘어나도
+    // 타이핑처럼 오른쪽으로만 자라고 좌우로 흔들리지 않는다.
+    const measure = this.add.text(0, 0, line, style).setVisible(false);
+    const fullWidth = measure.width;
+    measure.destroy();
+
+    const text = this.add
+      .text(x - fullWidth / 2, y, '', style)
+      .setOrigin(0, 0.5)
+      .setDepth(2000);
+
+    let charIndex = 0;
+    const typingTimer = this.time.addEvent({
+      delay: AGENT_TAUNT_TYPING_SPEED,
+      repeat: line.length - 1,
+      callback: () => {
+        charIndex += 1;
+        text.setText(line.slice(0, charIndex));
+      },
+    });
+
+    this.tweens.add({
+      targets: text,
+      y: text.y - 20,
+      alpha: 0,
+      duration: AGENT_TAUNT_POPUP_DURATION,
+      delay: line.length * AGENT_TAUNT_TYPING_SPEED + 800,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        typingTimer.remove();
+        text.destroy();
+      },
     });
   }
 }

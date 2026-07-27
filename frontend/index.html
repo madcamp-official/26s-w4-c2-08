@@ -4,29 +4,27 @@
     <meta charset="UTF-8" />
     <title>Hit the Agent</title>
     <style>
+      /* 패키징된 webview는 extension.ts가 asWebviewUri()로 별도 선언 — 여긴 로컬 dev(vite dev)용 */
+      @font-face {
+        font-family: 'Galmuri11';
+        font-weight: 400;
+        font-display: swap;
+        src: url('/fonts/Galmuri11.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Galmuri11';
+        font-weight: 700;
+        font-display: swap;
+        src: url('/fonts/Galmuri11-Bold.woff2') format('woff2');
+      }
       html, body { margin: 0; padding: 0; background: #111; }
       #game-container { display: flex; justify-content: center; }
       #game-stage { position: relative; }
-      #pause-overlay {
-        display: none;
-        position: absolute;
-        inset: 0;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.6);
-        color: #fff;
-        font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-        font-size: 20px;
-        font-weight: bold;
-        pointer-events: none;
-      }
     </style>
   </head>
   <body>
     <div id="game-container">
-      <div id="game-stage">
-        <div id="pause-overlay">일시정지</div>
-      </div>
+      <div id="game-stage"></div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -5,14 +5,14 @@ const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : 
 export const gameContext = { mode: 'local', groupId: null, userName: 'player', bestScore: 0 };
 
 const initListeners = [];
-const pauseListeners = [];
+const agentTauntListeners = [];
 
 export function onInit(callback) {
   initListeners.push(callback);
 }
 
-export function onPause(callback) {
-  pauseListeners.push(callback);
+export function onAgentTaunt(callback) {
+  agentTauntListeners.push(callback);
 }
 
 export function postToExtension(message) {
@@ -32,8 +32,8 @@ window.addEventListener('message', (event) => {
       });
       initListeners.forEach((cb) => cb(gameContext));
       break;
-    case 'setPaused':
-      pauseListeners.forEach((cb) => cb(msg.paused));
+    case 'agentTaunt':
+      agentTauntListeners.forEach((cb) => cb(msg.tokenCount));
       break;
     default:
       break;

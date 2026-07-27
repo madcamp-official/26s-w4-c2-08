@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
-import { HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY } from '../config/constants.js';
+import {
+  HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY,
+  WEAPON_CATEGORIES, WEAPON_CATEGORY_LABELS, WEAPON_CATEGORY_TEXTURES,
+} from '../config/constants.js';
 import { BACKGROUND_STYLES, BACKGROUND_LABELS } from '../config/backgrounds.js';
 
 const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
@@ -7,8 +10,14 @@ const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
   label: BACKGROUND_LABELS[style],
 }));
 
+const WEAPON_OPTIONS = Object.values(WEAPON_CATEGORIES).map((category) => ({
+  category,
+  label: WEAPON_CATEGORY_LABELS[category],
+  texture: WEAPON_CATEGORY_TEXTURES[category],
+}));
+
 export default class Hud {
-  constructor(scene, { onDrawButtonClick, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
+  constructor(scene, { onWeaponSelect, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
     this.scene = scene;
 
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
@@ -23,7 +32,14 @@ export default class Hud {
     this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00);
     this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
 
-    this.drawButton = this.createDrawButton(onDrawButtonClick);
+    this.weaponPanelOpen = false;
+    this.drawButton = this.createDrawButton(() => this.toggleWeaponPanel());
+    this.weaponPanel = this.createWeaponPanel((category) => {
+      if (onWeaponSelect) onWeaponSelect(category);
+      this.setActiveWeaponOption(category);
+      this.toggleWeaponPanel(false);
+    });
+
     this.backgroundPanelOpen = false;
     this.backgroundButton = this.createBackgroundButton(() => this.toggleBackgroundPanel());
     this.backgroundPanel = this.createBackgroundPanel(currentBackgroundStyle, (style) => {
@@ -31,11 +47,28 @@ export default class Hud {
       this.setActiveBackgroundOption(style);
       this.toggleBackgroundPanel(false);
     });
-    this.trashCan = this.createTrashCan();
     this.endButton = this.createEndButton(onEndButtonClick);
   }
 
-  // 체력바 옆 trash와 같은 y에 배치
+  // 무기 패널이나 배경 패널(열려있을 때), 상단 버튼들 위 클릭인지 판단. 필드 클릭(무기를 들어 보이기)과
+  // UI 클릭을 구분하는 데 쓴다.
+  // Phaser 자체 히트테스트를 쓰는 이유: 패널 아이콘의 pointerdown(onSelect)이 먼저 실행되며 toggleWeaponPanel(false)로
+  // weaponPanelOpen을 그 자리에서 바로 false로 바꿔버리기 때문에, 같은 클릭을 뒤이어 처리하는 씬 레벨 pointerdown에서
+  // weaponPanelOpen 값만 보면 "패널이 이미 닫혔다"고 잘못 판단해 같은 좌표에 필드 무기가 또 스폰되는 버그가 있었다.
+  // hitTestPointer는 그 순간 실제로 그 자리에 있는 인터랙티브 오브젝트를 다시 계산하므로 이 타이밍 문제가 없다.
+  isPointerOnUI(pointer) {
+    return this.scene.input.hitTestPointer(pointer).length > 0;
+  }
+
+  // 무기/배경 패널 중 지금 열려 있는(슬라이드된) 패널이 있으면 그 왼쪽 경계 x를 반환. 둘 다 닫혀 있으면 null.
+  // GameScene이 매 프레임 이 경계를 보스와 겹치는지 검사해 패널에 부딪혔는지 판단하는 데 쓴다.
+  getOpenPanelBoundaryX() {
+    if (this.weaponPanelOpen) return this.weaponPanel.openX;
+    if (this.backgroundPanelOpen) return this.backgroundPanel.openX;
+    return null;
+  }
+
+  // 체력바와 같은 y, 화면 오른쪽 끝에 배치
   createEndButton(onClick) {
     const size = 40;
     const x = this.scene.scale.width - size / 2 - 16;
@@ -171,6 +204,8 @@ export default class Hud {
     if (shouldOpen === this.backgroundPanelOpen) return;
     this.backgroundPanelOpen = shouldOpen;
 
+    if (shouldOpen) this.toggleWeaponPanel(false); // 두 슬라이드 패널이 같은 자리에서 겹치지 않도록
+
     const { container, maskShape, openX, startX } = this.backgroundPanel;
     this.scene.tweens.add({
       targets: [container, maskShape],
@@ -183,6 +218,96 @@ export default class Hud {
   setActiveBackgroundOption(style) {
     this.backgroundOptionEls.forEach(({ style: s, border }) => {
       border.setStrokeStyle(3, 0xffaa00, s === style ? 1 : 0);
+    });
+  }
+
+  // 배경 패널과 같은 자리(화면 오른쪽)에서 슬라이드되는 무기 카테고리 패널.
+  // 무기는 배경처럼 "현재 상태"가 없는 일회성 뽑기라 스크롤/선택 테두리는 필요 없다 — 항목이 늘 화면 안에 들어온다.
+  // 한 줄에 2개씩 격자로 배치한다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
+  createWeaponPanel(onSelect) {
+    const panelWidth = 200;
+    const height = this.scene.scale.height;
+    const startX = this.scene.scale.width + 16;
+    const openX = this.scene.scale.width - panelWidth;
+
+    const container = this.scene.add.container(startX, 0).setDepth(1000);
+
+    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
+      .setOrigin(0, 0)
+      .setInteractive();
+    container.add(bg);
+
+    const title = this.scene.add.text(panelWidth / 2, 22, 'WEAPON', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5);
+    container.add(title);
+
+    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeButton.on('pointerdown', () => this.toggleWeaponPanel(false));
+    container.add(closeButton);
+
+    const columns = 2;
+    const iconSize = 78;
+    const colGap = 14;
+    const rowGap = 26;
+    const gridWidth = columns * iconSize + (columns - 1) * colGap;
+    const gridStartX = (panelWidth - gridWidth) / 2;
+    const rowStep = iconSize + 28 + rowGap;
+    const top = 56;
+
+    this.weaponOptionEls = [];
+
+    WEAPON_OPTIONS.forEach(({ category, label, texture }, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
+      const cy = top + row * rowStep + iconSize / 2;
+
+      const icon = this.scene.add.image(cx, cy, texture)
+        .setDisplaySize(iconSize, iconSize)
+        .setInteractive({ useHandCursor: true });
+      const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
+        .setStrokeStyle(3, 0xffaa00, 0);
+      const labelText = this.scene.add.text(cx, cy + iconSize / 2 + 14, label, {
+        fontSize: '11px',
+        color: '#ffffff',
+        fontFamily: UI_FONT_FAMILY,
+      }).setOrigin(0.5);
+
+      icon.on('pointerdown', () => onSelect(category));
+      container.add([icon, border, labelText]);
+      this.weaponOptionEls.push({ category, border });
+    });
+
+    return { container, openX, startX };
+  }
+
+  setActiveWeaponOption(category) {
+    this.weaponOptionEls.forEach(({ category: c, border }) => {
+      border.setStrokeStyle(3, 0xffaa00, c === category ? 1 : 0);
+    });
+  }
+
+  toggleWeaponPanel(forceOpen) {
+    const shouldOpen = forceOpen === undefined ? !this.weaponPanelOpen : forceOpen;
+    if (shouldOpen === this.weaponPanelOpen) return;
+    this.weaponPanelOpen = shouldOpen;
+
+    if (shouldOpen) this.toggleBackgroundPanel(false);
+
+    const { container, openX, startX } = this.weaponPanel;
+    this.scene.tweens.add({
+      targets: container,
+      x: shouldOpen ? openX : startX,
+      duration: 280,
+      ease: 'Cubic.easeOut',
     });
   }
 
@@ -224,63 +349,6 @@ export default class Hud {
     return { bg, label };
   }
 
-  // 체력바와 같은 y, 체력바 왼쪽에 붙는 위치에 배치
-  createTrashCan() {
-    const width = 50;
-    const height = 50;
-    const gap = 10;
-    const x = 25;
-    const y = HP_BAR_Y-10;
-
-    const bg = this.scene.add.rectangle(x, y, width, height, 0x000000, 0);
-    bg.setInteractive({ useHandCursor: true });
-
-    const icon = this.drawTrashIcon(x, y, width, height);
-
-    return { bg, icon };
-  }
-
-  // 쓰레기통 실루엣: 손잡이 + 뚜껑 + 사다리꼴 몸통 + 세로줄
-  drawTrashIcon(x, y, width, height) {
-    const bodyColor = 0x882222;
-    const lineColor = 0xffffff;
-
-    const bodyTop = -height * 0.25;
-    const bodyBottom = height * 0.45;
-    const bodyTopWidth = width * 0.6;
-    const bodyBottomWidth = width * 0.42;
-    const lidWidth = width * 0.8;
-    const lidHeight = height * 0.12;
-
-    const g = this.scene.add.graphics({ x, y });
-
-    g.fillStyle(bodyColor, 1);
-    g.fillRect(-width * 0.15, -height * 0.42, width * 0.3, height * 0.12);
-    g.fillRect(-lidWidth / 2, bodyTop - lidHeight, lidWidth, lidHeight);
-
-    g.beginPath();
-    g.moveTo(-bodyTopWidth / 2, bodyTop);
-    g.lineTo(bodyTopWidth / 2, bodyTop);
-    g.lineTo(bodyBottomWidth / 2, bodyBottom);
-    g.lineTo(-bodyBottomWidth / 2, bodyBottom);
-    g.closePath();
-    g.fillPath();
-
-    g.lineStyle(2, lineColor, 0.8);
-    [-0.15, 0, 0.15].forEach((fx) => {
-      g.beginPath();
-      g.moveTo(width * fx, bodyTop + 4);
-      g.lineTo(width * fx * 0.75, bodyBottom - 4);
-      g.strokePath();
-    });
-
-    return g;
-  }
-
-  getTrashBounds() {
-    return this.trashCan.bg.getBounds();
-  }
-
   // 배경 버튼 왼쪽에 붙는 뽑기(무기) 버튼
   createDrawButton(onClick) {
     const size = 40;
@@ -298,10 +366,5 @@ export default class Hud {
 
   updateScoreText(score) {
     this.scoreText.setText(`${score}`);
-  }
-
-  updateDrawButton(active) {
-    this.drawButton.bg.setAlpha(active ? 1 : 0.35);
-    this.drawButton.label.setAlpha(active ? 1 : 0.35);
   }
 }

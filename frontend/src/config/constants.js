@@ -12,7 +12,13 @@ export const HP_BAR_X = 400; // 보스와 같은 x(화면 중앙)를 유지
 export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바를 화면 아래에 두는 보스전 UI 컨벤션
 export const TOP_HUD_Y = 30; // Weapon/End 버튼 상단 y 기준 (HP바가 하단으로 빠지면서 별도 상수로 분리)
 export const BOSS_SPAWN = { x: 400, y: 400 };
-export const BOSS_COLOR = '#e8631a'; // 보스 픽셀 스프라이트 몸통 색 (Classic Coral 후보의 진한 주황 버전)
+// 보스 캐릭터 목록 — 코드/에러 테마 이름 + 픽셀 스프라이트 몸통 색. 첫 항목이 기본 보스.
+export const BOSS_TYPES = [
+  { id: 'null_pointer', name: 'NULL_POINTER', color: '#e8631a' }, // Classic Coral 후보의 진한 주황
+  { id: 'segfault', name: 'SEGFAULT', color: '#c0392b' },
+  { id: 'stack_overflow', name: 'STACK_OVERFLOW', color: '#8e44ad' },
+  { id: 'memory_leak', name: 'MEMORY_LEAK', color: '#27ae60' },
+];
 export const DRAW_SCORE_STEP = 100;
 export const INITIAL_FREE_DRAWS = 1; // 필드에 무기가 하나도 없는 상태로 시작하므로 시작 시 무기 뽑기 1회를 무료로 제공
 export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact so overlap detection still fires

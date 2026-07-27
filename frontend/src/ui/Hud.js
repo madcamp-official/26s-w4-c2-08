@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY } from '../config/constants.js';
+import { HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY, BOSS_TYPES } from '../config/constants.js';
 import { BACKGROUND_STYLES, BACKGROUND_LABELS } from '../config/backgrounds.js';
 
 const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
@@ -8,7 +8,7 @@ const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
 }));
 
 export default class Hud {
-  constructor(scene, { onDrawButtonClick, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
+  constructor(scene, { onDrawButtonClick, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect, currentBossType, onBossSelect } = {}) {
     this.scene = scene;
 
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
@@ -24,6 +24,15 @@ export default class Hud {
     this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
 
     this.drawButton = this.createDrawButton(onDrawButtonClick);
+
+    this.bossPanelOpen = false;
+    this.bossButton = this.createBossButton(() => this.toggleBossPanel());
+    this.bossPanel = this.createBossPanel(currentBossType, (bossTypeId) => {
+      if (onBossSelect) onBossSelect(bossTypeId);
+      this.setActiveBossOption(bossTypeId);
+      this.toggleBossPanel(false);
+    });
+
     this.backgroundPanelOpen = false;
     this.backgroundButton = this.createBackgroundButton(() => this.toggleBackgroundPanel());
     this.backgroundPanel = this.createBackgroundPanel(currentBackgroundStyle, (style) => {
@@ -170,6 +179,7 @@ export default class Hud {
     const shouldOpen = forceOpen === undefined ? !this.backgroundPanelOpen : forceOpen;
     if (shouldOpen === this.backgroundPanelOpen) return;
     this.backgroundPanelOpen = shouldOpen;
+    if (shouldOpen) this.toggleBossPanel(false);
 
     const { container, maskShape, openX, startX } = this.backgroundPanel;
     this.scene.tweens.add({
@@ -281,14 +291,109 @@ export default class Hud {
     return this.trashCan.bg.getBounds();
   }
 
-  // 배경 버튼 왼쪽에 붙는 뽑기(무기) 버튼
+  // 보스 버튼 왼쪽에 붙는 뽑기(무기) 버튼
   createDrawButton(onClick) {
+    const size = 40;
+    const gap = 10;
+    const x = this.scene.scale.width - size * 2 - 16 - gap * 2 - size / 2;
+    const y = TOP_HUD_Y;
+
+    return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);
+  }
+
+  // 배경 버튼 왼쪽, 뽑기 버튼 오른쪽에 붙는 보스 선택 버튼
+  createBossButton(onClick) {
     const size = 40;
     const gap = 10;
     const x = this.scene.scale.width - size - 16 - gap - size / 2;
     const y = TOP_HUD_Y;
 
-    return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);
+    return this.createPillButton(x, y, size, 0x8e44ad, '👹', onClick);
+  }
+
+  // 화면 오른쪽 바깥에 미리 만들어두고, 열릴 때 왼쪽으로 슬라이드시키는 보스 선택 패널
+  createBossPanel(currentBossTypeId, onSelect) {
+    const panelWidth = 200;
+    const height = this.scene.scale.height;
+    const startX = this.scene.scale.width + 16;
+    const openX = this.scene.scale.width - panelWidth;
+
+    const container = this.scene.add.container(startX, 0).setDepth(1000);
+
+    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
+      .setOrigin(0, 0)
+      .setInteractive();
+    container.add(bg);
+
+    const title = this.scene.add.text(panelWidth / 2, 22, 'BOSS', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5);
+    container.add(title);
+
+    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeButton.on('pointerdown', () => this.toggleBossPanel(false));
+    container.add(closeButton);
+
+    const thumbW = 140;
+    const thumbH = 90;
+    const rowGap = 14;
+    const rowStep = thumbH + 26 + rowGap;
+    let y = 50 + 6;
+
+    this.bossOptionEls = [];
+
+    BOSS_TYPES.forEach(({ id, name }) => {
+      const cx = panelWidth / 2;
+      const cy = y + thumbH / 2;
+
+      const thumb = this.scene.add.image(cx, cy, `boss_${id}_d0`)
+        .setDisplaySize(thumbW, thumbH)
+        .setInteractive({ useHandCursor: true });
+      const border = this.scene.add.rectangle(cx, cy, thumbW + 6, thumbH + 6)
+        .setStrokeStyle(3, 0xffaa00, id === currentBossTypeId ? 1 : 0);
+      const labelText = this.scene.add.text(cx, y + thumbH + 12, name, {
+        fontSize: '11px',
+        color: '#ffffff',
+        fontFamily: UI_FONT_FAMILY,
+      }).setOrigin(0.5);
+
+      thumb.on('pointerdown', () => onSelect(id));
+
+      container.add([thumb, border, labelText]);
+      this.bossOptionEls.push({ id, border });
+
+      y += rowStep;
+    });
+
+    return { container, openX, startX };
+  }
+
+  toggleBossPanel(forceOpen) {
+    const shouldOpen = forceOpen === undefined ? !this.bossPanelOpen : forceOpen;
+    if (shouldOpen === this.bossPanelOpen) return;
+    this.bossPanelOpen = shouldOpen;
+    if (shouldOpen) this.toggleBackgroundPanel(false);
+
+    const { container, openX, startX } = this.bossPanel;
+    this.scene.tweens.add({
+      targets: container,
+      x: shouldOpen ? openX : startX,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+    });
+  }
+
+  setActiveBossOption(bossTypeId) {
+    this.bossOptionEls.forEach(({ id, border }) => {
+      border.setStrokeStyle(3, 0xffaa00, id === bossTypeId ? 1 : 0);
+    });
   }
 
   updateHpBar(boss) {

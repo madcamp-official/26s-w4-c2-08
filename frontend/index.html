@@ -6,10 +6,28 @@
     <style>
       html, body { margin: 0; padding: 0; background: #111; }
       #game-container { display: flex; justify-content: center; }
+      #game-stage { position: relative; }
+      #pause-overlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+        font-size: 20px;
+        font-weight: bold;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
-    <div id="game-container"></div>
+    <div id="game-container">
+      <div id="game-stage">
+        <div id="pause-overlay">일시정지</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

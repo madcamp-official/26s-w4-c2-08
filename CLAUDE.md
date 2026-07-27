@@ -14,7 +14,7 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임. git repo 단위로
 
 상세 문서: [ARCHITECTURE.md](./docs/ARCHITECTURE.md), [API.md](./docs/API.md), [FRONTEND.md](./docs/FRONTEND.md), [PLAN.md](./docs/PLAN.md)
 
-**현재 상태**: `server/`(백엔드)만 1일차 뼈대 존재, 상세는 [server/CLAUDE.md](./server/CLAUDE.md) 참고. 게임(Phaser)/확장(VSCode Extension) 코드는 아직 없음.
+**현재 상태**: `server/`(백엔드) 로직 완성, 상세는 [server/CLAUDE.md](./server/CLAUDE.md) 참고. `frontend/`(Phaser 게임)와 `extension/`(VSCode 확장) 모두 존재하며 extension ↔ webview 메시지 연동(init/setPaused/saveLocalScore), git 기반 mode 판별, 온라인 점수 제출·리더보드 조회까지 붙어 있다. 사운드만 미구현.
 
 ## 커맨드
 
@@ -36,7 +36,7 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임. git repo 단위로
 ## 절대 깨면 안 되는 불변 조건
 
 - **groupId 해싱**: `sha256(repoUrl).slice(0, 12)`. extension.ts에서만 계산, 서버는 받은 값 그대로 저장/조회 — 재계산 금지. 클라이언트/서버 양쪽 알고리즘 반드시 동일해야 함.
-- **mode 판별은 extension이 함**: git remote 유무로 `local`/`online` 결정 후 `{ type: 'init', mode, groupId, userName }`로 webview에 1회 전달. webview는 이 값을 그대로 신뢰하고 자체 판별하지 않음.
+- **mode 판별은 extension이 함**: git remote 유무로 `local`/`online` 결정 후 `{ type: 'init', mode, groupId, userName, bestScore }`로 webview에 1회 전달. webview는 이 값을 그대로 신뢰하고 자체 판별하지 않음.
 - **pause는 scene.pause + input.enabled 둘 다**: `game.scene.pause()`만으로는 클릭이 안 막힐 수 있음. `setPaused` 처리 시 `game.input.enabled = false`도 같이 꺼야 정지 중 데미지/서버 요청 유발 안 됨.
 - **webview 리소스는 `asWebviewUri()` 경유**: webview는 `vscode-webview://` 스킴만 신뢰. CSP는 `default-src 'none'` 기준이라 `connect-src`에 VM 주소 명시 안 하면 online 모드 fetch가 조용히 실패함 (에러 안 뜨고 그냥 안 됨 — 네트워크 탭에서 CSP 위반부터 확인).
 - **서버 요청 실패해도 게임은 안 죽어야 함**: online 모드 `submitScore`/`fetchLeaderboard`는 try/catch로 감싸고 실패 시 로컬 표시로 폴백.
@@ -47,7 +47,7 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임. git repo 단위로
 
 | 방향 | type | payload |
 |---|---|---|
-| ext → webview | `init` | `{ mode, groupId, userName }` |
+| ext → webview | `init` | `{ mode, groupId, userName, bestScore }` |
 | ext → webview | `setPaused` | `{ paused: boolean }` |
 | webview → ext | `saveLocalScore` | `{ score }` |
 

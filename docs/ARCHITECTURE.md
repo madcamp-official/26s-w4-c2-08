@@ -36,7 +36,7 @@
   - `userName = git config user.name`
   - 점수 제출/리더보드 조회는 webview → 서버로 직접 HTTP 요청
 
-판별 결과는 webview 생성 직후 한 번, `{ type: 'init', mode, groupId, userName }` 메시지로 전달한다.
+판별 결과는 webview 생성 직후 한 번, `{ type: 'init', mode, groupId, userName, bestScore }` 메시지로 전달한다. `bestScore`는 `context.globalState`에서 조회한 local 모드 최고기록으로, online 모드에서는 webview가 무시한다.
 
 online 모드에서 서버 요청이 실패해도 게임이 죽지 않도록 fallback 처리(로컬 표시로 전환)가 필요하다 — [PLAN.md 5일차](./PLAN.md#5일차--리더보드-ui--일시정지-오버레이--안정성) 참고.
 
@@ -45,7 +45,7 @@ online 모드에서 서버 요청이 실패해도 게임이 죽지 않도록 fal
 목적: webview가 백그라운드 탭이거나 VSCode 창이 비활성 상태일 때 게임 클릭이 씹히지 않도록(입력 유실) 미리 일시정지시킨다.
 
 **감지 (extension.ts, 두 리스너 모두 패널 생성 시점에 등록)**
-- `panel.onDidChangeViewState` — 다른 에디터 탭으로 전환
+- `panel.onDidChangeViewState` — `e.webviewPanel.active`가 false가 될 때(다른 에디터 탭으로 전환은 물론, 같은 창 안에서 터미널/채팅 패널 등 에디터 밖 UI로 포커스만 옮겨도 포함). `visible`은 쓰지 않는다 — 웹뷰 탭이 화면에 계속 보이기만 해도 true라서 터미널/채팅으로 포커스가 이동한 경우를 못 잡는다.
 - `vscode.window.onDidChangeWindowState` — VSCode 창 자체가 포커스 아웃
 
 두 경우 모두 동일한 메시지로 webview에 전달:
@@ -69,7 +69,7 @@ panel.webview.postMessage({ type: 'setPaused', paused: boolean });
 
 - Phaser 게임은 `vite build`로 `bundle.js`에 번들링 후 webview에 로드
 - 모든 정적 리소스 경로는 `panel.webview.asWebviewUri()`로 변환 필요 (webview는 `vscode-webview://` 스킴만 신뢰)
-- CSP: `connect-src`에 VM 주소를 명시해야 webview에서 서버로 fetch 가능 (`default-src 'none'` 기준으로 나머지 전부 명시적 허용 필요)
+- CSP: `connect-src`에 VM 주소(`https://vibehit.backend.madcamp-kaist.org`)를 명시해야 webview에서 서버로 fetch 가능 (`default-src 'none'` 기준으로 나머지 전부 명시적 허용 필요)
 
 ## 서버-확장 간 결합도
 

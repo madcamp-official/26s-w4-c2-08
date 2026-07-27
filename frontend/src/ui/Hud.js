@@ -1,9 +1,7 @@
 import Phaser from 'phaser';
 import {
-  HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY,
-  WEAPON_CATEGORIES, WEAPON_CATEGORY_TEXTURES,
   HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY, BOSS_TYPES,
-  WEAPON_CATEGORIES, WEAPON_CATEGORY_LABELS, WEAPON_CATEGORY_TEXTURES,
+  WEAPON_CATEGORIES, WEAPON_CATEGORY_TEXTURES,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES } from '../config/backgrounds.js';
 
@@ -56,7 +54,6 @@ export default class Hud {
       this.setActiveBackgroundOption(style);
       this.toggleBackgroundPanel(false);
     });
-    this.trashCan = this.createTrashCan();
     this.endButton = this.createEndButton(onEndButtonClick);
   }
 
@@ -350,63 +347,6 @@ export default class Hud {
     if (onClick) bg.on('pointerdown', onClick);
 
     return { bg, label };
-  }
-
-  // 체력바와 같은 y, 체력바 왼쪽에 붙는 위치에 배치
-  createTrashCan() {
-    const width = 50;
-    const height = 50;
-    const gap = 10;
-    const x = 25;
-    const y = HP_BAR_Y-10;
-
-    const bg = this.scene.add.rectangle(x, y, width, height, 0x000000, 0);
-    bg.setInteractive({ useHandCursor: true });
-
-    const icon = this.drawTrashIcon(x, y, width, height);
-
-    return { bg, icon };
-  }
-
-  // 쓰레기통 실루엣: 손잡이 + 뚜껑 + 사다리꼴 몸통 + 세로줄
-  drawTrashIcon(x, y, width, height) {
-    const bodyColor = 0x882222;
-    const lineColor = 0xffffff;
-
-    const bodyTop = -height * 0.25;
-    const bodyBottom = height * 0.45;
-    const bodyTopWidth = width * 0.6;
-    const bodyBottomWidth = width * 0.42;
-    const lidWidth = width * 0.8;
-    const lidHeight = height * 0.12;
-
-    const g = this.scene.add.graphics({ x, y });
-
-    g.fillStyle(bodyColor, 1);
-    g.fillRect(-width * 0.15, -height * 0.42, width * 0.3, height * 0.12);
-    g.fillRect(-lidWidth / 2, bodyTop - lidHeight, lidWidth, lidHeight);
-
-    g.beginPath();
-    g.moveTo(-bodyTopWidth / 2, bodyTop);
-    g.lineTo(bodyTopWidth / 2, bodyTop);
-    g.lineTo(bodyBottomWidth / 2, bodyBottom);
-    g.lineTo(-bodyBottomWidth / 2, bodyBottom);
-    g.closePath();
-    g.fillPath();
-
-    g.lineStyle(2, lineColor, 0.8);
-    [-0.15, 0, 0.15].forEach((fx) => {
-      g.beginPath();
-      g.moveTo(width * fx, bodyTop + 4);
-      g.lineTo(width * fx * 0.75, bodyBottom - 4);
-      g.strokePath();
-    });
-
-    return g;
-  }
-
-  getTrashBounds() {
-    return this.trashCan.bg.getBounds();
   }
 
   // 보스 버튼 왼쪽에 붙는 뽑기(무기) 버튼

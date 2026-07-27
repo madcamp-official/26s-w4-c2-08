@@ -1,6 +1,6 @@
 # 프론트엔드 (Phaser) 구현
 
-webview 안에서 실행되는 보스 클리커 게임의 씬 구성, 전투 시스템, extension과의 메시지 프로토콜을 정리한다. 전체 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md), 서버 API는 [API.md](./API.md), 일정은 [PLAN.md](./PLAN.md) 참고.
+webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 구성, 전투 시스템, extension과의 메시지 프로토콜을 정리한다. 전체 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md), 서버 API는 [API.md](./API.md), 일정은 [PLAN.md](./PLAN.md) 참고.
 
 ## 구현 현황
 

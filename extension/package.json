@@ -1,6 +1,6 @@
 {
-  "name": "boss-clicker",
-  "displayName": "Boss Clicker",
+  "name": "hit-the-agent",
+  "displayName": "Hit the Agent",
   "description": "VSCode 안에서 실행되는 보스 클리커 게임 + git repo 단위 팀 랭킹",
   "version": "0.0.1",
   "private": true,
@@ -12,8 +12,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "bossClicker.start",
-        "title": "Boss Clicker: 게임 시작"
+        "command": "HitTheAgent.start",
+        "title": "Hit the Agent: 게임 시작"
       }
     ]
   },

@@ -7,7 +7,9 @@ import {
   THROW_PROJECTILE_HIT_RADIUS,
   PORTABLE_WEAPON_SIZE,
   WEAPON_CATEGORIES,
-  WEAPON_CATEGORY_TEXTURES,
+  WEAPON_DEFINITIONS,
+  DART_STICK_DURATION,
+  DART_EMBED_DEPTH,
 } from '../config/constants.js';
 import { getBaseballBatDimensions } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
@@ -32,13 +34,16 @@ export default class WeaponManager {
     this.onOverlap = onOverlap;
     this.activeWeapon = null;
     this.projectiles = [];
+    this.stuckProjectiles = [];
   }
 
-  // 선택된 카테고리의 무기를 pointer 위치에 만들어 화면에 보이게 한다. 투척형은 즉시 자동 연사를 시작한다.
-  spawnAt(category, x, y) {
+  // 선택된 무기(WEAPON_IDS)를 pointer 위치에 만들어 화면에 보이게 한다. 투척형은 즉시 자동 연사를 시작한다.
+  spawnAt(weaponId, x, y) {
     this.releaseActiveWeapon();
 
-    const weapon = this.scene.physics.add.image(x, y, WEAPON_CATEGORY_TEXTURES[category]);
+    const { category, texture } = WEAPON_DEFINITIONS[weaponId];
+    const weapon = this.scene.physics.add.image(x, y, texture);
+    weapon.weaponId = weaponId;
     weapon.category = category;
     this.activeWeapon = weapon;
 
@@ -184,20 +189,31 @@ export default class WeaponManager {
   }
 
   fireProjectile(launcher) {
-    const projectile = this.scene.physics.add.image(launcher.x, launcher.y, 'weapon_throw_projectile');
+    const definition = WEAPON_DEFINITIONS[launcher.weaponId];
+    // projectileTextures(여러 색 중 랜덤, 다트)가 있으면 그중 하나, 없으면 단일 projectileTexture(공) 사용.
+    const projectileTexture = definition.projectileTextures
+      ? Phaser.Utils.Array.GetRandom(definition.projectileTextures)
+      : definition.projectileTexture;
+    const projectile = this.scene.physics.add.image(launcher.x, launcher.y, projectileTexture);
     // 기본 물리 바디는 텍스처 전체(정사각)를 그대로 쓰는데, 그림은 둥근 이모지라 네 모서리가 비어있다.
     // Arcade의 자체 겹침 판정부터 원형으로 잡아야 실제 공 크기에 맞게 히트가 들어간다.
     projectile.body.setCircle(THROW_PROJECTILE_HIT_RADIUS, PROJECTILE_BODY_OFFSET, PROJECTILE_BODY_OFFSET);
     this.projectiles.push(projectile);
+    if (definition.fireSound) this.scene.sound.play(definition.fireSound);
 
     const collider = this.scene.physics.add.overlap(this.boss.sprite, projectile, () => {
       this.onOverlap(projectile);
-      this.destroyProjectile(projectile);
+      if (definition.stickOnHit) this.stickProjectile(projectile);
+      else this.destroyProjectile(projectile);
     }, null, this.scene);
     projectile.overlapCollider = collider;
 
     const angle = Phaser.Math.Angle.Between(launcher.x, launcher.y, this.boss.sprite.x, this.boss.sprite.y);
-    this.scene.physics.velocityFromRotation(angle, THROW_PROJECTILE_SPEED, projectile.body.velocity);
+    const speed = definition.projectileSpeed ?? THROW_PROJECTILE_SPEED;
+    this.scene.physics.velocityFromRotation(angle, speed, projectile.body.velocity);
+    // 다트처럼 뾰족한 투사체는 텍스처가 각도 0(오른쪽)을 보게 그려져 있어, baked 보정 없이
+    // 이 발사 각도를 그대로 대입하면 날아가는 방향을 보게 된다.
+    if (definition.rotateToTravel) projectile.rotation = angle;
 
     return projectile;
   }
@@ -206,6 +222,47 @@ export default class WeaponManager {
     this.projectiles = this.projectiles.filter((p) => p !== projectile);
     projectile.overlapCollider.destroy();
     projectile.destroy();
+  }
+
+  // stickOnHit 무기(다트)는 맞는 순간 사라지는 대신 그 자리에 박힌 채 잠깐 남는다. overlap은 겹쳐있는
+  // 동안 매 프레임 다시 불리므로, 데미지가 중복으로 안 들어가게 콜라이더부터 바로 없애고 물리 이동만 멈춘 뒤
+  // 일정 시간 후에 완전히 지운다 (화면 밖 이탈 정리 대상인 this.projectiles 목록에서도 즉시 뺀다).
+  // 보스는 드래그로 계속 움직일 수 있어서, 박힌 순간의 world 좌표를 그대로 두면 보스가 움직인 뒤엔
+  // 허공에 남아 보인다 — 보스 기준 상대 오프셋으로 저장해두고 매 프레임(updateStuckProjectiles) 따라가게 한다.
+  stickProjectile(projectile) {
+    this.projectiles = this.projectiles.filter((p) => p !== projectile);
+    projectile.overlapCollider.destroy();
+
+    // 맞은 자리에 그대로 멈추면 보스 표면 바로 바깥에 떠 보여서, 날아가던 방향(보스 쪽)으로
+    // DART_EMBED_DEPTH만큼 더 밀어 넣어 실제로 몸에 박힌 것처럼 보이게 한다.
+    // boss.sprite.x/y는 캔버스 중심이라 실제 몸통 중심과 다르다(왼쪽/위 여백 때문에 몸통이 오른쪽/아래로
+    // 치우쳐 그려짐, bossSprite.js 참고) — sprite 중심을 쓰면 위/왼쪽에서 오는 다트가 덜 파고든 것처럼
+    // 보여서 bodyCenterX/Y(Boss.js, 여백 제외한 실제 몸통 중심)를 기준으로 한다.
+    const embedAngle = Phaser.Math.Angle.Between(projectile.x, projectile.y, this.boss.bodyCenterX, this.boss.bodyCenterY);
+    projectile.x += Math.cos(embedAngle) * DART_EMBED_DEPTH;
+    projectile.y += Math.sin(embedAngle) * DART_EMBED_DEPTH;
+
+    projectile.body.stop();
+    projectile.body.enable = false;
+
+    const stuck = {
+      projectile,
+      offsetX: projectile.x - this.boss.sprite.x,
+      offsetY: projectile.y - this.boss.sprite.y,
+    };
+    this.stuckProjectiles.push(stuck);
+
+    this.scene.time.delayedCall(DART_STICK_DURATION, () => {
+      this.stuckProjectiles = this.stuckProjectiles.filter((s) => s !== stuck);
+      projectile.destroy();
+    });
+  }
+
+  // 박힌 다트들을 보스 위치 변화에 맞춰 같이 옮긴다 (GameScene.update에서 매 프레임 호출).
+  updateStuckProjectiles() {
+    this.stuckProjectiles.forEach(({ projectile, offsetX, offsetY }) => {
+      projectile.setPosition(this.boss.sprite.x + offsetX, this.boss.sprite.y + offsetY);
+    });
   }
 
   // 화면 밖으로 나간 투사체를 정리 (매 프레임 GameScene.update()에서 호출)

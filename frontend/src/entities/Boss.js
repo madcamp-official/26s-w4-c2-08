@@ -35,6 +35,12 @@ export default class Boss {
     this.fireBreathEvent = null;
     this.lastFireBreathTime = -Infinity;
 
+    // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
+    // 그 여백까지 "몸통"으로 잡는다 — 방망이/투사체가 실제 그림에 닿기도 전에 먼저 겹침이 발생해서,
+    // 특히 왼쪽·위에서 오는 다트가 몸에서 먼 자리에서 박히는 원인이었다. 바디를 실제 몸통 크기/위치로 줄인다.
+    this.sprite.body.setSize(this.bodyWidth, this.bodyHeight, false);
+    this.sprite.body.setOffset(BOSS_MARGIN_LEFT, BOSS_MARGIN_TOP);
+
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setInteractive({ draggable: true });
     scene.input.setDraggable(this.sprite);

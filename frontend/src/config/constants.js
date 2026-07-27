@@ -23,24 +23,66 @@ export const DRAW_SCORE_STEP = 100;
 export const INITIAL_FREE_DRAWS = 1; // 필드에 무기가 하나도 없는 상태로 시작하므로 시작 시 무기 뽑기 1회를 무료로 제공
 export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact so overlap detection still fires
 export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles while holding the throw weapon
-export const THROW_PROJECTILE_SPEED = 400; // px/s
+export const THROW_PROJECTILE_SPEED = 400; // px/s, 기본값 — 무기별로 다르면 WEAPON_DEFINITIONS[id].projectileSpeed로 덮어씀
+export const BALL_PROJECTILE_SPEED = 640; // px/s, 야구공은 기본보다 빠르게
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
 export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 — 무기 자체와 던져지는 투사체가 같은 크기를 쓴다 (기존 50에서 20% 축소)
 // 투사체는 정사각 캔버스에 그린 둥근 이모지라, 사각 히트박스 그대로 쓰면 실제 공 그림이 없는 네 모서리까지
 // 보스와의 판정에 끼어들어 히트박스가 커 보인다. 실제 그림 크기에 맞춰 원형으로 판정한다.
 export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 
-// 무기 뽑기 카테고리 — 배경 선택 패널과 같은 방식으로 Hud의 무기 패널에서 종류를 직접 고른다
+// 무기 동작 방식 — 배경 선택 패널과 같은 방식으로 Hud의 무기 패널에서 종류를 직접 고른다.
+// PORTABLE(휴대형)은 들고 부딪혀서 데미지, THROW(투척형)는 들고 있는 동안 자동으로 연사한다.
 export const WEAPON_CATEGORIES = {
   PORTABLE: 'portable',
   THROW: 'throw',
 };
 
-// 무기 패널에 표시할 미리보기 텍스처 (BootScene에서 등록한 텍스처 키)
-export const WEAPON_CATEGORY_TEXTURES = {
-  [WEAPON_CATEGORIES.PORTABLE]: 'weapon_portable',
-  [WEAPON_CATEGORIES.THROW]: 'weapon_throw',
+// 무기 패널에 실제로 보이는 개별 무기. category가 동작 방식을 정하고, 같은 category를 여러 무기가
+// 공유할 수 있다 — 야구공/다트 둘 다 투척형(THROW)이지만 그림(texture/projectileTexture)만 다르다.
+export const WEAPON_IDS = {
+  BAT: 'bat',
+  BALL: 'ball',
+  DART: 'dart',
 };
+
+// 다트 색 조합 — 실제로 여러 발 던지면 같은 색만 반복돼 단조로우니, 발사할 때마다 이 중 하나를
+// 랜덤으로 골라서 쓴다(WeaponManager.fireProjectile). 순서대로 텍스처 키가 weapon_dart_projectile_0, _1 ...로
+// 생성된다 (DART_PROJECTILE_TEXTURES, BootScene에서 이 이름으로 등록).
+export const DART_COLOR_VARIANTS = [
+  { shaftColor: '#d1483f', shaftStrokeColor: '#8a2f28', finColor: '#3f7fe0' }, // 빨강 샤프트 + 파랑 깃
+  { shaftColor: '#e0a63f', shaftStrokeColor: '#966c1f', finColor: '#3f7fe0' }, // 노랑 샤프트 + 파랑 깃
+  { shaftColor: '#3f7fe0', shaftStrokeColor: '#274f8f', finColor: '#e0a63f' }, // 파랑 샤프트 + 노랑 깃
+  { shaftColor: '#4caf50', shaftStrokeColor: '#2e6b31', finColor: '#e0a63f' }, // 초록 샤프트 + 노랑 깃
+];
+export const DART_PROJECTILE_TEXTURES = DART_COLOR_VARIANTS.map((_, i) => `weapon_dart_projectile_${i}`);
+
+// texture: 패널 아이콘 + 필드에 들고 있을 때 쓰는 텍스처. projectileTexture(단일)/projectileTextures(여러 개
+// 중 랜덤): THROW 무기가 실제로 쏘는 투사체 텍스처 (PORTABLE은 투사체가 없어서 없음).
+// rotateToTravel: 발사 각도로 투사체 자체를 회전시킬지 — 공은 둥글어서 필요 없지만 다트는 뾰족해서
+// 날아가는 방향을 보고 있어야 자연스럽다 (텍스처가 각도 0 = 오른쪽을 보게 그려져 있어 baked 보정 불필요).
+// stickOnHit: 맞는 순간 즉시 사라지는 대신 그 자리에 잠깐 박힌 채로 남아 있다가 사라지게 할지.
+// fireSound: 발사 시 재생할 사운드 키 (없으면 무음).
+export const WEAPON_DEFINITIONS = {
+  [WEAPON_IDS.BAT]: { category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable' },
+  [WEAPON_IDS.BALL]: {
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_throw',
+    projectileTexture: 'weapon_throw_projectile',
+    projectileSpeed: BALL_PROJECTILE_SPEED,
+  },
+  [WEAPON_IDS.DART]: {
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_dart',
+    projectileTextures: DART_PROJECTILE_TEXTURES,
+    rotateToTravel: true,
+    stickOnHit: true,
+    fireSound: 'dart_throw',
+  },
+};
+
+export const DART_STICK_DURATION = 8000; // ms, 다트가 맞은 자리에 박힌 채로 남아 있다가 사라지기까지 시간
+export const DART_EMBED_DEPTH = 10; // px, 맞은 지점에서 날아가던 방향으로 더 파고들어가 보이게 미는 거리
 
 // 타격 이펙트
 export const BOSS_KNOCKBACK_DISTANCE = 26; // px, 타격당 타격 반대 방향으로 밀려나는 거리 (누적됨)

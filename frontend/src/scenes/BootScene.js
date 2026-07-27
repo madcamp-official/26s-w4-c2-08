@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE } from '../config/constants.js';
+import { BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import { createBossCanvas, createBossHurtCanvas, createBossFireCanvas, MAX_DAMAGE_STAGE } from '../entities/bossSprite.js';
-import { createBaseballCanvas, createBaseballBatCanvas } from '../entities/weaponSprites.js';
+import { createBaseballCanvas, createBaseballBatCanvas, createDartCanvas } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
 // 실제 스프라이트 에셋이 준비되기 전까지 사용하는 placeholder 텍스처.
@@ -16,6 +16,7 @@ export default class BootScene extends Phaser.Scene {
   preload() {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
     this.load.audio('bat_hit', assetUrl('audio/bat_hit.mp3'));
+    this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
   }
 
   create() {
@@ -50,9 +51,15 @@ export default class BootScene extends Phaser.Scene {
     this.createThrowWeaponTexture();
   }
 
-  // 투척형 무기(addThrowWeapon): 첫 번째 디자인은 야구공. 무기 자체와 던져지는 투사체를 같은 크기로 맞춘다.
+  // 투척형 무기(addThrowWeapon): 야구공/다트. 무기 자체와 던져지는 투사체를 같은 크기로 맞춘다.
+  // 다트는 색 조합(DART_COLOR_VARIANTS)마다 투사체 텍스처를 따로 만들어서, 발사할 때 랜덤으로 골라 쓴다
+  // (WeaponManager.fireProjectile) — 패널 아이콘은 대표로 첫 번째 색 조합 하나만 쓴다.
   createThrowWeaponTexture() {
     this.textures.addCanvas('weapon_throw', createBaseballCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_throw_projectile', createBaseballCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_dart', createDartCanvas(THROW_WEAPON_SIZE, DART_COLOR_VARIANTS[0]));
+    DART_COLOR_VARIANTS.forEach((colors, i) => {
+      this.textures.addCanvas(DART_PROJECTILE_TEXTURES[i], createDartCanvas(THROW_WEAPON_SIZE, colors));
+    });
   }
 }

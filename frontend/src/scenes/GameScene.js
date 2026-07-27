@@ -31,7 +31,7 @@ export default class GameScene extends Phaser.Scene {
 
   create() {
     this.isEnded = false;
-    this.selectedWeaponCategory = null;
+    this.selectedWeaponId = null;
 
     this.currentBackgroundStyle = BACKGROUND_STYLE;
     this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
@@ -39,7 +39,7 @@ export default class GameScene extends Phaser.Scene {
     this.currentBossType = BOSS_TYPES[0].id;
     this.boss = new Boss(this, this.currentBossType);
     this.hud = new Hud(this, {
-      onWeaponSelect: (category) => this.onWeaponSelect(category),
+      onWeaponSelect: (weaponId) => this.onWeaponSelect(weaponId),
       onEndButtonClick: () => this.onEndButtonClick(),
       currentBackgroundStyle: this.currentBackgroundStyle,
       onBackgroundSelect: (style) => this.onBackgroundSelect(style),
@@ -58,17 +58,17 @@ export default class GameScene extends Phaser.Scene {
       this.boss.setPosition(x, y);
     });
 
-    // 카테고리를 고른 뒤 필드(UI도, 보스 위도 아님)를 누르고 있는 동안에만 그 자리에 무기가 나타나 보스를 때리고,
+    // 무기를 고른 뒤 필드(UI도, 보스 위도 아님)를 누르고 있는 동안에만 그 자리에 무기가 나타나 보스를 때리고,
     // 손을 떼면 사라진다. 보스 위를 직접 누르면 위 'drag' 리스너가 대신 처리하므로 여기서는 건너뛴다.
     this.input.on('pointerdown', (pointer) => {
       if (this.isEnded) return;
-      if (!this.selectedWeaponCategory) return;
+      if (!this.selectedWeaponId) return;
       if (this.hud.isPointerOnUI(pointer)) return;
       if (Phaser.Geom.Rectangle.Contains(this.boss.sprite.getBounds(), pointer.x, pointer.y)) return;
 
       const x = Phaser.Math.Clamp(pointer.x, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(pointer.y, 40, this.scale.height - 40);
-      this.weaponManager.spawnAt(this.selectedWeaponCategory, x, y);
+      this.weaponManager.spawnAt(this.selectedWeaponId, x, y);
     });
 
     this.input.on('pointermove', (pointer) => {
@@ -86,6 +86,7 @@ export default class GameScene extends Phaser.Scene {
 
   update() {
     this.weaponManager.updateProjectiles();
+    this.weaponManager.updateStuckProjectiles();
     this.checkBossAgainstPanel();
   }
 
@@ -102,8 +103,8 @@ export default class GameScene extends Phaser.Scene {
     this.boss.flyOutToLeftWall((x, y) => this.onPanelPushLanding(x, y));
   }
 
-  onWeaponSelect(category) {
-    this.selectedWeaponCategory = category;
+  onWeaponSelect(weaponId) {
+    this.selectedWeaponId = weaponId;
   }
 
   onEndButtonClick() {

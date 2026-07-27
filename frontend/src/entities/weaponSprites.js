@@ -27,6 +27,58 @@ export function createBaseballCanvas(size) {
   return createEmojiCanvas('⚾', size);
 }
 
+// 투척형 무기 두 번째 디자인: 다트. 은색 뾰족한 촉 + 색깔 있는 샤프트 + 깃(flight) 실루엣.
+// 방망이(대각선 baked)와 달리 다트는 항상 "오른쪽(각도 0)"을 향하게 그려서, 날아가는 방향으로
+// 돌릴 때 baked 보정 없이 그냥 projectile.rotation = 이동 각도만 대입하면 되게 한다 (WeaponManager 참고).
+// shaftColor/finColor를 인자로 받아 색만 다른 여러 텍스처를 찍어낼 수 있게 한다 (BootScene 참고) —
+// 실제로 다트를 여러 개 던지면 같은 모양이 계속 반복돼 단조로우니 색만 섞어서 다양해 보이게 한다.
+export function createDartCanvas(size, { shaftColor = '#d1483f', shaftStrokeColor = '#8a2f28', finColor = '#3f7fe0' } = {}) {
+  const tipColor = '#d7dce0';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const halfLen = size * 0.42;
+  const shaftHalfWidth = size * 0.035;
+  const tipLength = size * 0.2;
+  const finLength = size * 0.24;
+  const finHalfWidth = size * 0.13;
+  const tipX = cx + halfLen;
+  const tailX = cx - halfLen;
+  const shaftEndX = tipX - tipLength;
+  const shaftStartX = tailX + finLength;
+
+  // 꼬리 깃(flight) — 샤프트보다 넓게 벌어졌다가 끝에서 뾰족하게 모이는 실루엣
+  ctx.fillStyle = finColor;
+  ctx.beginPath();
+  ctx.moveTo(tailX, cy);
+  ctx.lineTo(tailX + finLength * 0.55, cy - finHalfWidth);
+  ctx.lineTo(shaftStartX, cy - shaftHalfWidth);
+  ctx.lineTo(shaftStartX, cy + shaftHalfWidth);
+  ctx.lineTo(tailX + finLength * 0.55, cy + finHalfWidth);
+  ctx.closePath();
+  ctx.fill();
+
+  // 샤프트(몸통)
+  ctx.fillStyle = shaftColor;
+  ctx.strokeStyle = shaftStrokeColor;
+  ctx.lineWidth = Math.max(1, size * 0.01);
+  ctx.fillRect(shaftStartX, cy - shaftHalfWidth, shaftEndX - shaftStartX, shaftHalfWidth * 2);
+  ctx.strokeRect(shaftStartX, cy - shaftHalfWidth, shaftEndX - shaftStartX, shaftHalfWidth * 2);
+
+  // 촉(tip) — 은색 뾰족한 삼각형
+  ctx.fillStyle = tipColor;
+  ctx.beginPath();
+  ctx.moveTo(tipX, cy);
+  ctx.lineTo(shaftEndX, cy - shaftHalfWidth * 2.4);
+  ctx.lineTo(shaftEndX, cy + shaftHalfWidth * 2.4);
+  ctx.closePath();
+  ctx.fill();
+
+  return canvas;
+}
+
 // 휴대형 무기(addPortableWeapon)의 디자인: 알루미늄 야구 방망이 (검은 그립 + 손잡이 끝 손잡이 캡 + 은색 배럴)
 // 실제 배트 실루엣 참고 — 그립에서 배럴까지 완만한 곡선으로 두꺼워지다 배럴 구간은 거의 일정한 두께를 유지하고
 // 끝만 둥글게 마감된다. 손잡이 끝에는 작은 캡(knob)이 그립보다 살짝 더 튀어나와 있다.

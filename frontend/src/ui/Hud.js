@@ -1,15 +1,17 @@
 import Phaser from 'phaser';
 import {
   HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY, BOSS_TYPES,
-  WEAPON_CATEGORIES, WEAPON_CATEGORY_TEXTURES,
+  WEAPON_DEFINITIONS,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES } from '../config/backgrounds.js';
 
 const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({ style }));
 
-const WEAPON_OPTIONS = Object.values(WEAPON_CATEGORIES).map((category) => ({
-  category,
-  texture: WEAPON_CATEGORY_TEXTURES[category],
+// 무기 패널에 뜨는 개별 무기 목록(방망이/야구공/다트 등) — WEAPON_DEFINITIONS(constants.js)에 새 무기를
+// 추가하면 여기 코드 변경 없이 패널에 자동으로 한 칸 더 생긴다 (createWeaponPanel의 grid가 개수에 맞춰 줄바꿈).
+const WEAPON_OPTIONS = Object.entries(WEAPON_DEFINITIONS).map(([id, { texture }]) => ({
+  id,
+  texture,
 }));
 
 export default class Hud {
@@ -33,9 +35,9 @@ export default class Hud {
 
     this.weaponPanelOpen = false;
     this.drawButton = this.createDrawButton(() => this.toggleWeaponPanel());
-    this.weaponPanel = this.createWeaponPanel((category) => {
-      if (onWeaponSelect) onWeaponSelect(category);
-      this.setActiveWeaponOption(category);
+    this.weaponPanel = this.createWeaponPanel((weaponId) => {
+      if (onWeaponSelect) onWeaponSelect(weaponId);
+      this.setActiveWeaponOption(weaponId);
       this.toggleWeaponPanel(false);
     });
 
@@ -268,7 +270,7 @@ export default class Hud {
 
     this.weaponOptionEls = [];
 
-    WEAPON_OPTIONS.forEach(({ category, texture }, index) => {
+    WEAPON_OPTIONS.forEach(({ id, texture }, index) => {
       const col = index % columns;
       const row = Math.floor(index / columns);
       const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
@@ -280,17 +282,17 @@ export default class Hud {
       const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
         .setStrokeStyle(3, 0xffaa00, 0);
 
-      icon.on('pointerdown', () => onSelect(category));
+      icon.on('pointerdown', () => onSelect(id));
       container.add([icon, border]);
-      this.weaponOptionEls.push({ category, border });
+      this.weaponOptionEls.push({ id, border });
     });
 
     return { container, openX, startX };
   }
 
-  setActiveWeaponOption(category) {
-    this.weaponOptionEls.forEach(({ category: c, border }) => {
-      border.setStrokeStyle(3, 0xffaa00, c === category ? 1 : 0);
+  setActiveWeaponOption(weaponId) {
+    this.weaponOptionEls.forEach(({ id, border }) => {
+      border.setStrokeStyle(3, 0xffaa00, id === weaponId ? 1 : 0);
     });
   }
 

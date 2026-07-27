@@ -74,7 +74,7 @@ WHERE group_id = ? GROUP BY user_name ORDER BY score DESC LIMIT 20
 app.use(cors({ origin: '*' }));
 ```
 
-webview 쪽 CSP `connect-src`에도 VM 주소(`http://<VM-IP>:포트`)를 명시해야 요청이 통과한다.
+webview 쪽 CSP `connect-src`에도 VM 주소(`https://vibehit.backend.madcamp-kaist.org`)를 명시해야 요청이 통과한다.
 
 ## 클라이언트 측 fallback
 

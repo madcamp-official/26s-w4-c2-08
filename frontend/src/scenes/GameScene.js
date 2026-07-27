@@ -12,6 +12,14 @@ import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import Hud from '../ui/Hud.js';
+import { gameContext, postToExtension } from '../vscodeBridge.js';
+import { submitScore, fetchLeaderboard } from '../api.js';
+
+// 리더보드는 결과 화면 한 화면에 다 넣기엔 길어질 수 있어 상위 5명만 텍스트로 보여준다.
+function formatLeaderboard(rows) {
+  if (!rows || rows.length === 0) return '리더보드에 아직 기록이 없습니다';
+  return rows.slice(0, 5).map((row, i) => `${i + 1}. ${row.userName} - ${row.score}`).join('\n');
+}
 
 // 구현 현황은 docs/FRONTEND.md#구현-현황 참고. 콤보 시스템/크리티컬 히트는 구현하지 않기로 결정, 사운드는 아직 미구현.
 export default class GameScene extends Phaser.Scene {
@@ -96,7 +104,6 @@ export default class GameScene extends Phaser.Scene {
     this.selectedWeaponCategory = category;
   }
 
-  // 온라인/로컬 분기(점수 제출, 리더보드 조회)는 webview 연동 이후 붙일 예정 — 지금은 세션을 멈추고 최종 점수만 보여준다
   onEndButtonClick() {
     if (this.isEnded) return;
     this.isEnded = true;
@@ -104,9 +111,32 @@ export default class GameScene extends Phaser.Scene {
     // scene.pause()는 씬 전체의 입력 처리까지 멈춰서 결과 화면의 "다시하기" 버튼도 눌리지 않게 되므로 쓰지 않는다.
     // 대신 물리 시뮬레이션만 멈추고(투사체 이동·overlap 판정 정지), 투척형 자동 연사 타이머도 따로 끈다.
     // 드래그/뽑기 등 나머지 게임플레이 입력은 각 핸들러에서 isEnded로 개별 차단한다.
-    this.hud.showGameEndOverlay(this.combat.score, () => this.onRestartButtonClick());
+    const overlay = this.hud.showGameEndOverlay(this.combat.score, () => this.onRestartButtonClick());
     this.physics.world.pause();
     this.weaponManager.stopAllFiring();
+
+    this.onGameEnd(overlay, this.combat.score);
+  }
+
+  // online: 서버에 점수 제출 후 리더보드 조회. 실패해도 게임이 죽으면 안 되므로 try/catch로 감싸고
+  // 콘솔 경고 후 로컬 표시로 폴백한다 (docs/API.md 클라이언트 fallback).
+  // local: 서버 통신 없이 extension에 saveLocalScore만 보내고, 최고기록은 init 때 받은 값과 이번 점수 중 큰 쪽을 바로 보여준다.
+  async onGameEnd(overlay, score) {
+    if (gameContext.mode === 'online' && gameContext.groupId) {
+      this.hud.setEndOverlayStatus(overlay, '리더보드 불러오는 중...');
+      try {
+        await submitScore(gameContext.groupId, gameContext.userName, score);
+        const leaderboard = await fetchLeaderboard(gameContext.groupId);
+        this.hud.setEndOverlayStatus(overlay, formatLeaderboard(leaderboard));
+      } catch (e) {
+        console.warn('서버 연결 실패, 로컬 표시로 전환', e);
+        this.hud.setEndOverlayStatus(overlay, '리더보드를 불러오지 못했습니다 (서버 연결 실패)');
+      }
+    } else {
+      const bestScore = Math.max(gameContext.bestScore, score);
+      this.hud.setEndOverlayStatus(overlay, `내 최고 기록: ${bestScore}`);
+      postToExtension({ type: 'saveLocalScore', score });
+    }
   }
 
   onRestartButtonClick() {

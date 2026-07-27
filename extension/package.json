@@ -1,0 +1,29 @@
+{
+  "name": "boss-clicker",
+  "displayName": "Boss Clicker",
+  "description": "VSCode 안에서 실행되는 보스 클리커 게임 + git repo 단위 팀 랭킹",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "bossClicker.start",
+        "title": "Boss Clicker: 게임 시작"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

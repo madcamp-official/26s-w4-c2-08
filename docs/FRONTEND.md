@@ -4,7 +4,7 @@ webview 안에서 실행되는 보스 클리커 게임의 씬 구성, 전투 시
 
 ## 구현 현황
 
-사운드/메시지 프로토콜/모드 분기/일시정지는 아직 코드가 없는 설계 문서이며, 각 섹션 제목에 `(미구현)`으로 표시했다. 종료 버튼은 일부만 구현되어 `(부분 구현)`으로 표시했다. 콤보 시스템과 크리티컬 히트는 구현하지 않기로 결정해서 스펙에서 제외했다.
+사운드는 아직 코드가 없는 설계 문서이며 섹션 제목에 `(미구현)`으로 표시했다. 콤보 시스템과 크리티컬 히트는 구현하지 않기로 결정해서 스펙에서 제외했다.
 
 | 항목 | 상태 |
 |---|---|
@@ -13,11 +13,10 @@ webview 안에서 실행되는 보스 클리커 게임의 씬 구성, 전투 시
 | [무기 뽑기(Draw)](#무기-뽑기-draw) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
 | [다중 무기 히트 데미지 합산](#다중-무기-히트-데미지-합산) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
 | [무기 합체(스택)](#무기-합체스택) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
-| [무기 버리기(쓰레기통)](#무기-버리기쓰레기통) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
 | [타격 이펙트](#타격-이펙트) (흔들림/플래시/데미지 팝업/처치 팝업) | ✅ 구현됨 |
 | 사운드 | ⬜ 미구현 |
-| 종료 버튼 / `onGameEnd` | 🟡 부분 구현 — 버튼·정지·결과 화면은 됨, 점수 제출/리더보드는 미구현 (아래 참고) |
-| extension ↔ webview 연동, pause/resume, 리더보드 UI | ⬜ 미구현 (3~5일차 범위) |
+| 종료 버튼 / `onGameEnd` | ✅ 구현됨 — online: 점수 제출 + 리더보드 조회(실패 시 로컬 표시로 폴백), local: `saveLocalScore`로 최고기록 저장 |
+| extension ↔ webview 연동, pause/resume, 리더보드 UI | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
 
 ## 씬 구성
 
@@ -106,12 +105,6 @@ webview 안에서 실행되는 보스 클리커 게임의 씬 구성, 전투 시
 - 합쳐진 무기는 `setTintFill(STACK_TINT_COLOR)`로 순수한 초록색으로 칠해져 한눈에 구분된다
 - 투척형이 합쳐지면 발사대의 `damageMultiplier`가 발사 시점에 투사체로 그대로 복사되어(`fireProjectile`), 이후 발사되는 투사체 데미지도 함께 강화된다
 
-### 무기 버리기(쓰레기통)
-
-- 화면 우하단에 "Trash" 쓰레기통이 있다. 무기를 드래그해서 쓰레기통 위에 놓으면 파괴되고 점수가 `TRASH_SCORE_BONUS`(기본 5점) 오른다
-- 필드에 남은 무기 총합(설치형+휴대형+투척형 발사대)이 **1개뿐이면 버릴 수 없다** — 무기가 하나도 없는 상태로 돌아가는 것을 방지
-- 투척형 발사대를 발사 중(누르고 있는 상태)에 버려도 발사 타이머와 충돌 콜라이더가 함께 정리되어(`WeaponManager.destroyWeapon`) 안전하게 파괴된다
-
 ### 타격 이펙트
 
 `CombatSystem.handleHit`이 반환하는 `hits`(겹친 무기별 `{ amount, isBoosted, x, y }` 목록), `defeated`, `deathPosition`을 받아 `GameScene.onHit`에서 처리한다.
@@ -130,7 +123,7 @@ webview 안에서 실행되는 보스 클리커 게임의 씬 구성, 전투 시
 
 ## 점수 & 보스 리스폰
 
-- **점수는 보스에게 입힌 데미지량에 비례해 증가한다**: 히트가 발생할 때마다 `score += damage`로 누적(겹친 무기가 여러 개면 [합산된 데미지](#다중-무기-히트-데미지-합산)만큼). HP가 깎일수록(=데미지를 줄수록) 점수가 오르는 구조. 보스 처치 자체에는 별도 보너스가 없지만, [무기를 쓰레기통에 버릴 때](#무기-버리기쓰레기통)는 `TRASH_SCORE_BONUS`만큼 점수가 별도로 오른다
+- **점수는 보스에게 입힌 데미지량에 비례해 증가한다**: 히트가 발생할 때마다 `score += damage`로 누적(겹친 무기가 여러 개면 [합산된 데미지](#다중-무기-히트-데미지-합산)만큼). HP가 깎일수록(=데미지를 줄수록) 점수가 오르는 구조. 보스 처치 자체에는 별도 보너스가 없다
 - **HP가 0 이하가 되면 즉시 리스폰**: 승리 오버레이나 씬 정지 없이 `Boss.respawn()`을 호출해 `hp = maxHp`로 초기화하고, `BOSS_SPAWN`(고정 좌표)으로 위치를 되돌린다. 무기 위치를 피해 랜덤 스폰하지는 않는다 — 필드에 무기가 여러 개 흩어져 있을 수 있는 지금 구조에서는 "무기에서 떨어진 위치"를 매번 계산하는 대신 고정 스폰 지점 하나로 충분하다고 판단
 - 리스폰 시 [처치 팝업](#타격-이펙트)("처치!" 텍스트, 사망 위치에 표시)만 띄우고 게임 진행은 끊기지 않는다 — 세션 전체가 하나의 연속된 플레이로 이어지고, 점수는 리스폰을 거듭해도 계속 누적된다
 
@@ -159,11 +152,11 @@ function handleHit() {
 }
 ```
 
-## 게임 종료 → onGameEnd (부분 구현)
+## 게임 종료 → onGameEnd
 
 보스가 즉시 리스폰되며 게임이 자동으로 끝나지 않으므로, **플레이어가 화면의 "End" 버튼을 눌러야** 세션이 끝난다 (HP 0 시점이 더 이상 종료 트리거가 아님).
 
-**지금 구현된 부분**: 화면 우상단 "End" 버튼(`Hud.createEndButton`)을 누르면 `GameScene.onEndButtonClick`이 실행되어, `Hud.showGameEndOverlay`가 화면을 어둡게 덮으며 "게임 종료" + 최종 점수 + "다시하기" 버튼을 보여준다. 중복 클릭은 `this.isEnded` 플래그로 막는다.
+화면 우상단 "End" 버튼(`Hud.createEndButton`)을 누르면 `GameScene.onEndButtonClick`이 실행되어, `Hud.showGameEndOverlay`가 화면을 어둡게 덮으며 "게임 종료" + 최종 점수 + 상태 텍스트(리더보드/최고기록, 처음엔 빈 문자열) + "다시하기" 버튼을 보여준다. 중복 클릭은 `this.isEnded` 플래그로 막는다.
 
 게임플레이 정지는 씬 전체를 멈추는 `this.scene.pause()` 대신, 아래처럼 **필요한 부분만** 멈춘다:
 - `this.physics.world.pause()`로 물리 시뮬레이션(투사체 이동, 보스-무기 overlap 판정)만 정지
@@ -174,91 +167,89 @@ function handleHit() {
 
 "다시하기" 버튼(`Hud.createRestartButton`)을 누르면 `GameScene.onRestartButtonClick`이 `this.scene.restart()`를 호출해 씬을 완전히 새로 시작한다 — 점수/무기/보스 위치 등 모든 상태가 `create()`가 처음 실행됐을 때와 동일하게 초기화된다.
 
-**아직 없는 부분**: online/local 모드 분기, 서버 점수 제출·리더보드 조회, extension으로의 `saveLocalScore` 메시지 — 전부 아래 `onGameEnd(context, score)`가 담당할 예정이며, [extension ↔ webview 메시지 프로토콜](#extension--webview-메시지-프로토콜-미구현)이 붙기 전까지는 `context`(mode/groupId/userName) 자체가 존재하지 않는다.
+결과 화면을 띄운 직후 `GameScene.onGameEnd(overlay, score)`가 `vscodeBridge.js`의 `gameContext.mode`를 보고 분기한다 (실제 구현은 `GameScene.onGameEnd` / `Hud.setEndOverlayStatus`):
 
 ```js
-// 실제 구현은 GameScene.onEndButtonClick / onRestartButtonClick — 아래는 흐름을 간략화한 의사코드
-function onEndButtonClick(context, score) {
-  showGameEndOverlay(score, onRestartButtonClick); // "다시하기" 버튼 포함
-  physics.world.pause();
-  weaponManager.stopAllFiring();
-  // scene.pause()나 input.enabled = false는 쓰지 않는다 — 결과 화면의 "다시하기" 버튼까지 막혀버리기 때문
-
-  onGameEnd(context, score); // TODO: context(mode 등)가 아직 없어 이 호출은 미구현
-}
-
-function onGameEnd(context, score) {
-  if (context.mode === 'online') {
-    submitScore(context.groupId, context.userName, score);
-    fetchLeaderboard(context.groupId);
+async function onGameEnd(overlay, score) {
+  if (gameContext.mode === 'online' && gameContext.groupId) {
+    hud.setEndOverlayStatus(overlay, '리더보드 불러오는 중...');
+    try {
+      await submitScore(gameContext.groupId, gameContext.userName, score);
+      const leaderboard = await fetchLeaderboard(gameContext.groupId);
+      hud.setEndOverlayStatus(overlay, formatLeaderboard(leaderboard)); // 상위 5명
+    } catch (e) {
+      console.warn('서버 연결 실패, 로컬 표시로 전환', e);
+      hud.setEndOverlayStatus(overlay, '리더보드를 불러오지 못했습니다 (서버 연결 실패)');
+    }
   } else {
+    const bestScore = Math.max(gameContext.bestScore, score);
+    hud.setEndOverlayStatus(overlay, `내 최고 기록: ${bestScore}`);
     postToExtension({ type: 'saveLocalScore', score });
   }
 }
-
-function onRestartButtonClick() {
-  scene.restart(); // 점수/무기/보스 위치 등 전체 상태를 create() 시점으로 초기화
-}
 ```
 
-- `online`: webview가 서버로 직접 `POST /api/scores` 호출 후 `GET /api/leaderboard` 조회 ([API 스펙](./API.md)). 요청 실패 시 크래시 없이 콘솔 경고 후 로컬 표시로 폴백한다 ([API.md의 fallback](./API.md#클라이언트-측-fallback)).
-- `local`: 서버 요청 없이 extension에 `saveLocalScore` 메시지를 보내고, extension이 `context.globalState.update('bestScore', score)`로 저장한다.
-- "종료" 버튼은 [일시정지 오버레이](#일시정지-오버레이-미구현)와 별개의 UI로, 포커스 이탈로 인한 자동 정지(`setPaused`)와 혼동되지 않도록 구분해서 표시한다. 종료 후에는 재개 대신 결과 화면(최종 점수, online이면 리더보드)을 보여준다 — 리더보드 부분은 아직 미구현.
+- `online`: webview(`frontend/src/api.js`)가 서버로 직접 `POST /api/scores` 호출 후 `GET /api/leaderboard` 조회 ([API 스펙](./API.md)). 요청 실패 시 크래시 없이 콘솔 경고 후 "리더보드를 불러오지 못했습니다" 텍스트로 폴백한다 ([API.md의 fallback](./API.md#클라이언트-측-fallback)).
+- `local`: 서버 요청 없이 extension에 `saveLocalScore` 메시지만 보낸다. 화면에 바로 보여주는 "내 최고 기록"은 서버 응답을 기다리지 않고 `init` 때 받은 `gameContext.bestScore`와 이번 판 점수 중 큰 값을 클라이언트에서 계산한 것 — extension은 그 값을 `globalState`에 저장만 하고 별도로 되돌려주지 않는다.
+- "종료" 버튼은 [일시정지 오버레이](#일시정지-오버레이)와 별개의 UI로, 포커스 이탈로 인한 자동 정지(`setPaused`)와 혼동되지 않도록 구분해서 표시한다. 종료 후에는 재개 대신 결과 화면(최종 점수 + 리더보드/최고기록)을 보여준다.
 
-## extension ↔ webview 메시지 프로토콜 (미구현)
+## extension ↔ webview 메시지 프로토콜
 
-모든 메시지는 `type` 필드로 구분하고, webview 쪽 단일 `message` 리스너에서 분기한다.
+모든 메시지는 `type` 필드로 구분하고, webview 쪽 단일 `message` 리스너(`frontend/src/vscodeBridge.js`)에서 분기한다. extension 쪽 발신 코드는 `extension/src/extension.ts` 참고.
 
 | 방향 | type | payload | 처리 |
 |---|---|---|---|
-| ext → webview | `init` | `{ mode, groupId, userName }` | 게임 컨텍스트(`gameContext`)에 저장, 웹뷰 생성 직후 1회 전달 |
-| ext → webview | `setPaused` | `{ paused: boolean }` | [일시정지](#일시정지-오버레이-미구현) 참고 |
+| ext → webview | `init` | `{ mode, groupId, userName, bestScore }` | `vscodeBridge.gameContext`에 저장, 웹뷰 생성 직후 1회 전달. `bestScore`는 local 모드 결과 화면 비교용(online에서는 무시) |
+| ext → webview | `setPaused` | `{ paused: boolean }` | [일시정지](#일시정지-오버레이) 참고 |
 | webview → ext | `saveLocalScore` | `{ score }` | local 모드에서 종료 버튼 클릭 시 최고점수 저장 요청 |
 
 ```js
+// frontend/src/vscodeBridge.js
 window.addEventListener('message', (event) => {
   const msg = event.data;
   switch (msg.type) {
     case 'init':
-      gameContext = { mode: msg.mode, groupId: msg.groupId, userName: msg.userName };
+      Object.assign(gameContext, { mode: msg.mode, groupId: msg.groupId, userName: msg.userName, bestScore: msg.bestScore ?? 0 });
+      initListeners.forEach((cb) => cb(gameContext));
       break;
     case 'setPaused':
-      if (msg.paused) {
-        game.scene.pause('GameScene');
-        game.input.enabled = false;
-      } else {
-        game.scene.resume('GameScene');
-        game.input.enabled = true;
-      }
-      showPauseOverlay(msg.paused);
+      pauseListeners.forEach((cb) => cb(msg.paused));
       break;
   }
 });
 ```
 
-`setPaused`는 두 소스(탭 전환, 창 포커스 아웃)에서 올 수 있지만 webview 입장에서는 동일하게 처리한다. 자세한 발신 측 로직은 [ARCHITECTURE.md 포커스 감지](./ARCHITECTURE.md#포커스-감지--pauseresume) 참고.
+`setPaused`는 두 소스(탭 전환, 창 포커스 아웃)에서 올 수 있지만 webview 입장에서는 동일하게 처리한다. 실제 처리(씬 pause/resume + 오버레이 토글)는 `frontend/src/main.js`의 `onPause` 콜백. 자세한 발신 측 로직은 [ARCHITECTURE.md 포커스 감지](./ARCHITECTURE.md#포커스-감지--pauseresume) 참고.
 
-## 모드별 UI 분기 (online / local) (미구현)
+## 모드별 UI 분기 (online / local)
 
-`gameContext.mode` 값에 따라 종료 버튼을 누른 뒤 보여줄 화면이 다르다.
+`gameContext.mode` 값에 따라 종료 버튼을 누른 뒤 보여줄 화면이 다르다 ([게임 종료 → onGameEnd](#게임-종료--ongameend) 참고).
 
-- `online`: 리더보드 섹션 표시. `fetchLeaderboard` 응답 대기 중 로딩 상태, 실패 시 에러 상태를 UI에 반영
-- `local`: 리더보드 섹션을 숨기고 "내 최고 기록: XXX점" 텍스트만 표시. 값은 extension이 `globalState`에서 조회해 `init` 이후 별도 메시지(또는 `saveLocalScore` 응답)로 내려준 값을 사용
+- `online`: 결과 화면 상태 텍스트에 리더보드 상위 5명. 응답 대기 중엔 "리더보드 불러오는 중...", 실패 시 에러 문구
+- `local`: 리더보드 대신 "내 최고 기록: XXX점" 텍스트만 표시
 
 두 모드 모두 `mode` 판별 자체는 webview가 아니라 extension이 git remote 유무로 미리 계산해 `init` 메시지로 내려준 값을 그대로 신뢰한다 ([ARCHITECTURE.md 모드 분기](./ARCHITECTURE.md#모드-분기-local--online)).
 
-## 일시정지 오버레이 (미구현)
+## 일시정지 오버레이
 
-`setPaused` 처리와 함께 오버레이를 표시/해제해 사용자가 "왜 드래그가 안 되는지" 헷갈리지 않도록 한다.
+`setPaused` 처리와 함께 오버레이를 표시/해제해 사용자가 "왜 드래그가 안 되는지" 헷갈리지 않도록 한다 (`frontend/src/main.js`).
 
 ```js
-function showPauseOverlay(paused) {
+onPause((paused) => {
+  const game = window.__game;
+  if (paused) {
+    game.scene.pause('GameScene');
+    game.input.enabled = false;
+  } else {
+    game.scene.resume('GameScene');
+    game.input.enabled = true;
+  }
   document.getElementById('pause-overlay').style.display = paused ? 'flex' : 'none';
-}
+});
 ```
 
-- 오버레이는 게임 캔버스 위에 겹치는 DOM 엘리먼트로, Phaser 씬과 별개로 순수 HTML/CSS로 관리
-- `game.input.enabled = false`만으로 드래그/클릭 자체는 막히지만 오버레이가 없으면 사용자가 "안 눌리는 버그"로 오인할 수 있음 (5일차 체크포인트)
+- 오버레이(`#pause-overlay`)는 게임 캔버스 위에 겹치는 DOM 엘리먼트로, Phaser 씬과 별개로 순수 HTML/CSS로 관리 (`frontend/index.html`, `extension.ts`의 webview HTML 양쪽에 동일하게 존재)
+- `game.input.enabled = false`만으로 드래그/클릭 자체는 막히지만 오버레이가 없으면 사용자가 "안 눌리는 버그"로 오인할 수 있음
 - 종료 버튼을 눌러 나오는 결과 화면과는 별개의 오버레이다 — 일시정지는 재개 가능, 종료는 재개 없이 결과만 보여준다
 
 ## 리소스/번들링 제약

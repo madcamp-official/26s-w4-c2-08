@@ -311,25 +311,38 @@ export default class Hud {
     });
   }
 
-  // 종료 버튼 클릭 시 표시하는 결과 화면. online/local 분기 및 리더보드는 webview 연동(3~5일차) 이후 붙일 예정
+  // 종료 버튼 클릭 시 표시하는 결과 화면. online/local 분기 내용(리더보드/최고기록)은 비동기로 나중에
+  // setEndOverlayStatus()가 채워 넣는다 — 서버 응답을 기다리는 동안에도 화면은 먼저 뜨게 하기 위함.
   showGameEndOverlay(score, onRestartClick) {
     const { width, height } = this.scene.scale;
 
     const dim = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75);
-    const title = this.scene.add.text(width / 2, height / 2 - 30, '게임 종료', {
+    const title = this.scene.add.text(width / 2, height / 2 - 110, '게임 종료', {
       fontSize: '30px',
       color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: UI_FONT_FAMILY,
     }).setOrigin(0.5);
-    const scoreText = this.scene.add.text(width / 2, height / 2 + 20, `최종 점수: ${score}`, {
+    const scoreText = this.scene.add.text(width / 2, height / 2 - 60, `최종 점수: ${score}`, {
       fontSize: '22px',
       color: '#ffaa00',
       fontFamily: UI_FONT_FAMILY,
     }).setOrigin(0.5);
-    const restartButton = this.createRestartButton(width / 2, height / 2 + 75, onRestartClick);
+    const statusText = this.scene.add.text(width / 2, height / 2 - 20, '', {
+      fontSize: '14px',
+      color: '#dddddd',
+      fontFamily: UI_FONT_FAMILY,
+      align: 'center',
+      lineSpacing: 6,
+    }).setOrigin(0.5, 0);
+    const restartButton = this.createRestartButton(width / 2, height / 2 + 140, onRestartClick);
 
-    return { dim, title, scoreText, restartButton };
+    return { dim, title, scoreText, statusText, restartButton };
+  }
+
+  // onGameEnd(리더보드 로딩/결과, 로컬 최고기록)이 결과 화면에 텍스트를 채워 넣을 때 쓴다.
+  setEndOverlayStatus(overlay, text) {
+    overlay.statusText.setText(text);
   }
 
   createRestartButton(x, y, onClick) {

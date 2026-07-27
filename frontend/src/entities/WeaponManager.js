@@ -5,7 +5,17 @@ import {
   THROW_PROJECTILE_SPEED,
   STACK_DAMAGE_MULTIPLIER,
   STACK_TINT_COLOR,
+  PORTABLE_WEAPON_SIZE,
 } from '../config/constants.js';
+import { getBaseballBatDimensions } from './weaponSprites.js';
+import { capsuleIntersectsRect } from '../systems/geometry.js';
+
+// 방망이 텍스처는 -45도로 회전된 채 미리 그려져 있어(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고),
+// 손잡이 끝/배럴 끝이 weapon.x,y로부터 이 오프셋만큼씩 대각선으로 떨어져 있다. PORTABLE_WEAPON_SIZE가 바뀌면
+// 그림과 항상 같이 맞도록 getBaseballBatDimensions()에서 계산한다.
+const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
+const BAT_AXIS_OFFSET = BAT_DIMENSIONS.halfLen / Math.SQRT2;
+const BAT_AXIS_RADIUS = BAT_DIMENSIONS.barrelHalfWidth;
 
 export default class WeaponManager {
   constructor(scene, boss, onOverlap) {
@@ -18,15 +28,47 @@ export default class WeaponManager {
     this.projectiles = [];
   }
 
-  // 설치형/휴대형 공통: 플레이어가 직접 드래그해서 옮길 수 있고, 보스와 부딪히면 데미지가 들어간다
-  // (두 타입은 텍스처와 소속 배열만 다를 뿐 동작이 동일해 생성 로직을 공유한다)
+  // 설치형/휴대형 공통: 플레이어가 직접 드래그해서 옮길 수 있다
+  // (두 타입은 텍스처와 소속 배열, canDealDamage()의 드래그 조건만 다를 뿐 나머지 동작이 동일해 생성 로직을 공유한다)
   createDraggableWeapon(x, y, textureKey) {
     const weapon = this.scene.physics.add.image(x, y, textureKey);
     weapon.setInteractive({ draggable: true });
     this.scene.input.setDraggable(weapon);
     this.initStack(weapon);
-    weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, this.onOverlap, null, this.scene);
+    weapon.isDragging = false;
+    weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleWeaponOverlap(weapon), null, this.scene);
     return weapon;
+  }
+
+  // 보스와 겹친 무기가 지금 데미지를 줘도 되는 상태인지 판단.
+  // 설치형: 들고 옮기는 중엔 안 터짐(내려놓고 가만히 있을 때만 터짐) / 휴대형(방망이): 반대로 휘두르는(드래그 중인) 동안만 터짐
+  canDealDamage(weapon) {
+    if (this.isWeapon(weapon)) return !weapon.isDragging;
+    if (this.isPortableWeapon(weapon)) return !!weapon.isDragging;
+    return true;
+  }
+
+  handleWeaponOverlap(weapon) {
+    if (!this.canDealDamage(weapon)) return;
+    if (this.isPortableWeapon(weapon) && !this.batOverlapsBoss(weapon)) return;
+    this.onOverlap();
+  }
+
+  // 방망이의 손잡이 끝→배럴 끝을 잇는 중심축 (world 좌표). 텍스처가 -45도로 고정 회전되어 있어 오프셋이 항상 같다.
+  getBatAxis(weapon) {
+    return {
+      x1: weapon.x - BAT_AXIS_OFFSET,
+      y1: weapon.y + BAT_AXIS_OFFSET,
+      x2: weapon.x + BAT_AXIS_OFFSET,
+      y2: weapon.y - BAT_AXIS_OFFSET,
+      radius: BAT_AXIS_RADIUS,
+    };
+  }
+
+  // 방망이는 대각선 실루엣이라 사각 히트박스 전체 대신, 실제 그림에 맞춘 캡슐(축+두께)로 보스와의 겹침을 판정한다.
+  batOverlapsBoss(weapon) {
+    const { x1, y1, x2, y2, radius } = this.getBatAxis(weapon);
+    return capsuleIntersectsRect(x1, y1, x2, y2, radius, this.boss.sprite.getBounds());
   }
 
   // 설치형
@@ -146,12 +188,17 @@ export default class WeaponManager {
     return this.isWeapon(gameObject) || this.isPortableWeapon(gameObject) || this.isThrowWeapon(gameObject);
   }
 
-  // 실제로 데미지를 주는 대상(설치형/휴대형/투척형 투사체)이 현재 보스와 겹쳐 있는지 모아서 반환
-  // (투척형 발사대 본체는 스스로 데미지를 주지 않으므로 제외)
+  // 실제로 데미지를 주는 대상(설치형/휴대형/투척형 투사체)중 지금 데미지를 줄 수 있는 상태(canDealDamage)이면서
+  // 보스와 겹쳐 있는 것만 모아서 반환 (투척형 발사대 본체는 스스로 데미지를 주지 않으므로 제외).
+  // 방망이(휴대형)만 사각 히트박스 대신 실제 실루엣에 맞춘 캡슐 판정(batOverlapsBoss)을 쓴다.
   getOverlappingWeapons() {
     const bossBounds = this.boss.sprite.getBounds();
     const damageDealers = [...this.weapons, ...this.portableWeapons, ...this.projectiles];
-    return damageDealers.filter((weapon) => Phaser.Geom.Intersects.RectangleToRectangle(bossBounds, weapon.getBounds()));
+    return damageDealers.filter((weapon) => {
+      if (!this.canDealDamage(weapon)) return false;
+      if (this.isPortableWeapon(weapon)) return this.batOverlapsBoss(weapon);
+      return Phaser.Geom.Intersects.RectangleToRectangle(bossBounds, weapon.getBounds());
+    });
   }
 
   countOverlappingWeapons() {
@@ -182,9 +229,10 @@ export default class WeaponManager {
   }
 
   // 드래그로 옮긴 무기가 같은 타입의 다른 무기와 겹치면 하나로 합쳐서 초록색 강화 무기로 만든다
-  // (투척형/야구공은 겹쳐 쌓이지 않고 각자 따로 발사대로 동작한다)
+  // (투척형/야구공은 겹쳐 쌓이지 않고 각자 따로 발사대로 동작하고, 휴대형/야구 방망이는 스윙감을 위해 합치기 대상에서 제외)
   tryMergeWeapon(weapon) {
     if (this.isThrowWeapon(weapon)) return;
+    if (this.isPortableWeapon(weapon)) return;
 
     const siblings = this.getSameTypeList(weapon).filter((other) => other !== weapon);
     const weaponBounds = weapon.getBounds();
@@ -200,12 +248,12 @@ export default class WeaponManager {
     target.destroy();
   }
 
-  // 보스 드래그 시 설치형/휴대형 무기를 뚫고 지나가지 않도록 막되, 히트 판정용 여백(CONTACT_OVERLAP)은 남긴다
+  // 보스 드래그 시 어떤 무기(설치형/휴대형/투척형)도 뚫고 지나가지 않도록 막되, 히트 판정용 여백(CONTACT_OVERLAP)은 남긴다
   resolveOverlapForBoss(x, y) {
-    return this.resolveOverlap(x, y, this.boss.displayWidth / 2, this.boss.displayHeight / 2, [...this.weapons, ...this.portableWeapons]);
+    return this.resolveOverlap(x, y, this.boss.displayWidth / 2, this.boss.displayHeight / 2, [...this.weapons, ...this.portableWeapons, ...this.throwWeapons]);
   }
 
-  // 설치형/휴대형 무기 드래그 시 고정된 보스를 뚫고 지나가지 않도록 막되, 히트 판정용 여백은 남긴다
+  // 무기 드래그 시 고정된 보스를 뚫고 지나가지 않도록 막되, 히트 판정용 여백은 남긴다 (설치형/휴대형/투척형 공통)
   resolveOverlapForDraggedWeapon(weapon, x, y) {
     return this.resolveOverlap(x, y, weapon.displayWidth / 2, weapon.displayHeight / 2, [this.boss.sprite]);
   }

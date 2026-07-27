@@ -6,7 +6,7 @@ const CELL = 10;
 // 느낌표/분노 표시가 머리 옆 캔버스 바깥 여백에 들어갈 자리를 확보한다 (표시가 커서 여유 있게 잡음).
 // 여백은 왼쪽에 두고 몸통 전체를 그만큼 오른쪽으로 밀어서 그린다.
 const TOP_MARGIN = 24;
-const SIDE_MARGIN = 20;
+export const SIDE_MARGIN = 20;
 
 const BODY_CELLS = [
   [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7],

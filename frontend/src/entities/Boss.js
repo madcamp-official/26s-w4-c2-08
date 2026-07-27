@@ -7,7 +7,7 @@ import {
   BOSS_FLASH_DURATION,
   BOSS_HURT_FACE_DURATION,
 } from '../config/constants.js';
-import { MAX_DAMAGE_STAGE } from './bossSprite.js';
+import { MAX_DAMAGE_STAGE, BOSS_TEXTURE_WIDTH, SIDE_MARGIN } from './bossSprite.js';
 
 // HP 비율이 이 값들 이하로 떨어질 때마다 데미지 단계가 하나씩 올라간다 (개수 = MAX_DAMAGE_STAGE).
 // 1단계(<=0.7): 두 눈 처짐 + 입 살짝. 2단계(<=0.3): 눈 더 처짐 + 입 더 벌어짐 + 스파크 표시.
@@ -43,6 +43,13 @@ export default class Boss {
 
   get displayHeight() {
     return this.sprite.displayHeight;
+  }
+
+  // 텍스처 캔버스가 느낌표/분노 마크용 여백을 왼쪽(SIDE_MARGIN)에만 두고 있어 몸통 실루엣이
+  // 프레임 중심보다 오른쪽으로 쏠려 있다 (bossSprite.js 참고). sprite.x(프레임 중심)를 그대로 쓰면
+  // 말풍선 등 실루엣에 맞춰야 하는 UI가 왼쪽으로 치우쳐 보이므로, 실제 몸통 중심을 따로 계산해 제공한다.
+  get bodyCenterX() {
+    return this.sprite.x + (SIDE_MARGIN / 2 / BOSS_TEXTURE_WIDTH) * this.displayWidth;
   }
 
   setPosition(x, y) {

@@ -16,7 +16,8 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 | [타격 이펙트](#타격-이펙트) (흔들림/플래시/데미지 팝업/처치 팝업) | ✅ 구현됨 |
 | 사운드 | ⬜ 미구현 |
 | 종료 버튼 / `onGameEnd` | ✅ 구현됨 — online: 점수 제출 + 리더보드 조회(실패 시 로컬 표시로 폴백), local: `saveLocalScore`로 최고기록 저장 |
-| extension ↔ webview 연동, pause/resume, 리더보드 UI | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
+| extension ↔ webview 연동, 리더보드 UI | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
+| Stop 훅 기반 실시간 캐릭터 대사(`agentTaunt`) | ✅ 구현됨 — 기본 off, `hitTheAgent.enableTokenWatchHook` 설정으로 토글. [ARCHITECTURE.md](./ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고 |
 
 ## 씬 구성
 
@@ -52,7 +53,6 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 - 보스는 자체 AI 이동 로직이 없다 — 스폰된 위치나 마지막으로 놓인 위치에 그대로 머무른다
 - 보스 스프라이트에도 `setInteractive({ draggable: true })`를 적용해 플레이어가 직접 끌어서 옮길 수 있다 ([설치형](#1-설치형-무기)/[휴대형](#3-휴대형-무기) 무기도 전부 드래그 가능하므로, 보스를 무기 쪽으로 끌든 무기를 보스 쪽으로 끌든 어느 방향으로든 부딪힐 수 있다)
 - `drag` 이벤트로 포인터를 따라 보스 위치를 갱신, 화면 밖으로 나가지 않도록 드래그 중 좌표를 캔버스 바운드로 clamp. 드래그 중인 대상이 보스인지 무기인지에 따라 `WeaponManager.resolveOverlapForBoss` / `resolveOverlapForDraggedWeapon`으로 서로를 완전히 통과하지는 못하게 막되, 히트 판정이 계속 되도록 약간의 겹침(`CONTACT_OVERLAP`)은 남겨둔다
-- [일시정지](#일시정지-오버레이): `setPaused: true` 수신 시 `game.input.enabled = false`로 드래그 입력 자체를 막는다. 드래그 도중 정지된 경우 `dragend` 없이 멈추지만, 재개 후 `pointerdown`부터 다시 시작하므로 포인터 상태가 꼬이지 않는다
 
 ### 무기 시스템 (설치형 / 투척형 / 휴대형)
 
@@ -118,8 +118,6 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 
 - 타격음: 히트 쿨다운이 풀려 실제 데미지가 적용될 때마다 재생
 - 보스 처치음: HP 0 도달(리스폰 직전)에 1회 재생
-
-사운드 재생은 `setPaused === true`인 동안 트리거되지 않아야 한다 — 씬이 pause되어 physics overlap 콜백 자체가 멈추므로 자연히 보장된다.
 
 ## 점수 & 보스 리스폰
 
@@ -191,7 +189,6 @@ async function onGameEnd(overlay, score) {
 
 - `online`: webview(`frontend/src/api.js`)가 서버로 직접 `POST /api/scores` 호출 후 `GET /api/leaderboard` 조회 ([API 스펙](./API.md)). 요청 실패 시 크래시 없이 콘솔 경고 후 "리더보드를 불러오지 못했습니다" 텍스트로 폴백한다 ([API.md의 fallback](./API.md#클라이언트-측-fallback)).
 - `local`: 서버 요청 없이 extension에 `saveLocalScore` 메시지만 보낸다. 화면에 바로 보여주는 "내 최고 기록"은 서버 응답을 기다리지 않고 `init` 때 받은 `gameContext.bestScore`와 이번 판 점수 중 큰 값을 클라이언트에서 계산한 것 — extension은 그 값을 `globalState`에 저장만 하고 별도로 되돌려주지 않는다.
-- "종료" 버튼은 [일시정지 오버레이](#일시정지-오버레이)와 별개의 UI로, 포커스 이탈로 인한 자동 정지(`setPaused`)와 혼동되지 않도록 구분해서 표시한다. 종료 후에는 재개 대신 결과 화면(최종 점수 + 리더보드/최고기록)을 보여준다.
 
 ## extension ↔ webview 메시지 프로토콜
 
@@ -200,7 +197,7 @@ async function onGameEnd(overlay, score) {
 | 방향 | type | payload | 처리 |
 |---|---|---|---|
 | ext → webview | `init` | `{ mode, groupId, userName, bestScore }` | `vscodeBridge.gameContext`에 저장, 웹뷰 생성 직후 1회 전달. `bestScore`는 local 모드 결과 화면 비교용(online에서는 무시) |
-| ext → webview | `setPaused` | `{ paused: boolean }` | [일시정지](#일시정지-오버레이) 참고 |
+| ext → webview | `agentTaunt` | `{ tokenCount }` | Stop 훅이 토큰 임계치를 넘겨 발동했을 때 전달 — 패널이 열려 있으면 실시간으로, 닫혀 있었으면 다음 게임 시작 시 전달, 보스 대사 팝업 ([ARCHITECTURE.md](./ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고) |
 | webview → ext | `saveLocalScore` | `{ score }` | local 모드에서 종료 버튼 클릭 시 최고점수 저장 요청 |
 
 ```js
@@ -212,14 +209,12 @@ window.addEventListener('message', (event) => {
       Object.assign(gameContext, { mode: msg.mode, groupId: msg.groupId, userName: msg.userName, bestScore: msg.bestScore ?? 0 });
       initListeners.forEach((cb) => cb(gameContext));
       break;
-    case 'setPaused':
-      pauseListeners.forEach((cb) => cb(msg.paused));
+    case 'agentTaunt':
+      agentTauntListeners.forEach((cb) => cb(msg.tokenCount));
       break;
   }
 });
 ```
-
-`setPaused`는 두 소스(탭 전환, 창 포커스 아웃)에서 올 수 있지만 webview 입장에서는 동일하게 처리한다. 실제 처리(씬 pause/resume + 오버레이 토글)는 `frontend/src/main.js`의 `onPause` 콜백. 자세한 발신 측 로직은 [ARCHITECTURE.md 포커스 감지](./ARCHITECTURE.md#포커스-감지--pauseresume) 참고.
 
 ## 모드별 UI 분기 (online / local)
 
@@ -229,28 +224,6 @@ window.addEventListener('message', (event) => {
 - `local`: 리더보드 대신 "내 최고 기록: XXX점" 텍스트만 표시
 
 두 모드 모두 `mode` 판별 자체는 webview가 아니라 extension이 git remote 유무로 미리 계산해 `init` 메시지로 내려준 값을 그대로 신뢰한다 ([ARCHITECTURE.md 모드 분기](./ARCHITECTURE.md#모드-분기-local--online)).
-
-## 일시정지 오버레이
-
-`setPaused` 처리와 함께 오버레이를 표시/해제해 사용자가 "왜 드래그가 안 되는지" 헷갈리지 않도록 한다 (`frontend/src/main.js`).
-
-```js
-onPause((paused) => {
-  const game = window.__game;
-  if (paused) {
-    game.scene.pause('GameScene');
-    game.input.enabled = false;
-  } else {
-    game.scene.resume('GameScene');
-    game.input.enabled = true;
-  }
-  document.getElementById('pause-overlay').style.display = paused ? 'flex' : 'none';
-});
-```
-
-- 오버레이(`#pause-overlay`)는 게임 캔버스 위에 겹치는 DOM 엘리먼트로, Phaser 씬과 별개로 순수 HTML/CSS로 관리 (`frontend/index.html`, `extension.ts`의 webview HTML 양쪽에 동일하게 존재)
-- `game.input.enabled = false`만으로 드래그/클릭 자체는 막히지만 오버레이가 없으면 사용자가 "안 눌리는 버그"로 오인할 수 있음
-- 종료 버튼을 눌러 나오는 결과 화면과는 별개의 오버레이다 — 일시정지는 재개 가능, 종료는 재개 없이 결과만 보여준다
 
 ## 리소스/번들링 제약
 

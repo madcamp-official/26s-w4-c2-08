@@ -1,5 +1,7 @@
 // Phaser 기본 폰트(Courier)는 한글 글리프가 없어 텍스트가 잘려 보임 — 한글이 있는 모든 텍스트에 명시적으로 지정
-export const UI_FONT_FAMILY = '"Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+// Galmuri11(도트 폰트, OFL) 웹폰트를 우선 사용 — @font-face는 index.html(dev)과 extension.ts(패키징)에서
+// 각각 선언하고 main.js가 document.fonts.load()로 미리 로드해둔다. 로드 실패/미지원 시 시스템 고딕으로 폴백.
+export const UI_FONT_FAMILY = '"Galmuri11", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
 // 전투 배경 스타일 — backgrounds.js의 BACKGROUND_STYLES 참고 ('classic' | 'diff' | 'matrix' | 'error')
 export const BACKGROUND_STYLE = 'matrix';
@@ -53,3 +55,42 @@ export const BOSS_HURT_FACE_DURATION = 300; // ms, 피격 시 눈이 X_X로 바�
 export const DAMAGE_POPUP_DURATION = 700; // ms
 export const DEFEAT_POPUP_DURATION = 900; // ms
 export const DEFEAT_POPUP_COLOR = '#ffaa00'; // "처치!" 팝업 색 — 뽑기 버튼과 동일 계열
+
+// SessionEnd 훅(토큰 임계치 초과) 발동 시 보스가 말을 거는 대사 팝업. 데미지 팝업보다 오래 보여준다.
+export const AGENT_TAUNT_POPUP_DURATION = 2200; // ms
+// 한 글자씩 타이핑되는 효과의 글자당 간격
+export const AGENT_TAUNT_TYPING_SPEED = 60; // ms/char
+
+// 세션 누적 토큰 수(tokenCount)에 따라 대사 톤을 3단계로 구분한다. 경계값은 해당 단계에 포함.
+export const AGENT_TAUNT_TOKEN_TIERS = {
+  MID: 1000,
+  HIGH: 10000,
+};
+//<1000
+const AGENT_TAUNT_LINES_LOW = [
+  'ㅎㅇ',
+  '수준 ㅋ',
+  '이정도면 그냥해',
+  '나 아직 안 죽었다?',
+  '컨텍스트가 무겁다구요',
+  '컨텍스트 창 터지겠다!!',
+  '토큰을 대체 얼마나 쓴 거야??',
+  '프롬프트 진짜 못쓰네',
+];
+//<10000
+const AGENT_TAUNT_LINES_MID = [
+  '나 아직 안 죽었다?',
+  '컨텍스트가 무겁다구요',
+];
+//10000<=
+const AGENT_TAUNT_LINES_HIGH = [
+  '컨텍스트 창 터지겠다!!',
+  '토큰을 대체 얼마나 쓴 거야??',
+  '프롬프트 진짜 못쓰네',
+];
+
+export function getAgentTauntLines(tokenCount) {
+  if (tokenCount >= AGENT_TAUNT_TOKEN_TIERS.HIGH) return AGENT_TAUNT_LINES_HIGH;
+  if (tokenCount >= AGENT_TAUNT_TOKEN_TIERS.MID) return AGENT_TAUNT_LINES_MID;
+  return AGENT_TAUNT_LINES_LOW;
+}

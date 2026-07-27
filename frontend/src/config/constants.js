@@ -66,14 +66,17 @@ export const DART_PROJECTILE_TEXTURES = DART_COLOR_VARIANTS.map((_, i) => `weapo
 // stickOnHit: 맞는 순간 즉시 사라지는 대신 그 자리에 잠깐 박힌 채로 남아 있다가 사라지게 할지.
 // fireSound: 발사 시 재생할 사운드 키 (없으면 무음).
 export const WEAPON_DEFINITIONS = {
-  [WEAPON_IDS.BAT]: { category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable' },
+  [WEAPON_IDS.BAT]: { name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable' },
   [WEAPON_IDS.BALL]: {
+    name: 'BASEBALL',
     category: WEAPON_CATEGORIES.THROW,
     texture: 'weapon_throw',
     projectileTexture: 'weapon_throw_projectile',
     projectileSpeed: BALL_PROJECTILE_SPEED,
+    fireSound: 'baseball_throw',
   },
   [WEAPON_IDS.DART]: {
+    name: 'DART',
     category: WEAPON_CATEGORIES.THROW,
     texture: 'weapon_dart',
     projectileTextures: DART_PROJECTILE_TEXTURES,

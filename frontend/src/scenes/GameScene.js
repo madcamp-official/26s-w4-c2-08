@@ -6,6 +6,7 @@ import {
   BOSS_PANEL_PUSH_POPUP_COLOR,
   UI_FONT_FAMILY,
   BACKGROUND_STYLE,
+  BOSS_TYPES,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -25,12 +26,15 @@ export default class GameScene extends Phaser.Scene {
     this.currentBackgroundStyle = BACKGROUND_STYLE;
     this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
 
-    this.boss = new Boss(this);
+    this.currentBossType = BOSS_TYPES[0].id;
+    this.boss = new Boss(this, this.currentBossType);
     this.hud = new Hud(this, {
       onWeaponSelect: (category) => this.onWeaponSelect(category),
       onEndButtonClick: () => this.onEndButtonClick(),
       currentBackgroundStyle: this.currentBackgroundStyle,
       onBackgroundSelect: (style) => this.onBackgroundSelect(style),
+      currentBossType: this.currentBossType,
+      onBossSelect: (bossTypeId) => this.onBossSelect(bossTypeId),
     });
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
     this.weaponManager = new WeaponManager(this, this.boss, (weapon) => this.combat.handleHit(weapon));
@@ -113,6 +117,12 @@ export default class GameScene extends Phaser.Scene {
     if (style === this.currentBackgroundStyle) return;
     this.currentBackgroundStyle = style;
     this.backgroundImage.setTexture(`battleBackground_${style}`);
+  }
+
+  onBossSelect(bossTypeId) {
+    if (bossTypeId === this.currentBossType) return;
+    this.currentBossType = bossTypeId;
+    this.boss.setBossType(bossTypeId);
   }
 
   onHit(hits = [], defeated = false, deathPosition = null) {

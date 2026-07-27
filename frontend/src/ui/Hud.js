@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import {
   HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY,
   WEAPON_CATEGORIES, WEAPON_CATEGORY_TEXTURES,
+  HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY, BOSS_TYPES,
+  WEAPON_CATEGORIES, WEAPON_CATEGORY_LABELS, WEAPON_CATEGORY_TEXTURES,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES } from '../config/backgrounds.js';
 
@@ -13,7 +15,10 @@ const WEAPON_OPTIONS = Object.values(WEAPON_CATEGORIES).map((category) => ({
 }));
 
 export default class Hud {
-  constructor(scene, { onWeaponSelect, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect } = {}) {
+  constructor(scene, {
+    onWeaponSelect, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect,
+    currentBossType, onBossSelect,
+  } = {}) {
     this.scene = scene;
 
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
@@ -36,6 +41,14 @@ export default class Hud {
       this.toggleWeaponPanel(false);
     });
 
+    this.bossPanelOpen = false;
+    this.bossButton = this.createBossButton(() => this.toggleBossPanel());
+    this.bossPanel = this.createBossPanel(currentBossType, (bossTypeId) => {
+      if (onBossSelect) onBossSelect(bossTypeId);
+      this.setActiveBossOption(bossTypeId);
+      this.toggleBossPanel(false);
+    });
+
     this.backgroundPanelOpen = false;
     this.backgroundButton = this.createBackgroundButton(() => this.toggleBackgroundPanel());
     this.backgroundPanel = this.createBackgroundPanel(currentBackgroundStyle, (style) => {
@@ -43,6 +56,7 @@ export default class Hud {
       this.setActiveBackgroundOption(style);
       this.toggleBackgroundPanel(false);
     });
+    this.trashCan = this.createTrashCan();
     this.endButton = this.createEndButton(onEndButtonClick);
   }
 
@@ -56,10 +70,11 @@ export default class Hud {
     return this.scene.input.hitTestPointer(pointer).length > 0;
   }
 
-  // 무기/배경 패널 중 지금 열려 있는(슬라이드된) 패널이 있으면 그 왼쪽 경계 x를 반환. 둘 다 닫혀 있으면 null.
+  // 무기/보스/배경 패널 중 지금 열려 있는(슬라이드된) 패널이 있으면 그 왼쪽 경계 x를 반환. 다 닫혀 있으면 null.
   // GameScene이 매 프레임 이 경계를 보스와 겹치는지 검사해 패널에 부딪혔는지 판단하는 데 쓴다.
   getOpenPanelBoundaryX() {
     if (this.weaponPanelOpen) return this.weaponPanel.openX;
+    if (this.bossPanelOpen) return this.bossPanel.openX;
     if (this.backgroundPanelOpen) return this.backgroundPanel.openX;
     return null;
   }
@@ -194,6 +209,7 @@ export default class Hud {
     const shouldOpen = forceOpen === undefined ? !this.backgroundPanelOpen : forceOpen;
     if (shouldOpen === this.backgroundPanelOpen) return;
     this.backgroundPanelOpen = shouldOpen;
+    if (shouldOpen) this.toggleBossPanel(false);
 
     if (shouldOpen) this.toggleWeaponPanel(false); // 두 슬라이드 패널이 같은 자리에서 겹치지 않도록
 
@@ -287,6 +303,7 @@ export default class Hud {
     this.weaponPanelOpen = shouldOpen;
 
     if (shouldOpen) this.toggleBackgroundPanel(false);
+    if (shouldOpen) this.toggleBossPanel(false);
 
     const { container, openX, startX } = this.weaponPanel;
     this.scene.tweens.add({
@@ -335,14 +352,167 @@ export default class Hud {
     return { bg, label };
   }
 
-  // 배경 버튼 왼쪽에 붙는 뽑기(무기) 버튼
+  // 체력바와 같은 y, 체력바 왼쪽에 붙는 위치에 배치
+  createTrashCan() {
+    const width = 50;
+    const height = 50;
+    const gap = 10;
+    const x = 25;
+    const y = HP_BAR_Y-10;
+
+    const bg = this.scene.add.rectangle(x, y, width, height, 0x000000, 0);
+    bg.setInteractive({ useHandCursor: true });
+
+    const icon = this.drawTrashIcon(x, y, width, height);
+
+    return { bg, icon };
+  }
+
+  // 쓰레기통 실루엣: 손잡이 + 뚜껑 + 사다리꼴 몸통 + 세로줄
+  drawTrashIcon(x, y, width, height) {
+    const bodyColor = 0x882222;
+    const lineColor = 0xffffff;
+
+    const bodyTop = -height * 0.25;
+    const bodyBottom = height * 0.45;
+    const bodyTopWidth = width * 0.6;
+    const bodyBottomWidth = width * 0.42;
+    const lidWidth = width * 0.8;
+    const lidHeight = height * 0.12;
+
+    const g = this.scene.add.graphics({ x, y });
+
+    g.fillStyle(bodyColor, 1);
+    g.fillRect(-width * 0.15, -height * 0.42, width * 0.3, height * 0.12);
+    g.fillRect(-lidWidth / 2, bodyTop - lidHeight, lidWidth, lidHeight);
+
+    g.beginPath();
+    g.moveTo(-bodyTopWidth / 2, bodyTop);
+    g.lineTo(bodyTopWidth / 2, bodyTop);
+    g.lineTo(bodyBottomWidth / 2, bodyBottom);
+    g.lineTo(-bodyBottomWidth / 2, bodyBottom);
+    g.closePath();
+    g.fillPath();
+
+    g.lineStyle(2, lineColor, 0.8);
+    [-0.15, 0, 0.15].forEach((fx) => {
+      g.beginPath();
+      g.moveTo(width * fx, bodyTop + 4);
+      g.lineTo(width * fx * 0.75, bodyBottom - 4);
+      g.strokePath();
+    });
+
+    return g;
+  }
+
+  getTrashBounds() {
+    return this.trashCan.bg.getBounds();
+  }
+
+  // 보스 버튼 왼쪽에 붙는 뽑기(무기) 버튼
   createDrawButton(onClick) {
+    const size = 40;
+    const gap = 10;
+    const x = this.scene.scale.width - size * 2 - 16 - gap * 2 - size / 2;
+    const y = TOP_HUD_Y;
+
+    return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);
+  }
+
+  // 배경 버튼 왼쪽, 뽑기 버튼 오른쪽에 붙는 보스 선택 버튼
+  createBossButton(onClick) {
     const size = 40;
     const gap = 10;
     const x = this.scene.scale.width - size - 16 - gap - size / 2;
     const y = TOP_HUD_Y;
 
-    return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);
+    return this.createPillButton(x, y, size, 0x8e44ad, '👹', onClick);
+  }
+
+  // 화면 오른쪽 바깥에 미리 만들어두고, 열릴 때 왼쪽으로 슬라이드시키는 보스 선택 패널
+  createBossPanel(currentBossTypeId, onSelect) {
+    const panelWidth = 200;
+    const height = this.scene.scale.height;
+    const startX = this.scene.scale.width + 16;
+    const openX = this.scene.scale.width - panelWidth;
+
+    const container = this.scene.add.container(startX, 0).setDepth(1000);
+
+    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
+      .setOrigin(0, 0)
+      .setInteractive();
+    container.add(bg);
+
+    const title = this.scene.add.text(panelWidth / 2, 22, 'BOSS', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5);
+    container.add(title);
+
+    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeButton.on('pointerdown', () => this.toggleBossPanel(false));
+    container.add(closeButton);
+
+    const thumbW = 140;
+    const thumbH = 90;
+    const rowGap = 14;
+    const rowStep = thumbH + 26 + rowGap;
+    let y = 50 + 6;
+
+    this.bossOptionEls = [];
+
+    BOSS_TYPES.forEach(({ id, name }) => {
+      const cx = panelWidth / 2;
+      const cy = y + thumbH / 2;
+
+      const thumb = this.scene.add.image(cx, cy, `boss_${id}_d0`)
+        .setDisplaySize(thumbW, thumbH)
+        .setInteractive({ useHandCursor: true });
+      const border = this.scene.add.rectangle(cx, cy, thumbW + 6, thumbH + 6)
+        .setStrokeStyle(3, 0xffaa00, id === currentBossTypeId ? 1 : 0);
+      const labelText = this.scene.add.text(cx, y + thumbH + 12, name, {
+        fontSize: '11px',
+        color: '#ffffff',
+        fontFamily: UI_FONT_FAMILY,
+      }).setOrigin(0.5);
+
+      thumb.on('pointerdown', () => onSelect(id));
+
+      container.add([thumb, border, labelText]);
+      this.bossOptionEls.push({ id, border });
+
+      y += rowStep;
+    });
+
+    return { container, openX, startX };
+  }
+
+  toggleBossPanel(forceOpen) {
+    const shouldOpen = forceOpen === undefined ? !this.bossPanelOpen : forceOpen;
+    if (shouldOpen === this.bossPanelOpen) return;
+    this.bossPanelOpen = shouldOpen;
+    if (shouldOpen) this.toggleBackgroundPanel(false);
+    if (shouldOpen) this.toggleWeaponPanel(false);
+
+    const { container, openX, startX } = this.bossPanel;
+    this.scene.tweens.add({
+      targets: container,
+      x: shouldOpen ? openX : startX,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+    });
+  }
+
+  setActiveBossOption(bossTypeId) {
+    this.bossOptionEls.forEach(({ id, border }) => {
+      border.setStrokeStyle(3, 0xffaa00, id === bossTypeId ? 1 : 0);
+    });
   }
 
   updateHpBar(boss) {

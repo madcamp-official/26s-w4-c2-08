@@ -91,7 +91,7 @@ function drawDroopyEye(ctx, bodyColor, eyeColor, x, y, w, h, isLeftEye, stage) {
   ctx.fillStyle = bodyColor;
   ctx.fillRect(x, y, w, h);
 
-  const thickness = stage >= 2 ? CELL * 0.3 : CELL * 0.22;
+  const thickness = stage >= 2 ? CELL * 0.4 : CELL * 0.22;
   const droop = stage >= 2 ? h * 0.75 : h * 0.55;
   const pad = CELL * 0.12;
 

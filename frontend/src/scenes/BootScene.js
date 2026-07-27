@@ -1,8 +1,14 @@
 import Phaser from 'phaser';
-import { BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES } from '../config/constants.js';
+import {
+  BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
+} from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
-import { createBossCanvas, createBossHurtCanvas, createBossFireCanvas, MAX_DAMAGE_STAGE } from '../entities/bossSprite.js';
-import { createBaseballCanvas, createBaseballBatCanvas, createDartCanvas } from '../entities/weaponSprites.js';
+import {
+  createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas, MAX_DAMAGE_STAGE,
+} from '../entities/bossSprite.js';
+import {
+  createBaseballCanvas, createBaseballBatCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+} from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
 // 실제 스프라이트 에셋이 준비되기 전까지 사용하는 placeholder 텍스처.
@@ -17,6 +23,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
     this.load.audio('bat_hit', assetUrl('audio/bat_hit.mp3'));
     this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
+    this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
   }
 
   create() {
@@ -41,12 +48,17 @@ export default class BootScene extends Phaser.Scene {
         this.textures.addCanvas(`boss_${id}_d${damageStage}`, createBossCanvas(color, undefined, damageStage));
         this.textures.addCanvas(`boss_hurt_${id}_d${damageStage}`, createBossHurtCanvas(color, undefined, damageStage));
         this.textures.addCanvas(`boss_fire_${id}_d${damageStage}`, createBossFireCanvas(color, undefined, damageStage));
+        this.textures.addCanvas(`boss_blink_${id}_d${damageStage}`, createBossBlinkCanvas(color, undefined, damageStage));
       }
+      // 웃는 표정은 HP 단계와 무관해서(항상 같은 눈/입) 단계별로 안 만들고 보스 타입마다 하나씩만 둔다.
+      this.textures.addCanvas(`boss_happy_${id}`, createBossHappyCanvas(color));
     });
   }
 
   createPlaceholderTextures() {
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_hand', createHandCanvas(HAND_WEAPON_SIZE));
 
     this.createThrowWeaponTexture();
   }

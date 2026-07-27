@@ -109,6 +109,38 @@ function drawDroopyEye(ctx, bodyColor, eyeColor, x, y, w, h, isLeftEye, stage) {
   ctx.stroke();
 }
 
+// 쓰다듬을 때 잠깐 보여주는 귀여운 "^‿^" 감은 눈 — 위로 볼록한 꺾은선 하나로 표현.
+function drawHappyEye(ctx, bodyColor, eyeColor, x, y, w, h) {
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(x, y, w, h);
+
+  const pad = CELL * 0.14;
+  ctx.strokeStyle = eyeColor;
+  ctx.lineWidth = CELL * 0.24;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x + pad, y + h * 0.62);
+  ctx.lineTo(x + w / 2, y + h * 0.22);
+  ctx.lineTo(x + w - pad, y + h * 0.62);
+  ctx.stroke();
+}
+
+// 쓰다듬을 때 입도 같이 웃는 곡선(u자)으로 바꿔서 표정을 확실히 다르게 만든다.
+function drawSmileMouth(ctx) {
+  const cx = SIDE_MARGIN + (COLS * CELL) / 2;
+  const mouthY = 2 * CELL + TOP_MARGIN + CELL * 0.3;
+  const width = 26;
+
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = CELL * 0.26;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - width / 2, mouthY);
+  ctx.quadraticCurveTo(cx, mouthY + CELL * 0.9, cx + width / 2, mouthY);
+  ctx.stroke();
+}
+
 // row2(항상 칠해진 구간) 중앙, 입 네모의 공통 위치/크기 계산. drawMouth와 불 뿜는 강제로 벌린 입이 같이 쓴다.
 function mouthRect(width, height) {
   const mouthY = 2 * CELL + TOP_MARGIN + CELL * 0.25;
@@ -257,6 +289,52 @@ export function createBossHurtCanvas(bodyColor, eyeColor = '#000000', damageStag
   drawEyes(ctx, bodyColor, eyeColor, { droopStage: damageStage, forceBothEyesX: true });
   drawMouth(ctx, damageStage);
   drawDamageMark(ctx, damageStage, { forceExclamation: true });
+
+  return canvas;
+}
+
+// 쓰다듬을 때 잠깐 보여주는 귀여운 표정. 데미지 단계(처진 눈/입/상태 마크)는 무시하고 눈은 항상
+// ^‿^로, 입은 항상 웃는 곡선으로 덮어씌운다 — HP와 무관하게 순수 반응용이라 단계별 분기가 필요 없다.
+export function createBossHappyCanvas(bodyColor, eyeColor = '#000000') {
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+
+  drawBody(ctx, bodyColor);
+  EYE_CELLS.forEach(([r, c]) => {
+    const { x, y, w, h } = cellRect(r, c);
+    drawHappyEye(ctx, bodyColor, eyeColor, x, y, w, h);
+  });
+  drawSmileMouth(ctx);
+
+  return canvas;
+}
+
+// 평소 가만히 있을 때 랜덤 간격으로 잠깐 뜨는 눈 깜빡임 — 얇은 가로선 하나로 감은 눈을 표현한다.
+// 입/데미지 단계는 그대로 두고 눈만 바뀌므로 damageStage별로 따로 만든다(hurt/fire와 같은 패턴).
+function drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h) {
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(x, y, w, h);
+
+  const pad = CELL * 0.15;
+  ctx.strokeStyle = eyeColor;
+  ctx.lineWidth = CELL * 0.22;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x + pad, y + h / 2);
+  ctx.lineTo(x + w - pad, y + h / 2);
+  ctx.stroke();
+}
+
+export function createBossBlinkCanvas(bodyColor, eyeColor = '#000000', damageStage = 0) {
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+
+  drawBody(ctx, bodyColor);
+  EYE_CELLS.forEach(([r, c]) => {
+    const { x, y, w, h } = cellRect(r, c);
+    drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h);
+  });
+  drawMouth(ctx, damageStage);
 
   return canvas;
 }

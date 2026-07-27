@@ -79,6 +79,108 @@ export function createDartCanvas(size, { shaftColor = '#d1483f', shaftStrokeColo
   return canvas;
 }
 
+// 휴대형 무기 세 번째 디자인: 전기충격기. 검은 손잡이/몸체 + 앞쪽 은색 프롱(전극) 2개 + 그 사이에서
+// 튀는 노란 번개 스파크. 방망이와 달리 대각선이 아니라 수평(그립 왼쪽, 프롱 오른쪽)으로 그린다 —
+// STATIC 카테고리는 방망이 전용 캡슐 판정을 안 타고 그냥 사각 판정을 쓰므로 baked 회전이 필요 없다.
+export function createTaserCanvas(size) {
+  const bodyColor = '#2b2b2b';
+  const bodyStrokeColor = '#111111';
+  const prongColor = '#c9ced3';
+  const sparkColor = '#ffe066';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+
+  const bodyWidth = size * 0.5;
+  const bodyHeight = size * 0.22;
+  const bodyLeft = cx - size * 0.32;
+  const gripWidth = size * 0.14;
+  const gripHeight = size * 0.32;
+  const prongLength = size * 0.16;
+  const prongHalfWidth = size * 0.03;
+  const prongGap = size * 0.14;
+
+  // 손잡이(그립) — 몸체 아래로 튀어나온 부분
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(bodyLeft, cy, gripWidth, gripHeight);
+
+  // 몸체(본체)
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStrokeColor;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.fillRect(bodyLeft, cy - bodyHeight / 2, bodyWidth, bodyHeight);
+  ctx.strokeRect(bodyLeft, cy - bodyHeight / 2, bodyWidth, bodyHeight);
+
+  // 전극(prong) 2개 — 몸체 오른쪽 끝에서 앞으로 뻗은 얇은 은색 막대
+  const prongStartX = bodyLeft + bodyWidth;
+  ctx.fillStyle = prongColor;
+  ctx.fillRect(prongStartX, cy - prongGap / 2 - prongHalfWidth, prongLength, prongHalfWidth * 2);
+  ctx.fillRect(prongStartX, cy + prongGap / 2 - prongHalfWidth, prongLength, prongHalfWidth * 2);
+
+  // 두 전극 사이에서 튀는 지그재그 스파크
+  const sparkX = prongStartX + prongLength;
+  ctx.strokeStyle = sparkColor;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sparkX, cy - prongGap / 2);
+  ctx.lineTo(sparkX + prongLength * 0.5, cy - prongGap * 0.15);
+  ctx.lineTo(sparkX, cy + prongGap * 0.15);
+  ctx.lineTo(sparkX + prongLength * 0.5, cy + prongGap / 2);
+  ctx.stroke();
+
+  return canvas;
+}
+
+// 휴대형 무기 네 번째 디자인: 쓰다듬는 손. 손바닥(사각) + 손가락 4개 + 엄지, 전부 각진 블록으로
+// 그려서 다른 무기들의 픽셀풍 톤과 맞춘다. STATIC 카테고리라 방망이 캡슐 판정 없이 사각 판정만 쓴다.
+export function createHandCanvas(size) {
+  const skinColor = '#f0b892';
+  const skinStroke = '#c98a5e';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+
+  ctx.fillStyle = skinColor;
+  ctx.strokeStyle = skinStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+
+  // 손바닥
+  const palmWidth = size * 0.5;
+  const palmHeight = size * 0.4;
+  const palmLeft = cx - palmWidth / 2;
+  const palmTop = cy - palmHeight * 0.2;
+  ctx.fillRect(palmLeft, palmTop, palmWidth, palmHeight);
+  ctx.strokeRect(palmLeft, palmTop, palmWidth, palmHeight);
+
+  // 손가락 4개 — 손바닥 위쪽 가장자리에 나란히 붙은 짧은 막대
+  const fingerCount = 4;
+  const fingerWidth = (palmWidth / fingerCount) * 0.65;
+  const fingerHeight = size * 0.24;
+  const slot = palmWidth / fingerCount;
+  for (let i = 0; i < fingerCount; i += 1) {
+    const fx = palmLeft + slot * i + (slot - fingerWidth) / 2;
+    const fy = palmTop - fingerHeight + size * 0.03;
+    ctx.fillRect(fx, fy, fingerWidth, fingerHeight);
+    ctx.strokeRect(fx, fy, fingerWidth, fingerHeight);
+  }
+
+  // 엄지 — 손바닥 옆으로 튀어나온 짧은 막대
+  const thumbWidth = size * 0.22;
+  const thumbHeight = size * 0.16;
+  const thumbX = palmLeft - thumbWidth + size * 0.05;
+  const thumbY = palmTop + palmHeight * 0.15;
+  ctx.fillRect(thumbX, thumbY, thumbWidth, thumbHeight);
+  ctx.strokeRect(thumbX, thumbY, thumbWidth, thumbHeight);
+
+  return canvas;
+}
+
 // 휴대형 무기(addPortableWeapon)의 디자인: 알루미늄 야구 방망이 (검은 그립 + 손잡이 끝 손잡이 캡 + 은색 배럴)
 // 실제 배트 실루엣 참고 — 그립에서 배럴까지 완만한 곡선으로 두꺼워지다 배럴 구간은 거의 일정한 두께를 유지하고
 // 끝만 둥글게 마감된다. 손잡이 끝에는 작은 캡(knob)이 그립보다 살짝 더 튀어나와 있다.

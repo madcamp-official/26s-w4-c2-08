@@ -6,6 +6,10 @@ import {
   BOSS_PANEL_PUSH_DURATION,
   BOSS_FLASH_DURATION,
   BOSS_HURT_FACE_DURATION,
+  BOSS_HAPPY_FACE_DURATION,
+  BOSS_BLINK_DURATION,
+  BOSS_BLINK_MIN_INTERVAL,
+  BOSS_BLINK_MAX_INTERVAL,
   COMBO_WINDOW_MS,
   COMBO_HIT_THRESHOLD,
   BOSS_FIRE_BREATH_DURATION,
@@ -33,6 +37,8 @@ export default class Boss {
     this.hp = this.maxHp;
     this.recentHitTimestamps = [];
     this.fireBreathEvent = null;
+    this.happyFaceEvent = null;
+    this.blinkEvent = null;
     this.lastFireBreathTime = -Infinity;
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
@@ -44,6 +50,10 @@ export default class Boss {
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setInteractive({ draggable: true });
     scene.input.setDraggable(this.sprite);
+
+    // 가만히 있어도 살아있는 느낌을 주는 랜덤 눈 깜빡임 — 다른 표정(피격/불뿜기/웃음)보다 우선순위가
+    // 가장 낮아서 그것들이 떠 있는 동안엔 그냥 건너뛰고 다음 깜빡임을 다시 예약한다.
+    this.scheduleNextBlink();
   }
 
   // 현재 데미지 단계에 맞는 평상시 기본 텍스처 키 (히트 시 X_X 표정에서 복귀할 때도 사용)
@@ -101,6 +111,13 @@ export default class Boss {
     this.updateVisualState();
   }
 
+  // 쓰다듬기(힐링) 무기 전용. maxHp를 넘지 않게 클램프하고, 단계가 낮아지면(덜 처진 눈 등)
+  // updateVisualState가 그것도 그대로 반영한다 — 데미지 단계 계산은 방향과 무관하게 현재 ratio만 본다.
+  heal(amount) {
+    this.hp = Math.min(this.hp + amount, this.maxHp);
+    this.updateVisualState();
+  }
+
   // HP 변화에 따라 데미지 단계를 갱신. 히트 직후라 X_X 표정이 잠깐 떠 있는 중이면(hurtFaceEvent 존재)
   // 텍스처는 건드리지 않고 상태값만 갱신해둔다 — X_X가 끝나고 복귀할 때 getBaseTextureKey()가 반영한다.
   updateVisualState() {
@@ -124,6 +141,10 @@ export default class Boss {
     this.hurtFaceEvent = null;
     this.fireBreathEvent?.remove();
     this.fireBreathEvent = null;
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
     this.recentHitTimestamps = [];
     this.lastFireBreathTime = -Infinity;
     this.sprite.setTexture(this.getBaseTextureKey());
@@ -136,6 +157,10 @@ export default class Boss {
     this.hurtFaceEvent = null;
     this.fireBreathEvent?.remove();
     this.fireBreathEvent = null;
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 
@@ -195,10 +220,14 @@ export default class Boss {
   }
 
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.
-  // 불 뿜는 연출이 떠 있는 동안은 X_X로 덮어쓰지 않는다 (불 뿜기가 우선).
+  // 불 뿜는 연출이 떠 있는 동안은 X_X로 덮어쓰지 않는다 (불 뿜기가 우선). 웃는 표정 중에 맞으면 그건 덮어써도 된다.
   showHurtFace() {
     if (this.fireBreathEvent) return;
     this.hurtFaceEvent?.remove();
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
     this.sprite.setTexture(`boss_hurt_${this.bossTypeId}_d${this.damageStage}`);
     this.hurtFaceEvent = this.scene.time.delayedCall(BOSS_HURT_FACE_DURATION, () => {
       this.hurtFaceEvent = null;
@@ -228,6 +257,10 @@ export default class Boss {
   showFireBreath() {
     this.hurtFaceEvent?.remove();
     this.hurtFaceEvent = null;
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
     this.fireBreathEvent?.remove();
     this.sprite.setTexture(`boss_fire_${this.bossTypeId}_d${this.damageStage}`);
     this.scene.sound.play('boss_fire_roar');
@@ -235,5 +268,39 @@ export default class Boss {
       this.fireBreathEvent = null;
       this.sprite.setTexture(this.getBaseTextureKey());
     });
+  }
+
+  // 쓰다듬을 때 잠깐 보여주는 웃는 표정. 맞아서 뜨는 X_X/불뿜기보다는 우선순위가 낮아서, 둘 중
+  // 하나라도 떠 있으면(더 급한 반응이 진행 중이면) 무시한다. HP 단계와 무관한 표정이라
+  // boss_happy_${id} 텍스처엔 데미지 단계 구분이 없다(createBossHappyCanvas 참고).
+  showHappyFace() {
+    if (this.fireBreathEvent || this.hurtFaceEvent) return;
+    this.happyFaceEvent?.remove();
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
+    this.sprite.setTexture(`boss_happy_${this.bossTypeId}`);
+    this.happyFaceEvent = this.scene.time.delayedCall(BOSS_HAPPY_FACE_DURATION, () => {
+      this.happyFaceEvent = null;
+      this.sprite.setTexture(this.getBaseTextureKey());
+    });
+  }
+
+  // 다음 깜빡임을 랜덤 간격 뒤로 예약한다 — 실제 눈 깜빡임처럼 일정 주기가 아니라 불규칙하게.
+  scheduleNextBlink() {
+    const delay = Phaser.Math.Between(BOSS_BLINK_MIN_INTERVAL, BOSS_BLINK_MAX_INTERVAL);
+    this.scene.time.delayedCall(delay, () => this.tryBlink());
+  }
+
+  // 더 급한 표정(피격/불뿜기/웃음)이 떠 있지 않을 때만 깜빡이고, 그 여부와 상관없이 항상 다음
+  // 깜빡임을 다시 예약해서 깜빡임 루프 자체는 끊기지 않게 한다.
+  tryBlink() {
+    if (!this.fireBreathEvent && !this.hurtFaceEvent && !this.happyFaceEvent) {
+      this.sprite.setTexture(`boss_blink_${this.bossTypeId}_d${this.damageStage}`);
+      this.blinkEvent = this.scene.time.delayedCall(BOSS_BLINK_DURATION, () => {
+        this.blinkEvent = null;
+        this.sprite.setTexture(this.getBaseTextureKey());
+      });
+    }
+    this.scheduleNextBlink();
   }
 }

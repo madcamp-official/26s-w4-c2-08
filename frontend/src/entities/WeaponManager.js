@@ -72,20 +72,23 @@ export default class WeaponManager {
 
   // 보스(고정된 사각형)를 완전히 뚫고 지나가지 않도록 후보 좌표 (x,y)를 보정.
   // 방망이는 사각 프레임이 아니라 실제 대각선 실루엣(캡슐) 기준으로, 나머지는 사각 히트박스 기준으로 판정한다.
-  // 방망이는 몸통 전용 사각형(Boss.bodyWidth/Height, 여백 제외)을 써서 상태 표시가 뜬 여백까지
-  // 뚫지 못하는 벽처럼 취급하지 않는다 — 그 자리는 원래 빈 캔버스라 막을 이유가 없다.
+  // 어느 쪽이든 몸통 전용 사각형(Boss.bodyWidth/Height, 여백 제외)을 써서 상태 표시가 뜬 여백까지
+  // 뚫지 못하는 벽처럼 취급하지 않는다 — 그 자리는 원래 빈 캔버스라 막을 이유가 없다. 이걸 캔버스
+  // 전체(this.boss.sprite) 기준으로 하면 위/왼쪽 여백에서 무기가 진짜 몸통까지 다가가지도 못해서
+  // (STATIC/THROW 아이콘) 정작 데미지 판정(getHitRect, 몸통 기준)엔 절대 안 닿는 문제가 있었다.
   resolveAgainstBoss(weapon, x, y) {
-    const boss = this.boss.sprite;
+    const bossCenterX = this.boss.bodyCenterX;
+    const bossCenterY = this.boss.bodyCenterY;
+    const bossHalfW = this.boss.bodyWidth / 2;
+    const bossHalfH = this.boss.bodyHeight / 2;
+
     if (weapon.category === WEAPON_CATEGORIES.PORTABLE) {
-      const bossHalfW = this.boss.bodyWidth / 2;
-      const bossHalfH = this.boss.bodyHeight / 2;
-      const bossCenterX = this.boss.bodyCenterX;
-      const bossCenterY = this.boss.bodyCenterY;
       const { x1, y1, x2, y2, radius } = this.getBatAxis({ x, y });
       const pushed = pushRectOutOfCapsule(bossCenterX, bossCenterY, bossHalfW, bossHalfH, x1, y1, x2, y2, radius, CONTACT_OVERLAP);
       return { x: x - (pushed.x - bossCenterX), y: y - (pushed.y - bossCenterY) };
     }
-    return this.resolveOverlap(x, y, weapon.displayWidth / 2, weapon.displayHeight / 2, boss);
+    const bossBody = { x: bossCenterX, y: bossCenterY, displayWidth: bossHalfW * 2, displayHeight: bossHalfH * 2 };
+    return this.resolveOverlap(x, y, weapon.displayWidth / 2, weapon.displayHeight / 2, bossBody);
   }
 
   // 보스가 폭(90)보다 높이(70)가 짧은 비정사각형이라 x/y를 같은 half값으로 계산하면
@@ -170,6 +173,14 @@ export default class WeaponManager {
     return capsuleIntersectsRect(
       projectile.x, projectile.y, projectile.x, projectile.y, THROW_PROJECTILE_HIT_RADIUS, this.boss.getHitRect(),
     );
+  }
+
+  // 전기충격기처럼 대각선/원이 아니라 그냥 네모난 휴대형 무기(STATIC)는 방망이 캡슐도, 투사체 원도
+  // 안 맞아서 자기 표시 영역(getBounds) 그대로 사각-사각 겹침만 본다.
+  rectOverlapsBoss(weapon) {
+    const boss = this.boss.getHitRect();
+    const bounds = weapon.getBounds();
+    return bounds.x < boss.right && bounds.right > boss.x && bounds.y < boss.bottom && bounds.bottom > boss.y;
   }
 
   startFiring(launcher) {
@@ -290,6 +301,7 @@ export default class WeaponManager {
     }
     return dealers.filter((weapon) => {
       if (weapon.category === WEAPON_CATEGORIES.PORTABLE) return this.batOverlapsBoss(weapon);
+      if (weapon.category === WEAPON_CATEGORIES.STATIC) return this.rectOverlapsBoss(weapon);
       return this.projectileOverlapsBoss(weapon);
     });
   }

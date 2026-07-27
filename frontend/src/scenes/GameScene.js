@@ -9,6 +9,7 @@ import {
   BOSS_TYPES,
   HIT_SPARK_DURATION,
   HIT_SPARK_COLOR,
+  WEAPON_IDS,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -47,7 +48,12 @@ export default class GameScene extends Phaser.Scene {
       onBossSelect: (bossTypeId) => this.onBossSelect(bossTypeId),
     });
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
-    this.weaponManager = new WeaponManager(this, this.boss, (weapon) => this.combat.handleHit(weapon));
+    this.combat.onPet = (amount, point) => this.onPet(amount, point);
+    // 쓰다듬는 손(HAND)은 데미지가 아니라 힐링이라 combat.handleHit이 아니라 handlePet으로 따로 보낸다.
+    this.weaponManager = new WeaponManager(this, this.boss, (weapon) => {
+      if (weapon.weaponId === WEAPON_IDS.HAND) this.combat.handlePet(weapon);
+      else this.combat.handleHit(weapon);
+    });
     this.combat.weaponManager = this.weaponManager;
 
     // 보스는 무기를 고른 뒤에도 항상 드래그로 옮길 수 있다 — 보스 위를 직접 누르면 드래그가 우선.
@@ -165,17 +171,51 @@ export default class GameScene extends Phaser.Scene {
     if (hits.length > 0) {
       const hitX = hits.reduce((sum, hit) => sum + hit.x, 0) / hits.length;
       const hitY = hits.reduce((sum, hit) => sum + hit.y, 0) / hits.length;
+      // 전기충격기에 맞았으면 흰색 대신 시안색으로 살짝 다르게 번쩍여서 "감전됐다"는 느낌을 준다.
+      const isTaserHit = hits.some((hit) => hit.weaponId === WEAPON_IDS.TASER);
       this.boss.knockback(hitX, hitY);
-      this.boss.flash(0xffffff);
+      this.boss.flash(isTaserHit ? 0x66e0ff : 0xffffff);
       this.boss.registerHits(hits.length);
       this.boss.showHurtFace();
       hits.forEach((hit) => {
         this.spawnDamagePopup(hit);
-        this.spawnHitSpark(hit.x, hit.y);
+        if (hit.weaponId === WEAPON_IDS.TASER) this.spawnElectrocuteEffect();
+        else this.spawnHitSpark(hit.x, hit.y);
       });
     }
     if (defeated) {
       this.spawnDefeatPopup(deathPosition);
+    }
+  }
+
+  // 쓰다듬기(힐링) 반응. 공격 반응(넉백/피격 표정/스파크)은 전혀 안 건드리고, 부드러운 분홍 틴트 +
+  // 회복량 팝업 + 하트 몇 개만 띄운다 — 때리는 것과 확실히 다른 느낌을 주려는 의도.
+  onPet(amount, { x, y }) {
+    this.hud.updateHpBar(this.boss);
+    this.boss.flash(0xffb6d9);
+    this.boss.showHappyFace();
+    this.spawnDamagePopup({ amount: `+${amount}`, x, y, color: '#ff8fc7' });
+    this.spawnHeartBurst(x, y);
+  }
+
+  // 손으로 쓰다듬을 때 위로 둥실 떠오르며 사라지는 하트 몇 개.
+  spawnHeartBurst(x, y) {
+    const heartCount = 3;
+    for (let i = 0; i < heartCount; i += 1) {
+      const heart = this.add.text(x + Phaser.Math.Between(-14, 14), y + Phaser.Math.Between(-6, 6), '♥', {
+        fontSize: `${Phaser.Math.Between(14, 20)}px`,
+        color: '#ff8fc7',
+      }).setOrigin(0.5).setDepth(1000);
+
+      this.tweens.add({
+        targets: heart,
+        y: heart.y - Phaser.Math.Between(30, 45),
+        alpha: 0,
+        duration: 500,
+        delay: i * 60,
+        ease: 'Cubic.easeOut',
+        onComplete: () => heart.destroy(),
+      });
     }
   }
 
@@ -248,6 +288,41 @@ export default class GameScene extends Phaser.Scene {
         },
       });
     }
+  }
+
+  // 전기충격기 전용 "감전" 이펙트. 짧은 스파크 대신 보스 몸통(getHitRect)을 위에서 아래로 가로지르는
+  // 길고 삐죽삐죽한 번개 줄기로 그려서 실제로 전류가 몸을 관통하는 느낌을 준다. 여러 조각이 따로
+  // 깜빡이던 이전 버전은 산만했어서, 그래픽스 객체 하나에 한 번에 그리고 통째로 한 번만 페이드아웃한다.
+  // Boss.flash의 시안색 틴트와 같이 쓰인다.
+  spawnElectrocuteEffect() {
+    const bodyRect = this.boss.getHitRect();
+    const graphics = this.add.graphics().setDepth(1000);
+    graphics.lineStyle(2, 0xaeefff, 1);
+
+    const boltCount = 3;
+    const segments = 6;
+    for (let i = 0; i < boltCount; i += 1) {
+      const startX = Phaser.Math.Between(bodyRect.x, bodyRect.right);
+      const endX = Phaser.Math.Between(bodyRect.x, bodyRect.right);
+
+      graphics.beginPath();
+      graphics.moveTo(startX, bodyRect.y);
+      for (let s = 1; s <= segments; s += 1) {
+        const t = s / segments;
+        const px = Phaser.Math.Linear(startX, endX, t) + (s === segments ? 0 : Phaser.Math.Between(-9, 9));
+        const py = Phaser.Math.Linear(bodyRect.y, bodyRect.bottom, t);
+        graphics.lineTo(px, py);
+      }
+      graphics.strokePath();
+    }
+
+    this.tweens.add({
+      targets: graphics,
+      alpha: 0,
+      duration: 220,
+      ease: 'Cubic.easeOut',
+      onComplete: () => graphics.destroy(),
+    });
   }
 
   spawnDamagePopup({ amount, x, y, color = '#ffffff' }) {

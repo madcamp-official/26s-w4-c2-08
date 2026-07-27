@@ -7,6 +7,9 @@ export const BACKGROUND_STYLE = 'matrix';
 export const HIT_COOLDOWN = 300; // ms
 export const BASE_DAMAGE_MIN = 5;
 export const BASE_DAMAGE_MAX = 15;
+export const PET_COOLDOWN = 500; // ms, 쓰다듬기(힐링)는 공격보다 조금 여유 있게
+export const HEAL_MIN = 20;
+export const HEAL_MAX = 40;
 export const HP_BAR_WIDTH = 200;
 export const HP_BAR_X = 400; // 보스와 같은 x(화면 중앙)를 유지
 export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바를 화면 아래에 두는 보스전 UI 컨벤션
@@ -32,9 +35,12 @@ export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 �
 export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 
 // 무기 동작 방식 — 배경 선택 패널과 같은 방식으로 Hud의 무기 패널에서 종류를 직접 고른다.
-// PORTABLE(휴대형)은 들고 부딪혀서 데미지, THROW(투척형)는 들고 있는 동안 자동으로 연사한다.
+// PORTABLE(휴대형)은 방망이 전용 대각선 캡슐 판정으로 들고 부딪혀서 데미지 — WeaponManager의
+// getBatAxis/batOverlapsBoss가 BAT_DIMENSIONS를 그대로 쓰기 때문에 방망이 말고 다른 모양에는 안 맞다.
+// STATIC은 그냥 사각 판정으로 들고 부딪히는 무기(전기충격기 등), THROW는 들고 있는 동안 자동 연사.
 export const WEAPON_CATEGORIES = {
   PORTABLE: 'portable',
+  STATIC: 'static',
   THROW: 'throw',
 };
 
@@ -44,7 +50,12 @@ export const WEAPON_IDS = {
   BAT: 'bat',
   BALL: 'ball',
   DART: 'dart',
+  TASER: 'taser',
+  HAND: 'hand',
 };
+
+export const TASER_WEAPON_SIZE = 70; // 전기충격기 텍스처 크기 — 방망이보다 작은 소형 휴대 도구
+export const HAND_WEAPON_SIZE = 70; // 쓰다듬는 손 텍스처 크기
 
 // 다트 색 조합 — 실제로 여러 발 던지면 같은 색만 반복돼 단조로우니, 발사할 때마다 이 중 하나를
 // 랜덤으로 골라서 쓴다(WeaponManager.fireProjectile). 순서대로 텍스처 키가 weapon_dart_projectile_0, _1 ...로
@@ -79,6 +90,10 @@ export const WEAPON_DEFINITIONS = {
     stickOnHit: true,
     fireSound: 'dart_throw',
   },
+  [WEAPON_IDS.TASER]: { category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_taser' },
+  // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — CombatSystem이 이 무기는
+  // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다.
+  [WEAPON_IDS.HAND]: { category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true },
 };
 
 export const DART_STICK_DURATION = 8000; // ms, 다트가 맞은 자리에 박힌 채로 남아 있다가 사라지기까지 시간
@@ -92,6 +107,10 @@ export const BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER = 2; // 패널에 부딪혀 왼�
 export const BOSS_PANEL_PUSH_POPUP_COLOR = '#ff5050'; // 패널 충돌 보너스 데미지 팝업 색 (일반 데미지와 구분)
 export const BOSS_FLASH_DURATION = 120; // ms
 export const BOSS_HURT_FACE_DURATION = 300; // ms, 피격 시 눈이 X_X로 바뀌어 있는 시간
+export const BOSS_HAPPY_FACE_DURATION = 700; // ms, 쓰다듬을 때 웃는 표정이 유지되는 시간
+export const BOSS_BLINK_DURATION = 180; // ms, 눈 감고 있는 시간
+export const BOSS_BLINK_MIN_INTERVAL = 2000; // ms, 다음 깜빡임까지 최소 대기
+export const BOSS_BLINK_MAX_INTERVAL = 5000; // ms, 다음 깜빡임까지 최대 대기
 export const HIT_SPARK_DURATION = 260; // ms, 타격 지점 스파크가 커지면서 사라지는 시간
 export const HIT_SPARK_COLOR = 0xffe066; // 일반 타격 스파크 색 (노랑)
 

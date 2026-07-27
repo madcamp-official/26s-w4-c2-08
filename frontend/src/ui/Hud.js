@@ -1,18 +1,14 @@
 import Phaser from 'phaser';
 import {
   HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY,
-  WEAPON_CATEGORIES, WEAPON_CATEGORY_LABELS, WEAPON_CATEGORY_TEXTURES,
+  WEAPON_CATEGORIES, WEAPON_CATEGORY_TEXTURES,
 } from '../config/constants.js';
-import { BACKGROUND_STYLES, BACKGROUND_LABELS } from '../config/backgrounds.js';
+import { BACKGROUND_STYLES } from '../config/backgrounds.js';
 
-const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
-  style,
-  label: BACKGROUND_LABELS[style],
-}));
+const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({ style }));
 
 const WEAPON_OPTIONS = Object.values(WEAPON_CATEGORIES).map((category) => ({
   category,
-  label: WEAPON_CATEGORY_LABELS[category],
   texture: WEAPON_CATEGORY_TEXTURES[category],
 }));
 
@@ -150,12 +146,12 @@ export default class Hud {
     const thumbW = 140;
     const thumbH = 105;
     const rowGap = 18;
-    const rowStep = thumbH + 30 + rowGap;
+    const rowStep = thumbH + rowGap;
     let y = listTop + 6;
 
     this.backgroundOptionEls = [];
 
-    BACKGROUND_OPTIONS.forEach(({ style, label }) => {
+    BACKGROUND_OPTIONS.forEach(({ style }) => {
       const cx = panelWidth / 2;
       const cy = y + thumbH / 2;
 
@@ -164,15 +160,10 @@ export default class Hud {
         .setInteractive({ useHandCursor: true });
       const border = this.scene.add.rectangle(cx, cy, thumbW + 6, thumbH + 6)
         .setStrokeStyle(3, 0xffaa00, style === currentStyle ? 1 : 0);
-      const labelText = this.scene.add.text(cx, y + thumbH + 12, label, {
-        fontSize: '12px',
-        color: '#ffffff',
-        fontFamily: UI_FONT_FAMILY,
-      }).setOrigin(0.5);
 
       thumb.on('pointerdown', () => onSelect(style));
 
-      listContainer.add([thumb, border, labelText]);
+      listContainer.add([thumb, border]);
       this.backgroundOptionEls.push({ style, border });
 
       y += rowStep;
@@ -259,12 +250,12 @@ export default class Hud {
     const rowGap = 26;
     const gridWidth = columns * iconSize + (columns - 1) * colGap;
     const gridStartX = (panelWidth - gridWidth) / 2;
-    const rowStep = iconSize + 28 + rowGap;
+    const rowStep = iconSize + rowGap;
     const top = 56;
 
     this.weaponOptionEls = [];
 
-    WEAPON_OPTIONS.forEach(({ category, label, texture }, index) => {
+    WEAPON_OPTIONS.forEach(({ category, texture }, index) => {
       const col = index % columns;
       const row = Math.floor(index / columns);
       const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
@@ -275,14 +266,9 @@ export default class Hud {
         .setInteractive({ useHandCursor: true });
       const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
         .setStrokeStyle(3, 0xffaa00, 0);
-      const labelText = this.scene.add.text(cx, cy + iconSize / 2 + 14, label, {
-        fontSize: '11px',
-        color: '#ffffff',
-        fontFamily: UI_FONT_FAMILY,
-      }).setOrigin(0.5);
 
       icon.on('pointerdown', () => onSelect(category));
-      container.add([icon, border, labelText]);
+      container.add([icon, border]);
       this.weaponOptionEls.push({ category, border });
     });
 

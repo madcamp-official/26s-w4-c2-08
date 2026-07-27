@@ -28,11 +28,7 @@ export const WEAPON_CATEGORIES = {
   THROW: 'throw',
 };
 
-// 무기 패널에 표시할 한글 라벨과 미리보기 텍스처 (BootScene에서 등록한 텍스처 키)
-export const WEAPON_CATEGORY_LABELS = {
-  [WEAPON_CATEGORIES.PORTABLE]: '야구 방망이',
-  [WEAPON_CATEGORIES.THROW]: '야구공',
-};
+// 무기 패널에 표시할 미리보기 텍스처 (BootScene에서 등록한 텍스처 키)
 export const WEAPON_CATEGORY_TEXTURES = {
   [WEAPON_CATEGORIES.PORTABLE]: 'weapon_portable',
   [WEAPON_CATEGORIES.THROW]: 'weapon_throw',

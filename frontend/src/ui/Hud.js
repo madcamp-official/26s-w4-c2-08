@@ -5,14 +5,41 @@ import {
 } from '../config/constants.js';
 import { BACKGROUND_STYLES } from '../config/backgrounds.js';
 
-const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({ style }));
+// 배경 스타일(backgrounds.js)에는 표시용 이름이 없어서 패널 라벨용으로 여기서만 따로 붙인다.
+const BACKGROUND_STYLE_LABELS = {
+  [BACKGROUND_STYLES.CLASSIC]: 'CLASSIC',
+  [BACKGROUND_STYLES.DIFF]: 'DIFF',
+  [BACKGROUND_STYLES.MATRIX]: 'MATRIX',
+  [BACKGROUND_STYLES.ERROR]: 'ERROR',
+};
 
-// 무기 패널에 뜨는 개별 무기 목록(방망이/야구공/다트 등) — WEAPON_DEFINITIONS(constants.js)에 새 무기를
-// 추가하면 여기 코드 변경 없이 패널에 자동으로 한 칸 더 생긴다 (createWeaponPanel의 grid가 개수에 맞춰 줄바꿈).
-const WEAPON_OPTIONS = Object.entries(WEAPON_DEFINITIONS).map(([id, { texture }]) => ({
+// WEAPON/AGENT/MAP 세 탭이 전부 같은 격자(createGridTabContent)를 쓰므로, 각 목록을
+// {id, name, texture} 모양으로 미리 맞춰둔다 — 항목을 추가/변경해도 Hud 쪽 그리드 코드는 그대로다.
+const WEAPON_OPTIONS = Object.entries(WEAPON_DEFINITIONS).map(([id, { texture, name }]) => ({
   id,
+  name,
   texture,
 }));
+const BOSS_OPTIONS = BOSS_TYPES.map(({ id, name }) => ({ id, name, texture: `boss_${id}_d0` }));
+const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
+  id: style,
+  name: BACKGROUND_STYLE_LABELS[style],
+  texture: `battleBackground_${style}`,
+}));
+
+// 예전엔 무기/보스/배경이 각자 슬라이드 패널이었고 서로 겹치지 않게 열고 닫는 로직만 따로 맞춰줬는데,
+// 지금은 패널 하나(sidePanel)를 공유하고 상단 텍스트 탭으로 내용만 바꿔 끼운다.
+// "보스"는 게임 이름(Hit the Agent)에 맞춰 AGENT로, 배경은 MAP으로 표기한다.
+const TAB_ORDER = ['weapon', 'boss', 'background'];
+const TAB_LABELS = { weapon: 'WEAPON', boss: 'AGENT', background: 'MAP' };
+
+// 패널 안 선택/활성 상태를 나타내는 액센트 색. 라임 계열 형광 그린(기존보다 밝게).
+const PANEL_ACCENT = 0x99ff33;
+const PANEL_ACCENT_CSS = '#99ff33';
+// 패널을 헤더(탭 바)/본문 두 톤으로 살짝 나눠 깊이감을 준다. 무채색 회색 계열로 되돌림.
+const PANEL_BG = 0x1e1e1e;
+const PANEL_HEADER_BG = 0x161616;
+const PANEL_CONTENT_BG = 0x242424;
 
 export default class Hud {
   constructor(scene, {
@@ -33,95 +60,135 @@ export default class Hud {
     this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00);
     this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
 
-    this.weaponPanelOpen = false;
-    this.drawButton = this.createDrawButton(() => this.toggleWeaponPanel());
-    this.weaponPanel = this.createWeaponPanel((weaponId) => {
-      if (onWeaponSelect) onWeaponSelect(weaponId);
-      this.setActiveWeaponOption(weaponId);
-      this.toggleWeaponPanel(false);
+    this.panelOpen = false;
+    this.activeTab = 'weapon';
+
+    this.settingsButton = this.createSettingsButton(() => this.togglePanel());
+
+    this.sidePanel = this.createSidePanel({
+      currentBossTypeId: currentBossType,
+      currentBackgroundStyle,
+      onWeaponSelect: (weaponId) => {
+        if (onWeaponSelect) onWeaponSelect(weaponId);
+        this.setActiveWeaponOption(weaponId);
+        this.togglePanel(false);
+      },
+      onBossSelect: (bossTypeId) => {
+        if (onBossSelect) onBossSelect(bossTypeId);
+        this.setActiveBossOption(bossTypeId);
+        this.togglePanel(false);
+      },
+      onBackgroundSelect: (style) => {
+        if (onBackgroundSelect) onBackgroundSelect(style);
+        this.setActiveBackgroundOption(style);
+        this.togglePanel(false);
+      },
     });
 
-    this.bossPanelOpen = false;
-    this.bossButton = this.createBossButton(() => this.toggleBossPanel());
-    this.bossPanel = this.createBossPanel(currentBossType, (bossTypeId) => {
-      if (onBossSelect) onBossSelect(bossTypeId);
-      this.setActiveBossOption(bossTypeId);
-      this.toggleBossPanel(false);
-    });
-
-    this.backgroundPanelOpen = false;
-    this.backgroundButton = this.createBackgroundButton(() => this.toggleBackgroundPanel());
-    this.backgroundPanel = this.createBackgroundPanel(currentBackgroundStyle, (style) => {
-      if (onBackgroundSelect) onBackgroundSelect(style);
-      this.setActiveBackgroundOption(style);
-      this.toggleBackgroundPanel(false);
-    });
     this.endButton = this.createEndButton(onEndButtonClick);
   }
 
-  // 무기 패널이나 배경 패널(열려있을 때), 상단 버튼들 위 클릭인지 판단. 필드 클릭(무기를 들어 보이기)과
-  // UI 클릭을 구분하는 데 쓴다.
-  // Phaser 자체 히트테스트를 쓰는 이유: 패널 아이콘의 pointerdown(onSelect)이 먼저 실행되며 toggleWeaponPanel(false)로
-  // weaponPanelOpen을 그 자리에서 바로 false로 바꿔버리기 때문에, 같은 클릭을 뒤이어 처리하는 씬 레벨 pointerdown에서
-  // weaponPanelOpen 값만 보면 "패널이 이미 닫혔다"고 잘못 판단해 같은 좌표에 필드 무기가 또 스폰되는 버그가 있었다.
+  // 패널이 열려있을 때, 상단 버튼들 위 클릭인지 판단. 필드 클릭(무기를 들어 보이기)과 UI 클릭을 구분하는 데 쓴다.
+  // Phaser 자체 히트테스트를 쓰는 이유: 탭/옵션의 pointerdown이 먼저 실행되며 그 자리에서 바로 panelOpen을
+  // 바꿔버리기 때문에, 같은 클릭을 뒤이어 처리하는 씬 레벨 pointerdown에서 panelOpen 값만 보면 "패널이 이미
+  // 닫혔다"고 잘못 판단해 같은 좌표에 필드 무기가 또 스폰되는 버그가 있었다.
   // hitTestPointer는 그 순간 실제로 그 자리에 있는 인터랙티브 오브젝트를 다시 계산하므로 이 타이밍 문제가 없다.
   isPointerOnUI(pointer) {
     return this.scene.input.hitTestPointer(pointer).length > 0;
   }
 
-  // 무기/보스/배경 패널 중 지금 열려 있는(슬라이드된) 패널이 있으면 그 왼쪽 경계 x를 반환. 다 닫혀 있으면 null.
+  // 패널이 열려 있으면(슬라이드된 상태) 그 왼쪽 경계 x를 반환. 닫혀 있으면 null.
   // GameScene이 매 프레임 이 경계를 보스와 겹치는지 검사해 패널에 부딪혔는지 판단하는 데 쓴다.
   getOpenPanelBoundaryX() {
-    if (this.weaponPanelOpen) return this.weaponPanel.openX;
-    if (this.bossPanelOpen) return this.bossPanel.openX;
-    if (this.backgroundPanelOpen) return this.backgroundPanel.openX;
-    return null;
+    return this.panelOpen ? this.sidePanel.openX : null;
   }
 
-  // 체력바와 같은 y, 화면 오른쪽 끝에 배치
+  // 체력바 근처, 화면 오른쪽 끝에 배치 — 톱니바퀴 버튼과 같은 x축(오른쪽 끝)이라 그 아래쪽에 놓인다.
+  // 아이콘은 public/icons/log-out.svg(검은색 선 아이콘)를 BootScene에서 'icon_logout' 텍스처로 미리 로드해 둔 것 —
+  // 원래 색(검정)은 빨강 배경 위에서 잘 안 보여서 흰색으로 tint한다.
   createEndButton(onClick) {
     const size = 40;
     const x = this.scene.scale.width - size / 2 - 16;
-    const y = HP_BAR_Y - 10;
+    const y = HP_BAR_Y + 15;
 
-    return this.createPillButton(x, y, size, 0x883333, '✕', onClick);
+    // 톱니바퀴 버튼(위쪽, PANEL_ACCENT처럼 채도 높은 색)과 나란히 있을 때 칙칙해 보이지 않도록
+    // 어두운 톤(0x883333) 대신 채도를 끌어올린 선명한 빨강을 쓴다.
+    const bg = this.createPillBackground(x, y, size, 0xff3b3b, onClick);
+    const icon = this.scene.add.image(x, y, 'icon_logout').setDisplaySize(20, 20).setTint(0xffffff);
+
+    return { bg, icon };
   }
 
-  // 아이콘만 담은 둥근 버튼. Weapon/Exit 버튼이 공유하는 스타일
-  createPillButton(x, y, size, bgColor, iconChar, onClick) {
-    const width = size;
-    const height = size;
-    const radius = height / 2;
+  // 둥근 배경 + 히트 영역만 만드는 하부 헬퍼. 아이콘(텍스트/이미지)은 호출부가 알아서 얹는다.
+  createPillBackground(x, y, size, bgColor, onClick) {
+    const radius = size / 2;
 
     const bg = this.scene.add.graphics();
     bg.fillStyle(bgColor, 1);
-    bg.fillRoundedRect(x - width / 2, y - height / 2, width, height, radius);
+    bg.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
 
-    const label = this.scene.add.text(x, y, iconChar, {
-      fontSize: '22px',
-      color: '#ffffff',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
-
-    const hitArea = new Phaser.Geom.Rectangle(x - width / 2, y - height / 2, width, height);
+    const hitArea = new Phaser.Geom.Rectangle(x - size / 2, y - size / 2, size, size);
     bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     if (onClick) bg.on('pointerdown', onClick);
 
-    return { bg, label };
+    return bg;
   }
 
-  // 뽑기(무기) 버튼 오른쪽, 화면 가장자리에 붙는 배경 변경 버튼
-  createBackgroundButton(onClick) {
+  // 무기/보스/배경 패널을 여는 유일한 진입점. 화면 오른쪽 가장자리에 붙는 톱니바퀴(설정) 버튼.
+  // 아이콘은 public/icons/settings.svg(검은색 선 아이콘)를 BootScene에서 'icon_gear' 텍스처로 미리 로드해 둔 것.
+  // 배경은 패널이 열렸을 때(활성 탭) 쓰는 액센트 색과 동일하게 맞춘다 — 밝은 색이라 검은 아이콘도 잘 보인다.
+  createSettingsButton(onClick) {
     const size = 40;
     const x = this.scene.scale.width - size / 2 - 16;
     const y = TOP_HUD_Y;
 
-    return this.createPillButton(x, y, size, 0x1f8a3d, '🗂️', onClick);
+    const bg = this.createPillBackground(x, y, size, PANEL_ACCENT, onClick);
+    const icon = this.scene.add.image(x, y, 'icon_gear').setDisplaySize(22, 22);
+
+    return { bg, icon };
   }
 
-  // 화면 오른쪽 바깥에 미리 만들어두고, 열릴 때 왼쪽으로 슬라이드시키는 배경 선택 패널
-  createBackgroundPanel(currentStyle, onSelect) {
-    const panelWidth = 200;
+  // 패널 왼쪽 가장자리(로컬 x=0)에서 게임 화면 쪽으로 튀어나오는 닫기 손잡이.
+  // 로컬 좌표가 음수(-handleWidth~0)라서 패널 bg 바깥, 화면이 보이는 쪽에 걸쳐 그려진다.
+  createPanelHandle(panelHeight) {
+    const handleWidth = 30;
+    const handleHeight = 36;
+    const y = panelHeight / 5;
+
+    // 손잡이가 걸치는 y 위치(panelHeight/5)는 헤더(0~40px)를 지난 본문 영역이라 PANEL_CONTENT_BG와 맞춘다.
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(PANEL_CONTENT_BG, 0.96);
+    bg.fillRoundedRect(-handleWidth, y - handleHeight / 2, handleWidth, handleHeight, {
+      tl: 12, bl: 12, tr: 0, br: 0,
+    });
+
+    // 패널을 오른쪽(화면 바깥)으로 밀어 닫는다는 방향성을 나타내는 오른쪽 화살표.
+    // 색은 탭 선택 액센트와 맞춰서 "지금 열려있는 패널"과 시각적으로 묶어준다.
+    const icon = this.scene.add.text(-handleWidth / 2, y, '▶', {
+      fontSize: '14px',
+      color: PANEL_ACCENT_CSS,
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5);
+
+    const hitArea = new Phaser.Geom.Rectangle(-handleWidth, y - handleHeight / 2, handleWidth, handleHeight);
+    bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
+    bg.on('pointerdown', () => this.togglePanel(false));
+
+    // 패널이 닫힌 위치(startX)에 있어도 손잡이가 자체 너비만큼 화면 오른쪽 끝을 넘어와 살짝 보이던 문제가 있어,
+    // 위치가 아니라 panelOpen 상태로 직접 보이기/숨기기를 맞춘다 (초기 상태는 닫힘이므로 숨김).
+    bg.setVisible(false);
+    icon.setVisible(false);
+
+    return { bg, icon };
+  }
+
+  // 화면 오른쪽 바깥에 미리 만들어두고, 열릴 때 왼쪽으로 슬라이드시키는 단일 패널.
+  // 예전엔 무기/보스/배경이 각각 자기만의 컨테이너를 슬라이드시켰지만, 지금은 이 컨테이너 하나를 공유하고
+  // 상단 탭 바로 활성 탭(내용물 컨테이너)만 보이거나 숨겨서 바꿔 끼운다.
+  createSidePanel({
+    currentBossTypeId, currentBackgroundStyle, onWeaponSelect, onBossSelect, onBackgroundSelect,
+  }) {
+    const panelWidth = 220;
     const height = this.scene.scale.height;
     // 닫힌 상태에서 패널 테두리(stroke)가 화면 오른쪽 끝에 1px씩 비쳐 보이는 것을 막기 위해
     // 캔버스 경계보다 여유 있게 더 바깥에서 시작한다.
@@ -130,147 +197,115 @@ export default class Hud {
 
     const container = this.scene.add.container(startX, 0).setDepth(1000);
 
-    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
+    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, PANEL_BG, 0.96)
       .setOrigin(0, 0)
       .setInteractive();
     container.add(bg);
 
-    const title = this.scene.add.text(panelWidth / 2, 22, 'BACKGROUND', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
-    container.add(title);
+    // 헤더(탭 바)와 본문을 톤 두 단계로 나눠 패널에 단조롭지 않은 깊이감을 준다
+    const headerHeight = 40;
+    const header = this.scene.add.rectangle(0, 0, panelWidth, headerHeight, PANEL_HEADER_BG)
+      .setOrigin(0, 0);
+    container.add(header);
+    const contentBg = this.scene.add.rectangle(0, headerHeight, panelWidth, height - headerHeight, PANEL_CONTENT_BG)
+      .setOrigin(0, 0);
+    container.add(contentBg);
 
-    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    closeButton.on('pointerdown', () => this.toggleBackgroundPanel(false));
-    container.add(closeButton);
+    // 탭 바: WEAPON / AGENT(보스) / MAP(배경) 세 칸을 균등하게 나눠 텍스트 탭으로 표시
+    const tabW = panelWidth / TAB_ORDER.length;
+    const tabY = 20;
 
-    // 목록 영역: 항목이 많아 화면 높이를 넘어가면 이 안에서만 위아래로 스크롤한다
-    const listTop = 50;
-    const listBottom = height - 10;
-    const listContainer = this.scene.add.container(0, 0);
-    container.add(listContainer);
-
-    const thumbW = 140;
-    const thumbH = 105;
-    const rowGap = 18;
-    const rowStep = thumbH + rowGap;
-    let y = listTop + 6;
-
-    this.backgroundOptionEls = [];
-
-    BACKGROUND_OPTIONS.forEach(({ style }) => {
-      const cx = panelWidth / 2;
-      const cy = y + thumbH / 2;
-
-      const thumb = this.scene.add.image(cx, cy, `battleBackground_${style}`)
-        .setDisplaySize(thumbW, thumbH)
+    this.tabEls = {};
+    TAB_ORDER.forEach((tab, index) => {
+      const cx = tabW * index + tabW / 2;
+      const highlight = this.scene.add.rectangle(cx, tabY, tabW - 4, 30, PANEL_ACCENT, 0)
         .setInteractive({ useHandCursor: true });
-      const border = this.scene.add.rectangle(cx, cy, thumbW + 6, thumbH + 6)
-        .setStrokeStyle(3, 0xffaa00, style === currentStyle ? 1 : 0);
-
-      thumb.on('pointerdown', () => onSelect(style));
-
-      listContainer.add([thumb, border]);
-      this.backgroundOptionEls.push({ style, border });
-
-      y += rowStep;
+      const label = this.scene.add.text(cx, tabY, TAB_LABELS[tab], {
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#ffffff',
+        fontFamily: UI_FONT_FAMILY,
+      }).setOrigin(0.5);
+      highlight.on('pointerdown', () => this.setActiveTab(tab));
+      container.add([highlight, label]);
+      this.tabEls[tab] = { highlight, label };
     });
 
-    const contentHeight = BACKGROUND_OPTIONS.length * rowStep - rowGap + listTop;
-    const visibleHeight = listBottom - listTop;
-    const maxScroll = Math.max(0, contentHeight - visibleHeight);
+    const divider = this.scene.add.rectangle(0, headerHeight, panelWidth, 2, PANEL_ACCENT, 0.5).setOrigin(0, 0.5);
+    container.add(divider);
 
-    // 목록이 listTop 위(타이틀/닫기 버튼 영역)로 스크롤되어 겹쳐 보이지 않도록 마스크로 잘라낸다.
-    // 마스크 도형은 화면에 그려지지 않고(make.graphics는 displayList에 추가 안 됨) 슬라이드 tween 때 container와 같이 움직인다.
-    const maskShape = this.scene.make.graphics({ x: startX, y: 0 });
-    maskShape.fillStyle(0xffffff);
-    maskShape.fillRect(0, listTop, panelWidth, visibleHeight);
-    listContainer.setMask(maskShape.createGeometryMask());
+    // 닫기(X)는 탭 바 안이 아니라 패널 왼쪽 바깥으로 튀어나온 별도 손잡이 버튼으로 뺀다.
+    // container의 자식이라 패널 슬라이드 tween을 따로 안 붙여도 패널과 같이 움직인다.
+    const handle = this.createPanelHandle(height);
+    container.add([handle.bg, handle.icon]);
 
-    this.scene.input.on('wheel', (pointer, _over, _dx, dy) => {
-      if (!this.backgroundPanelOpen) return;
-      if (pointer.x < this.backgroundPanel.openX) return;
-      const next = Phaser.Math.Clamp(listContainer.y - dy * 0.5, -maxScroll, 0);
-      listContainer.y = next;
-    });
+    const weaponContent = this.createWeaponTabContent(panelWidth, onWeaponSelect);
+    const bossContent = this.createBossTabContent(panelWidth, currentBossTypeId, onBossSelect);
+    const backgroundContent = this.createBackgroundTabContent(panelWidth, currentBackgroundStyle, onBackgroundSelect);
+    container.add([weaponContent.container, bossContent.container, backgroundContent.container]);
 
-    return { container, listContainer, maskShape, openX, startX, maxScroll };
+    this.tabContents = { weapon: weaponContent, boss: bossContent, background: backgroundContent };
+    this.setActiveTab('weapon');
+
+    return {
+      container, openX, startX, handle,
+    };
   }
 
-  toggleBackgroundPanel(forceOpen) {
-    const shouldOpen = forceOpen === undefined ? !this.backgroundPanelOpen : forceOpen;
-    if (shouldOpen === this.backgroundPanelOpen) return;
-    this.backgroundPanelOpen = shouldOpen;
-    if (shouldOpen) this.toggleBossPanel(false);
+  setActiveTab(tab) {
+    this.activeTab = tab;
+    Object.entries(this.tabEls).forEach(([key, { highlight, label }]) => {
+      const isActive = key === tab;
+      // 활성 탭은 액센트로 꽉 채워서 그 위 글자를 검정으로, 나머지는 흰 글자로 대비를 준다.
+      highlight.setFillStyle(PANEL_ACCENT, isActive ? 1 : 0);
+      label.setColor(isActive ? '#000000' : '#ffffff');
+    });
+    Object.entries(this.tabContents).forEach(([key, content]) => {
+      content.container.setVisible(key === tab);
+    });
+  }
 
-    if (shouldOpen) this.toggleWeaponPanel(false); // 두 슬라이드 패널이 같은 자리에서 겹치지 않도록
+  togglePanel(forceOpen) {
+    const shouldOpen = forceOpen === undefined ? !this.panelOpen : forceOpen;
+    if (shouldOpen === this.panelOpen) return;
+    this.panelOpen = shouldOpen;
 
-    const { container, maskShape, openX, startX } = this.backgroundPanel;
+    // 손잡이(X)는 패널이 열렸을 때만, 톱니바퀴 버튼은 반대로 패널이 닫혔을 때만 보인다 —
+    // 열려있는 동안 톱니바퀴가 패널 반투명 배경 뒤로 희미하게 비쳐 보이던 문제를 막는다.
+    this.sidePanel.handle.bg.setVisible(shouldOpen);
+    this.sidePanel.handle.icon.setVisible(shouldOpen);
+    this.settingsButton.bg.setVisible(!shouldOpen);
+    this.settingsButton.icon.setVisible(!shouldOpen);
+
+    const { container, openX, startX } = this.sidePanel;
     this.scene.tweens.add({
-      targets: [container, maskShape],
+      targets: container,
       x: shouldOpen ? openX : startX,
       duration: 280,
       ease: 'Cubic.easeOut',
     });
   }
 
-  setActiveBackgroundOption(style) {
-    this.backgroundOptionEls.forEach(({ style: s, border }) => {
-      border.setStrokeStyle(3, 0xffaa00, s === style ? 1 : 0);
-    });
-  }
-
-  // 배경 패널과 같은 자리(화면 오른쪽)에서 슬라이드되는 무기 카테고리 패널.
-  // 무기는 배경처럼 "현재 상태"가 없는 일회성 뽑기라 스크롤/선택 테두리는 필요 없다 — 항목이 늘 화면 안에 들어온다.
-  // 한 줄에 2개씩 격자로 배치한다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
-  createWeaponPanel(onSelect) {
-    const panelWidth = 200;
-    const height = this.scene.scale.height;
-    const startX = this.scene.scale.width + 16;
-    const openX = this.scene.scale.width - panelWidth;
-
-    const container = this.scene.add.container(startX, 0).setDepth(1000);
-
-    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
-      .setOrigin(0, 0)
-      .setInteractive();
-    container.add(bg);
-
-    const title = this.scene.add.text(panelWidth / 2, 22, 'WEAPON', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
-    container.add(title);
-
-    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    closeButton.on('pointerdown', () => this.toggleWeaponPanel(false));
-    container.add(closeButton);
+  // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃을 쓴다: 2열, 아이콘 바로 밑에 이름,
+  // 칸 사이 여백으로 분리감을 준다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
+  // 항목 수가 적어(각 탭 4개 안팎) 세로 스크롤 없이도 패널 안에 다 들어온다.
+  createGridTabContent(panelWidth, items, currentId, onSelect) {
+    const container = this.scene.add.container(0, 0);
 
     const columns = 2;
-    const iconSize = 78;
-    const colGap = 14;
-    const rowGap = 26;
+    const iconSize = 64;
+    const colGap = 40;
+    const labelGap = 8; // 아이콘 바로 밑 이름 텍스트까지의 간격
+    const labelHeight = 14;
+    const rowGap = 26; // 칸(아이콘+이름)끼리 분리감을 주는 줄 간격
     const gridWidth = columns * iconSize + (columns - 1) * colGap;
     const gridStartX = (panelWidth - gridWidth) / 2;
-    const rowStep = iconSize + rowGap;
+    const rowStep = iconSize + labelGap + labelHeight + rowGap;
     const top = 56;
 
-    this.weaponOptionEls = [];
+    const optionEls = [];
 
-    WEAPON_OPTIONS.forEach(({ id, texture }, index) => {
+    items.forEach(({ id, name, texture }, index) => {
       const col = index % columns;
       const row = Math.floor(index / columns);
       const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
@@ -280,36 +315,55 @@ export default class Hud {
         .setDisplaySize(iconSize, iconSize)
         .setInteractive({ useHandCursor: true });
       const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
-        .setStrokeStyle(3, 0xffaa00, 0);
+        .setStrokeStyle(3, PANEL_ACCENT, id === currentId ? 1 : 0);
+      const label = this.scene.add.text(cx, cy + iconSize / 2 + labelGap, name, {
+        fontSize: '11px',
+        color: '#ffffff',
+        fontFamily: UI_FONT_FAMILY,
+        letterSpacing: 0.7,
+      }).setOrigin(0.5, 0);
 
       icon.on('pointerdown', () => onSelect(id));
-      container.add([icon, border]);
-      this.weaponOptionEls.push({ id, border });
+      container.add([icon, border, label]);
+      optionEls.push({ id, border });
     });
 
-    return { container, openX, startX };
+    return { container, optionEls };
+  }
+
+  createWeaponTabContent(panelWidth, onSelect) {
+    const { container, optionEls } = this.createGridTabContent(panelWidth, WEAPON_OPTIONS, null, onSelect);
+    this.weaponOptionEls = optionEls;
+    return { container };
   }
 
   setActiveWeaponOption(weaponId) {
     this.weaponOptionEls.forEach(({ id, border }) => {
-      border.setStrokeStyle(3, 0xffaa00, id === weaponId ? 1 : 0);
+      border.setStrokeStyle(3, PANEL_ACCENT, id === weaponId ? 1 : 0);
     });
   }
 
-  toggleWeaponPanel(forceOpen) {
-    const shouldOpen = forceOpen === undefined ? !this.weaponPanelOpen : forceOpen;
-    if (shouldOpen === this.weaponPanelOpen) return;
-    this.weaponPanelOpen = shouldOpen;
+  createBossTabContent(panelWidth, currentBossTypeId, onSelect) {
+    const { container, optionEls } = this.createGridTabContent(panelWidth, BOSS_OPTIONS, currentBossTypeId, onSelect);
+    this.bossOptionEls = optionEls;
+    return { container };
+  }
 
-    if (shouldOpen) this.toggleBackgroundPanel(false);
-    if (shouldOpen) this.toggleBossPanel(false);
+  setActiveBossOption(bossTypeId) {
+    this.bossOptionEls.forEach(({ id, border }) => {
+      border.setStrokeStyle(3, PANEL_ACCENT, id === bossTypeId ? 1 : 0);
+    });
+  }
 
-    const { container, openX, startX } = this.weaponPanel;
-    this.scene.tweens.add({
-      targets: container,
-      x: shouldOpen ? openX : startX,
-      duration: 280,
-      ease: 'Cubic.easeOut',
+  createBackgroundTabContent(panelWidth, currentStyle, onSelect) {
+    const { container, optionEls } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect);
+    this.backgroundOptionEls = optionEls;
+    return { container };
+  }
+
+  setActiveBackgroundOption(style) {
+    this.backgroundOptionEls.forEach(({ id, border }) => {
+      border.setStrokeStyle(3, PANEL_ACCENT, id === style ? 1 : 0);
     });
   }
 
@@ -347,127 +401,28 @@ export default class Hud {
     overlay.statusText.setText(text);
   }
 
+  // 게임 전체 톤(그라디언트/외곽선 없는 플랫 스타일)에 맞춰 단색 주황빛 배경 + 단색 글자로 단순하게 구성.
   createRestartButton(x, y, onClick) {
-    const width = 130;
-    const height = 44;
+    const width = 160;
+    const height = 52;
+    const radius = height / 2;
 
-    const bg = this.scene.add.rectangle(x, y, width, height, 0x3366cc);
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0xffb84d, 1);
+    bg.fillRoundedRect(x - width / 2, y - height / 2, width, height, radius);
+
     const label = this.scene.add.text(x, y, '다시하기', {
-      fontSize: '18px',
-      color: '#ffffff',
+      fontSize: '22px',
+      fontStyle: 'bold',
+      color: '#000000',
       fontFamily: UI_FONT_FAMILY,
     }).setOrigin(0.5);
 
-    bg.setInteractive({ useHandCursor: true });
+    const hitArea = new Phaser.Geom.Rectangle(x - width / 2, y - height / 2, width, height);
+    bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     if (onClick) bg.on('pointerdown', onClick);
 
     return { bg, label };
-  }
-
-  // 보스 버튼 왼쪽에 붙는 뽑기(무기) 버튼
-  createDrawButton(onClick) {
-    const size = 40;
-    const gap = 10;
-    const x = this.scene.scale.width - size * 2 - 16 - gap * 2 - size / 2;
-    const y = TOP_HUD_Y;
-
-    return this.createPillButton(x, y, size, 0xffaa00, '🗡', onClick);
-  }
-
-  // 배경 버튼 왼쪽, 뽑기 버튼 오른쪽에 붙는 보스 선택 버튼
-  createBossButton(onClick) {
-    const size = 40;
-    const gap = 10;
-    const x = this.scene.scale.width - size - 16 - gap - size / 2;
-    const y = TOP_HUD_Y;
-
-    return this.createPillButton(x, y, size, 0x8e44ad, '👹', onClick);
-  }
-
-  // 화면 오른쪽 바깥에 미리 만들어두고, 열릴 때 왼쪽으로 슬라이드시키는 보스 선택 패널
-  createBossPanel(currentBossTypeId, onSelect) {
-    const panelWidth = 200;
-    const height = this.scene.scale.height;
-    const startX = this.scene.scale.width + 16;
-    const openX = this.scene.scale.width - panelWidth;
-
-    const container = this.scene.add.container(startX, 0).setDepth(1000);
-
-    const bg = this.scene.add.rectangle(0, 0, panelWidth, height, 0x1e1e1e, 0.96)
-      .setOrigin(0, 0)
-      .setInteractive();
-    container.add(bg);
-
-    const title = this.scene.add.text(panelWidth / 2, 22, 'BOSS', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
-    container.add(title);
-
-    const closeButton = this.scene.add.text(panelWidth - 18, 20, '✕', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    closeButton.on('pointerdown', () => this.toggleBossPanel(false));
-    container.add(closeButton);
-
-    const thumbW = 140;
-    const thumbH = 90;
-    const rowGap = 14;
-    const rowStep = thumbH + 26 + rowGap;
-    let y = 50 + 6;
-
-    this.bossOptionEls = [];
-
-    BOSS_TYPES.forEach(({ id, name }) => {
-      const cx = panelWidth / 2;
-      const cy = y + thumbH / 2;
-
-      const thumb = this.scene.add.image(cx, cy, `boss_${id}_d0`)
-        .setDisplaySize(thumbW, thumbH)
-        .setInteractive({ useHandCursor: true });
-      const border = this.scene.add.rectangle(cx, cy, thumbW + 6, thumbH + 6)
-        .setStrokeStyle(3, 0xffaa00, id === currentBossTypeId ? 1 : 0);
-      const labelText = this.scene.add.text(cx, y + thumbH + 12, name, {
-        fontSize: '11px',
-        color: '#ffffff',
-        fontFamily: UI_FONT_FAMILY,
-      }).setOrigin(0.5);
-
-      thumb.on('pointerdown', () => onSelect(id));
-
-      container.add([thumb, border, labelText]);
-      this.bossOptionEls.push({ id, border });
-
-      y += rowStep;
-    });
-
-    return { container, openX, startX };
-  }
-
-  toggleBossPanel(forceOpen) {
-    const shouldOpen = forceOpen === undefined ? !this.bossPanelOpen : forceOpen;
-    if (shouldOpen === this.bossPanelOpen) return;
-    this.bossPanelOpen = shouldOpen;
-    if (shouldOpen) this.toggleBackgroundPanel(false);
-    if (shouldOpen) this.toggleWeaponPanel(false);
-
-    const { container, openX, startX } = this.bossPanel;
-    this.scene.tweens.add({
-      targets: container,
-      x: shouldOpen ? openX : startX,
-      duration: 280,
-      ease: 'Cubic.easeOut',
-    });
-  }
-
-  setActiveBossOption(bossTypeId) {
-    this.bossOptionEls.forEach(({ id, border }) => {
-      border.setStrokeStyle(3, 0xffaa00, id === bossTypeId ? 1 : 0);
-    });
   }
 
   updateHpBar(boss) {

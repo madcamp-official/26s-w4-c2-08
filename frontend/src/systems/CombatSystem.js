@@ -5,6 +5,7 @@ import {
   BASE_DAMAGE_MAX,
   BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER,
   WEAPON_CATEGORIES,
+  WEAPON_IDS,
   PET_COOLDOWN,
   HEAL_MIN,
   HEAL_MAX,
@@ -32,7 +33,10 @@ export default class CombatSystem {
 
     // HIT_COOLDOWN을 통과해 실제로 데미지 틱이 발생하는 순간에만 재생 — overlap 콜백 자체는 겹쳐있는
     // 동안 매 프레임 불려서 여기서 안 거르면 효과음이 끊임없이 겹쳐 재생된다.
-    if (triggerWeapon.category === WEAPON_CATEGORIES.PORTABLE) {
+    // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
+    const isBatOrBall = triggerWeapon.category === WEAPON_CATEGORIES.PORTABLE
+      || triggerWeapon.weaponId === WEAPON_IDS.BALL;
+    if (isBatOrBall) {
       this.scene.sound.play('bat_hit');
     } else if (triggerWeapon.category === WEAPON_CATEGORIES.STATIC) {
       this.scene.sound.play('taser_shock');

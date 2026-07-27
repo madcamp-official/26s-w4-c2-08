@@ -209,6 +209,7 @@ export default class Boss {
       onComplete: () => {
         this.sprite.setAngle(0);
         this.isPanelBounceActive = false;
+        this.scene.sound.play('hit_wall');
         onComplete?.(this.sprite.x, this.sprite.y);
       },
     });

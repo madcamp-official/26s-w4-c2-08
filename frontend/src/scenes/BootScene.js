@@ -21,9 +21,13 @@ export default class BootScene extends Phaser.Scene {
   // preload에서 등록한 로드가 끝나면 Phaser가 알아서 create()를 호출한다.
   preload() {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
-    this.load.audio('bat_hit', assetUrl('audio/bat_hit.mp3'));
+    this.load.audio('bat_hit', assetUrl('audio/hit.mp3'));
     this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
     this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
+    this.load.audio('baseball_throw', assetUrl('audio/baseball.mp3'));
+    this.load.audio('hit_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
+    this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
+    this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
 
   create() {

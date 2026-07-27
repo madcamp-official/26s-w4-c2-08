@@ -206,6 +206,8 @@ export default class WeaponManager {
       ? Phaser.Utils.Array.GetRandom(definition.projectileTextures)
       : definition.projectileTexture;
     const projectile = this.scene.physics.add.image(launcher.x, launcher.y, projectileTexture);
+    // 히트 사운드 등에서 어떤 무기가 쐈는지 구분해야 해서(CombatSystem.handleHit) launcher의 무기 종류를 그대로 옮겨둔다.
+    projectile.weaponId = launcher.weaponId;
     // 기본 물리 바디는 텍스처 전체(정사각)를 그대로 쓰는데, 그림은 둥근 이모지라 네 모서리가 비어있다.
     // Arcade의 자체 겹침 판정부터 원형으로 잡아야 실제 공 크기에 맞게 히트가 들어간다.
     projectile.body.setCircle(THROW_PROJECTILE_HIT_RADIUS, PROJECTILE_BODY_OFFSET, PROJECTILE_BODY_OFFSET);

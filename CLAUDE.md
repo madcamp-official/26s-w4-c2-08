@@ -14,7 +14,7 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. 
 
 상세 문서: [ARCHITECTURE.md](./docs/ARCHITECTURE.md), [API.md](./docs/API.md), [FRONTEND.md](./docs/FRONTEND.md), [PLAN.md](./docs/PLAN.md)
 
-**현재 상태**: `server/`(백엔드) 로직 완성, 상세는 [server/CLAUDE.md](./server/CLAUDE.md) 참고. `frontend/`(Phaser 게임)와 `extension/`(VSCode 확장) 모두 존재하며 extension ↔ webview 메시지 연동(init/setPaused/saveLocalScore), git 기반 mode 판별, 온라인 점수 제출·리더보드 조회까지 붙어 있다. 사운드만 미구현.
+**현재 상태**: `server/`(백엔드) 로직 완성, 상세는 [server/CLAUDE.md](./server/CLAUDE.md) 참고. `frontend/`(Phaser 게임)와 `extension/`(VSCode 확장) 모두 존재하며 extension ↔ webview 메시지 연동(init/saveLocalScore/agentTaunt), git 기반 mode 판별, 온라인 점수 제출·리더보드 조회까지 붙어 있다. 사운드만 미구현.
 
 ## 커맨드
 
@@ -30,16 +30,17 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. 
 ## 스택
 
 - 게임: Phaser, `vite build`로 `bundle.js` 번들링 후 webview 로드
-- 확장: VSCode Extension API (`createWebviewPanel`, git 정보 조회, 포커스 감지)
+- 확장: VSCode Extension API (`createWebviewPanel`, git 정보 조회)
 - 서버: Express + better-sqlite3 (WAL), KCLOUD VM에 systemd 상시구동
 
 ## 절대 깨면 안 되는 불변 조건
 
 - **groupId 해싱**: `sha256(repoUrl).slice(0, 12)`. extension.ts에서만 계산, 서버는 받은 값 그대로 저장/조회 — 재계산 금지. 클라이언트/서버 양쪽 알고리즘 반드시 동일해야 함.
 - **mode 판별은 extension이 함**: git remote 유무로 `local`/`online` 결정 후 `{ type: 'init', mode, groupId, userName, bestScore }`로 webview에 1회 전달. webview는 이 값을 그대로 신뢰하고 자체 판별하지 않음.
-- **pause는 scene.pause + input.enabled 둘 다**: `game.scene.pause()`만으로는 클릭이 안 막힐 수 있음. `setPaused` 처리 시 `game.input.enabled = false`도 같이 꺼야 정지 중 데미지/서버 요청 유발 안 됨.
 - **webview 리소스는 `asWebviewUri()` 경유**: webview는 `vscode-webview://` 스킴만 신뢰. CSP는 `default-src 'none'` 기준이라 `connect-src`에 VM 주소 명시 안 하면 online 모드 fetch가 조용히 실패함 (에러 안 뜨고 그냥 안 됨 — 네트워크 탭에서 CSP 위반부터 확인).
 - **서버 요청 실패해도 게임은 안 죽어야 함**: online 모드 `submitScore`/`fetchLeaderboard`는 try/catch로 감싸고 실패 시 로컬 표시로 폴백.
+- **Stop 훅은 기본 off, 마커 기반 merge/제거만**: `hitTheAgent.enableTokenWatchHook` 설정으로 켜면 `extension/src/hookManager.ts`가 워크스페이스의 `.claude/settings.local.json`(로컬 전용, gitignore 대상)에 Stop 훅 1개를 등록. 항목 식별은 커맨드 문자열에 `token-watch-hook.js` 포함 여부로 하므로, 등록/해제 시 그 마커로 걸러낸 항목만 건드리고 사용자가 넣어둔 다른 훅은 절대 손대면 안 됨. 파일 파싱 실패 시 덮어쓰지 않고 경고만.
+- **Stop 훅은 절대 block하면 안 됨**: `extension/scripts/token-watch-hook.js`는 exit code 2나 `{"decision":"block"}`을 내보내면 사용자의 실제 코딩 세션 턴이 안 끝나게 막아버림. 항상 exit 0, stdout에 아무것도 안 찍고, 예외도 전부 최상위 try/catch로 삼켜서 사용자 세션에 영향이 절대 없도록 함. `stop_hook_active`가 true면 즉시 종료(재진입 루프 방지).
 
 ## 메시지 프로토콜 (extension ↔ webview)
 
@@ -48,11 +49,10 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. 
 | 방향 | type | payload |
 |---|---|---|
 | ext → webview | `init` | `{ mode, groupId, userName, bestScore }` |
-| ext → webview | `setPaused` | `{ paused: boolean }` |
+| ext → webview | `agentTaunt` | `{ tokenCount }` |
 | webview → ext | `saveLocalScore` | `{ score }` |
 
 ## 작업 시 참고
 
 - 일정은 [PLAN.md](./docs/PLAN.md) 6일차 기준. 코드 작성 전 해당 일차 체크포인트부터 확인.
-- ⭐ 표시(PLAN.md) = 포커스 감지 기반 pause/resume, 3~5일차에 걸쳐 있으니 관련 파일 수정 시 세 문서(ARCHITECTURE/FRONTEND/PLAN) 교차 확인.
 - API 변경 시 `docs/API.md` 스키마/엔드포인트 스펙도 같이 갱신.

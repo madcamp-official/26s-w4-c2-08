@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { execFileSync } from 'child_process';
+import { syncTokenWatchHook, getStateFilePath, getProgressFilePath } from './hookManager';
 
 // KCLOUD VM 배포 주소. CSP connect-src에 없으면 online 모드 fetch가 조용히 막힌다
 // (에러가 안 뜨고 그냥 요청이 안 나감 — docs/ARCHITECTURE.md 리소스 로딩 참고).
@@ -40,20 +42,69 @@ function resolveGameContext(cwd: string): GameContext {
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
+// Stop 훅(extension/scripts/token-watch-hook.js)이 토큰 임계치 초과 시 남겨두는 1회성 이벤트를 읽어 소비한다.
+// 소비 즉시 파일을 지워 같은 이벤트가 중복 발동하지 않게 한다.
+function consumePendingTaunt(workspaceRoot: string): { tokenCount: number } | null {
+  const statePath = getStateFilePath(workspaceRoot);
+  if (!fs.existsSync(statePath)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    fs.unlinkSync(statePath);
+    if (data?.triggered) return { tokenCount: data.tokenCount ?? 0 };
+  } catch {
+    try {
+      fs.unlinkSync(statePath); // 손상된 상태 파일은 무시하고 지운다
+    } catch {
+      /* noop */
+    }
+  }
+  return null;
+}
+
 export function activate(context: vscode.ExtensionContext) {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+
+  // Stop 훅 on/off 토글: 설정값과 .claude/settings.local.json 상태를 activate 시점 + 설정 변경 시점에 동기화.
+  // 워크스페이스가 열려 있을 때만 의미가 있다 (훅은 프로젝트 로컬 파일에 등록되므로).
+  if (workspaceFolder) {
+    const workspaceRoot = workspaceFolder.uri.fsPath;
+    syncTokenWatchHook(context, workspaceRoot);
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (
+          e.affectsConfiguration('hitTheAgent.enableTokenWatchHook') ||
+          e.affectsConfiguration('hitTheAgent.tokenThreshold')
+        ) {
+          syncTokenWatchHook(context, workspaceRoot);
+        }
+      }),
+    );
+  }
+
   const disposable = vscode.commands.registerCommand('HitTheAgent.start', () => {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     const cwd = workspaceFolder?.uri.fsPath ?? process.cwd();
     const gameContext = resolveGameContext(cwd);
     console.log('[HitTheAgent] gameContext', gameContext); // 확인용 — 디버그 콘솔에서 mode/groupId 검증되면 지워도 됨
 
     // local 모드 결과 화면에서 "내 최고 기록"과 비교할 기준값. online 모드에서는 webview가 무시한다.
     const bestScore = context.globalState.get<number>('bestScore', 0);
+    const pendingTaunt = consumePendingTaunt(cwd);
 
     if (currentPanel) {
       currentPanel.reveal(vscode.ViewColumn.One);
       currentPanel.webview.postMessage({ type: 'init', ...gameContext, bestScore });
+      if (pendingTaunt) {
+        currentPanel.webview.postMessage({ type: 'agentTaunt', tokenCount: pendingTaunt.tokenCount });
+      }
       return;
+    }
+
+    // 게임을 새로 켤 때마다 이전 진행 상황(세션별 오프셋/누적 토큰)을 리셋한다 — 재실행 시 초기화는
+    // 신경 쓰지 않아도 되는 대신, 파일이 계속 안 쌓이고 항상 켠 시점부터의 토큰만 추적하게 된다.
+    try {
+      fs.unlinkSync(getProgressFilePath(cwd));
+    } catch {
+      /* 파일이 없으면 그냥 넘어간다 */
     }
 
     // vite build 산출물 위치. frontend/vite.config.js에서 entry 파일명을 bundle.js로 고정해뒀다.
@@ -72,16 +123,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     currentPanel.webview.html = getWebviewHtml(currentPanel.webview, distUri);
 
-    // ⭐ 포커스/활성 상태 감지 — 패널 생성 시점에 두 리스너 모두 등록 (docs/ARCHITECTURE.md 포커스 감지)
-    // active(실제 포커스된 탭인지)로 판단해야 한다 — visible은 터미널/채팅 패널처럼 에디터 영역
-    // 밖으로 포커스만 옮겨도 true로 남아있어서(웹뷰 탭 자체는 화면에 계속 보이므로) 감지가 안 됨.
-    const viewStateListener = currentPanel.onDidChangeViewState((e) => {
-      currentPanel?.webview.postMessage({ type: 'setPaused', paused: !e.webviewPanel.active });
-    });
-    const windowStateListener = vscode.window.onDidChangeWindowState((state) => {
-      currentPanel?.webview.postMessage({ type: 'setPaused', paused: !state.focused });
-    });
-
     // webview → extension (docs/FRONTEND.md 메시지 프로토콜): local 모드 최고점수 저장
     const messageListener = currentPanel.webview.onDidReceiveMessage((message) => {
       if (message?.type === 'saveLocalScore' && typeof message.score === 'number') {
@@ -92,11 +133,23 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
 
+    // 패널이 열려 있는 동안 상태 파일 변경(=Stop 훅 발동)을 실시간으로 감지 — 다음에 게임을 다시 켤 때까지
+    // 기다리지 않고 그 자리에서 바로 webview에 전달한다. 디렉터리가 아직 없을 수 있어 미리 만들어둔다.
+    const stateDir = path.dirname(getStateFilePath(cwd));
+    const stateFileName = path.basename(getStateFilePath(cwd));
+    fs.mkdirSync(stateDir, { recursive: true });
+    const stateWatcher = fs.watch(stateDir, (_eventType, filename) => {
+      if (filename !== stateFileName) return;
+      const taunt = consumePendingTaunt(cwd);
+      if (taunt) {
+        currentPanel?.webview.postMessage({ type: 'agentTaunt', tokenCount: taunt.tokenCount });
+      }
+    });
+
     currentPanel.onDidDispose(
       () => {
-        viewStateListener.dispose();
-        windowStateListener.dispose();
         messageListener.dispose();
+        stateWatcher.close();
         currentPanel = undefined;
       },
       null,
@@ -105,6 +158,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 웹뷰 생성 직후 1회 전달 — webview는 이 값을 그대로 신뢰하고 자체 판별하지 않는다.
     currentPanel.webview.postMessage({ type: 'init', ...gameContext, bestScore });
+    if (pendingTaunt) {
+      currentPanel.webview.postMessage({ type: 'agentTaunt', tokenCount: pendingTaunt.tokenCount });
+    }
   });
 
   context.subscriptions.push(disposable);
@@ -116,11 +172,15 @@ function getWebviewHtml(webview: vscode.Webview, distUri: vscode.Uri): string {
   // 효과음 등 정적 에셋은 이 base 뒤에 상대경로만 붙이면 되고(frontend/src/assetBase.js), 새 파일을
   // dist에 추가할 때마다 extension.ts를 매번 고칠 필요가 없다 (CLAUDE.md webview 리소스 불변 조건).
   const assetBaseUri = webview.asWebviewUri(distUri);
+  // frontend/public/fonts에 있던 파일이 vite build 시 dist/fonts로 그대로 복사된다 (Galmuri11, OFL 라이선스).
+  const fontRegularUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'fonts', 'Galmuri11.woff2'));
+  const fontBoldUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'fonts', 'Galmuri11-Bold.woff2'));
   // default-src 'none' 기준이라 나머지를 전부 명시적으로 허용해야 한다.
   const csp = [
     "default-src 'none'",
     `script-src ${webview.cspSource}`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
+    `font-src ${webview.cspSource}`,
     `connect-src ${webview.cspSource} ${VM_ORIGIN}`,
     // Phaser가 내부 기본 텍스처(__DEFAULT/__MISSING 등)를 base64 data URI로 로드한다 —
     // img-src를 안 열어두면 default-src 'none'에 막혀 조용히 실패하고 텍스처 프레임이 없어 크래시난다.
@@ -135,29 +195,26 @@ function getWebviewHtml(webview: vscode.Webview, distUri: vscode.Uri): string {
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <style>
+      @font-face {
+        font-family: 'Galmuri11';
+        font-weight: 400;
+        font-display: swap;
+        src: url('${fontRegularUri}') format('woff2');
+      }
+      @font-face {
+        font-family: 'Galmuri11';
+        font-weight: 700;
+        font-display: swap;
+        src: url('${fontBoldUri}') format('woff2');
+      }
       html, body { margin: 0; padding: 0; background: #111; }
       #game-container { display: flex; justify-content: center; }
       #game-stage { position: relative; }
-      #pause-overlay {
-        display: none;
-        position: absolute;
-        inset: 0;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.6);
-        color: #fff;
-        font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-        font-size: 20px;
-        font-weight: bold;
-        pointer-events: none;
-      }
     </style>
   </head>
   <body data-asset-base="${assetBaseUri}">
     <div id="game-container">
-      <div id="game-stage">
-        <div id="pause-overlay">일시정지</div>
-      </div>
+      <div id="game-stage"></div>
     </div>
     <script type="module" src="${bundleUri}"></script>
   </body>

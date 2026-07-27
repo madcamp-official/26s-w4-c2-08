@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import BootScene from './scenes/BootScene.js';
 import GameScene from './scenes/GameScene.js';
-import { onPause } from './vscodeBridge.js';
 
 // webview에서 devtools 콘솔에 접근하기 번거로운 경우를 위한 임시 진단 장치 —
 // 원인 확인되면 지워도 된다. 캔버스 자리에 에러 스택을 그대로 찍는다.
@@ -30,24 +29,24 @@ const config = {
   scene: [BootScene, GameScene],
 };
 
-try {
-  window.__game = new Phaser.Game(config);
-} catch (err) {
-  showFatalError(err);
+// Canvas 렌더러는 fillText 시점에 폰트가 이미 로드돼 있어야 한다 — @font-face만 선언해두면
+// 첫 프레임엔 아직 안 받아져 있어 폴백 폰트로 그려질 수 있으므로 미리 받아둔다.
+// 실패해도 UI_FONT_FAMILY의 시스템 폰트 폴백으로 게임은 정상 동작해야 하므로 그냥 무시한다.
+async function preloadFonts() {
+  try {
+    await Promise.all([
+      document.fonts.load('16px "Galmuri11"'),
+      document.fonts.load('bold 16px "Galmuri11"'),
+    ]);
+  } catch {
+    /* 폰트 로드 실패 시 시스템 폰트로 폴백 */
+  }
 }
 
-// scene.pause()만으로는 클릭 자체가 안 막힐 수 있어 input.enabled도 같이 꺼야
-// 정지 중 드래그로 데미지가 들어가거나 서버 요청이 트리거되지 않는다 (CLAUDE.md 불변 조건).
-onPause((paused) => {
-  const game = window.__game;
-  if (paused) {
-    game.scene.pause('GameScene');
-    game.input.enabled = false;
-  } else {
-    game.scene.resume('GameScene');
-    game.input.enabled = true;
+preloadFonts().finally(() => {
+  try {
+    window.__game = new Phaser.Game(config);
+  } catch (err) {
+    showFatalError(err);
   }
-
-  const overlay = document.getElementById('pause-overlay');
-  if (overlay) overlay.style.display = paused ? 'flex' : 'none';
 });

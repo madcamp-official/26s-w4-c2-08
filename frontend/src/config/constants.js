@@ -24,17 +24,36 @@ export const INITIAL_FREE_DRAWS = 1; // 필드에 무기가 하나도 없는 상
 export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact so overlap detection still fires
 export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles while holding the throw weapon
 export const THROW_PROJECTILE_SPEED = 400; // px/s
-export const STACK_DAMAGE_MULTIPLIER = 1.5; // 동일 타입 무기를 겹쳐 합칠 때마다 데미지 배율에 곱해지는 값
-export const STACK_TINT_COLOR = 0x33cc33; // 합쳐진(스택된) 무기를 표시하는 초록색
-export const TRASH_SCORE_BONUS = 5; // 쓰레기통에 무기를 버렸을 때 오르는 점수
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
+export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 — 무기 자체와 던져지는 투사체가 같은 크기를 쓴다 (기존 50에서 20% 축소)
+// 투사체는 정사각 캔버스에 그린 둥근 이모지라, 사각 히트박스 그대로 쓰면 실제 공 그림이 없는 네 모서리까지
+// 보스와의 판정에 끼어들어 히트박스가 커 보인다. 실제 그림 크기에 맞춰 원형으로 판정한다.
+export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
+
+// 무기 뽑기 카테고리 — 배경 선택 패널과 같은 방식으로 Hud의 무기 패널에서 종류를 직접 고른다
+export const WEAPON_CATEGORIES = {
+  PORTABLE: 'portable',
+  THROW: 'throw',
+};
+
+// 무기 패널에 표시할 한글 라벨과 미리보기 텍스처 (BootScene에서 등록한 텍스처 키)
+export const WEAPON_CATEGORY_LABELS = {
+  [WEAPON_CATEGORIES.PORTABLE]: '야구 방망이',
+  [WEAPON_CATEGORIES.THROW]: '야구공',
+};
+export const WEAPON_CATEGORY_TEXTURES = {
+  [WEAPON_CATEGORIES.PORTABLE]: 'weapon_portable',
+  [WEAPON_CATEGORIES.THROW]: 'weapon_throw',
+};
 
 // 타격 이펙트
-export const BOSS_SHAKE_MAGNITUDE = 8; // px
-export const BOSS_SHAKE_SEGMENT_DURATION = 60; // ms, yoyo 1왕복 기준
+export const BOSS_KNOCKBACK_DISTANCE = 26; // px, 타격당 타격 반대 방향으로 밀려나는 거리 (누적됨)
+export const BOSS_KNOCKBACK_OUT_DURATION = 70; // ms, 밀려나는 트윈 시간
+export const BOSS_PANEL_PUSH_DURATION = 260; // ms, 무기/배경 패널에 부딪혀 왼쪽 벽까지 날아가는 트윈 시간
+export const BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER = 2; // 패널에 부딪혀 왼쪽 벽까지 날아갈 때 추가로 받는 데미지 배율
+export const BOSS_PANEL_PUSH_POPUP_COLOR = '#ff5050'; // 패널 충돌 보너스 데미지 팝업 색 (일반 데미지와 구분)
 export const BOSS_FLASH_DURATION = 120; // ms
 export const BOSS_HURT_FACE_DURATION = 300; // ms, 피격 시 눈이 X_X로 바뀌어 있는 시간
 export const DAMAGE_POPUP_DURATION = 700; // ms
 export const DEFEAT_POPUP_DURATION = 900; // ms
-export const BOOSTED_POPUP_COLOR = '#33cc33'; // 스택된(초록) 무기가 준 데미지 팝업 색 — STACK_TINT_COLOR와 동일 계열
 export const DEFEAT_POPUP_COLOR = '#ffaa00'; // "처치!" 팝업 색 — 뽑기 버튼과 동일 계열

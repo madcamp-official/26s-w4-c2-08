@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOSS_TYPES, PORTABLE_WEAPON_SIZE } from '../config/constants.js';
+import { BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import { createBossCanvas, createBossHurtCanvas, MAX_DAMAGE_STAGE } from '../entities/bossSprite.js';
 import { createBaseballCanvas, createBaseballBatCanvas } from '../entities/weaponSprites.js';
@@ -37,22 +37,14 @@ export default class BootScene extends Phaser.Scene {
   }
 
   createPlaceholderTextures() {
-    const g = this.add.graphics();
-
-    g.fillStyle(0x3366cc, 1);
-    g.fillRect(0, 0, 50, 50);
-    g.generateTexture('weapon', 50, 50);
-
-    g.destroy();
-
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
 
     this.createThrowWeaponTexture();
   }
 
-  // 투척형 무기(addThrowWeapon): 첫 번째 디자인은 야구공
+  // 투척형 무기(addThrowWeapon): 첫 번째 디자인은 야구공. 무기 자체와 던져지는 투사체를 같은 크기로 맞춘다.
   createThrowWeaponTexture() {
-    this.textures.addCanvas('weapon_throw', createBaseballCanvas(50));
-    this.textures.addCanvas('weapon_throw_projectile', createBaseballCanvas(16));
+    this.textures.addCanvas('weapon_throw', createBaseballCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_throw_projectile', createBaseballCanvas(THROW_WEAPON_SIZE));
   }
 }

@@ -13,6 +13,10 @@ import {
   HIT_SPARK_DURATION,
   HIT_SPARK_COLOR,
   WEAPON_IDS,
+  WEAPON_DEFINITIONS,
+  SNIPER_SCOPE_DIAMETER,
+  SNIPER_SCOPE_ZOOM,
+  SNIPER_SCOPE_MARGIN,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -52,16 +56,20 @@ export default class GameScene extends Phaser.Scene {
     });
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
     this.combat.onPet = (amount, point) => this.onPet(amount, point);
-    // 쓰다듬는 손(HAND)은 데미지가 아니라 힐링이라 combat.handleHit이 아니라 handlePet으로 따로 보낸다.
+    // heals 무기(착한 손)는 데미지가 아니라 힐링이라 combat.handleHit이 아니라 handlePet으로 따로 보낸다.
+    // weaponId를 하드코딩하지 않고 WEAPON_DEFINITIONS[id].heals로 판단해서 힐링 무기가 늘어나도 여기 안 고쳐도 되게 한다.
     this.weaponManager = new WeaponManager(this, this.boss, (weapon) => {
-      if (weapon.weaponId === WEAPON_IDS.HAND) this.combat.handlePet(weapon);
+      if (WEAPON_DEFINITIONS[weapon.weaponId]?.heals) this.combat.handlePet(weapon);
       else this.combat.handleHit(weapon);
     });
     this.combat.weaponManager = this.weaponManager;
 
+    this.sniperScope = this.createSniperScope();
+
     // 보스는 무기를 고른 뒤에도 항상 드래그로 옮길 수 있다 — 보스 위를 직접 누르면 드래그가 우선.
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
       if (this.isEnded) return;
+      if (this.boss.isFrozen) return; // 디버거(브레이크포인트)에 맞은 동안은 드래그로 못 옮긴다.
       const x = Phaser.Math.Clamp(dragX, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(dragY, 40, this.scale.height - 40);
       this.boss.setPosition(x, y);
@@ -78,6 +86,8 @@ export default class GameScene extends Phaser.Scene {
       const x = Phaser.Math.Clamp(pointer.x, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(pointer.y, 40, this.scale.height - 40);
       this.weaponManager.spawnAt(this.selectedWeaponId, x, y);
+      // 저격총(zoomOnAim)을 들고 있는 동안만 왼쪽 위에 확대 스코프 뷰를 띄운다.
+      if (WEAPON_DEFINITIONS[this.selectedWeaponId]?.zoomOnAim) this.setSniperScopeVisible(true);
     });
 
     this.input.on('pointermove', (pointer) => {
@@ -89,7 +99,11 @@ export default class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerup', () => {
+      // releaseActiveWeapon()이 activeWeapon을 지우기 전에 무기 종류를 먼저 봐둬야
+      // 저격총이었는지 판단해서 스코프를 꺼줄 수 있다.
+      const releasedWeaponId = this.weaponManager.activeWeapon?.weaponId;
       this.weaponManager.releaseActiveWeapon();
+      if (WEAPON_DEFINITIONS[releasedWeaponId]?.zoomOnAim) this.setSniperScopeVisible(false);
     });
 
     // SessionEnd 훅(토큰 임계치 초과, extension/scripts/session-end-hook.js)이 발동했을 때 게임 시작 직후 1회 전달됨
@@ -100,6 +114,67 @@ export default class GameScene extends Phaser.Scene {
     this.weaponManager.updateProjectiles();
     this.weaponManager.updateStuckProjectiles();
     this.checkBossAgainstPanel();
+    // 보스가 넉백/패널 충돌 등으로 계속 움직이는 동안에도 스코프가 계속 보스를 따라가게 매 프레임 갱신.
+    if (this.sniperScope.camera.visible) {
+      this.sniperScope.camera.centerOn(this.boss.bodyCenterX, this.boss.bodyCenterY);
+    }
+  }
+
+  // 저격총을 들고 있는 동안(pointerdown~pointerup)만 화면 왼쪽 위에 뜨는 원형 확대 렌즈.
+  // 메인 카메라는 절대 확대/이동하지 않는다 — HUD(체력바/버튼/무기 패널)가 같이 확대되면 클릭 좌표가
+  // 화면 좌표와 어긋나 무기 조준·드래그 판정이 깨지므로, 별도 카메라 하나를 추가해서 그 카메라만 확대하고
+  // 원형 마스크로 잘라 작은 렌즈처럼 보이게 한다. HUD 고정 UI와 스코프 테두리(reticle) 자체는
+  // camera.ignore()로 빼서 스코프 안에 이중으로 확대되어 보이지 않게 한다.
+  createSniperScope() {
+    const radius = SNIPER_SCOPE_DIAMETER / 2;
+    const cx = SNIPER_SCOPE_MARGIN;
+    const cy = SNIPER_SCOPE_MARGIN;
+
+    const reticle = this.add.graphics().setDepth(2500).setVisible(false);
+    reticle.lineStyle(4, 0x000000, 0.85);
+    reticle.strokeCircle(cx, cy, radius + 2);
+    reticle.lineStyle(2, 0xff3b3b, 1);
+    reticle.strokeCircle(cx, cy, radius);
+
+    // 십자선 — 중앙에 공백을 두고 네 방향 짧은 선만 그려서 완전히 이어진 십자가보다 스코프 레티클답게 보이게 한다.
+    const gap = 14;
+    const armLen = radius - 18;
+    reticle.lineStyle(1.5, 0xff3b3b, 0.9);
+    [
+      [0, -gap, 0, -gap - armLen],
+      [0, gap, 0, gap + armLen],
+      [-gap, 0, -gap - armLen, 0],
+      [gap, 0, gap + armLen, 0],
+    ].forEach(([x1, y1, x2, y2]) => {
+      reticle.beginPath();
+      reticle.moveTo(cx + x1, cy + y1);
+      reticle.lineTo(cx + x2, cy + y2);
+      reticle.strokePath();
+    });
+
+    const camera = this.cameras.add(cx - radius, cy - radius, radius * 2, radius * 2)
+      .setZoom(SNIPER_SCOPE_ZOOM)
+      .setBackgroundColor(0x000000)
+      .setVisible(false);
+
+    // Hud.createSidePanel의 maskShape와 같은 패턴 — 마스크 소스는 항상 숨겨두고 모양만 빌려 쓴다.
+    const maskShape = this.add.graphics().fillStyle(0xffffff).fillCircle(cx, cy, radius).setVisible(false);
+    camera.setMask(maskShape.createGeometryMask());
+
+    camera.ignore([
+      reticle,
+      this.hud.scoreText, this.hud.hpBarBg, this.hud.hpBar,
+      this.hud.settingsButton.bg, this.hud.settingsButton.icon,
+      this.hud.sidePanel.container,
+      this.hud.endButton.bg, this.hud.endButton.icon,
+    ]);
+
+    return { camera, reticle };
+  }
+
+  setSniperScopeVisible(visible) {
+    this.sniperScope.camera.setVisible(visible);
+    this.sniperScope.reticle.setVisible(visible);
   }
 
   // 무기/배경 패널이 열려 화면 오른쪽을 덮는 동안 그 영역에 보스가 있으면(패널이 슬라이드로 덮거나, 드래그로
@@ -129,6 +204,7 @@ export default class GameScene extends Phaser.Scene {
     const overlay = this.hud.showGameEndOverlay(this.combat.score, () => this.onRestartButtonClick());
     this.physics.world.pause();
     this.weaponManager.stopAllFiring();
+    this.setSniperScopeVisible(false);
 
     this.onGameEnd(overlay, this.combat.score);
   }
@@ -185,8 +261,10 @@ export default class GameScene extends Phaser.Scene {
       this.boss.showHurtFace();
       hits.forEach((hit) => {
         this.spawnDamagePopup(hit);
+        const bigImpact = WEAPON_DEFINITIONS[hit.weaponId]?.bigImpact;
         if (hit.weaponId === WEAPON_IDS.TASER) this.spawnElectrocuteEffect();
-        else this.spawnHitSpark(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.MEGAPHONE) this.spawnSoundWaveEffect(hit.x, hit.y);
+        else this.spawnHitSpark(hit.x, hit.y, undefined, bigImpact ? 1.8 : 1);
       });
     }
     if (defeated) {
@@ -248,8 +326,9 @@ export default class GameScene extends Phaser.Scene {
   //  1) 코어 플래시 — 맞는 순간 확 밝아졌다 사라지는 흰 빛(가산 블렌드)으로 순간적인 "펑" 느낌
   //  2) 조각별 버스트 — 크기/색을 조각마다 다르게 섞고, 튀어나가기 전에 짧게 팝(overshoot)한 뒤 날아가며
   //     아주 살짝 중력처럼 아래로 처지게 해서 정적인 방사형보다 훨씬 물리적으로 튀는 느낌을 준다
-  spawnHitSpark(x, y, color = HIT_SPARK_COLOR) {
-    const flash = this.add.circle(x, y, 16, 0xffffff, 0.9)
+  // scale: 무기가 강할수록(bigImpact) 코어 플래시/조각 크기·거리를 다 키워서 임팩트를 더 세게 보이게 한다.
+  spawnHitSpark(x, y, color = HIT_SPARK_COLOR, scale = 1) {
+    const flash = this.add.circle(x, y, 16 * scale, 0xffffff, 0.9)
       .setDepth(999)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -261,12 +340,12 @@ export default class GameScene extends Phaser.Scene {
       onComplete: () => flash.destroy(),
     });
 
-    const shardCount = 8;
+    const shardCount = scale > 1 ? 11 : 8;
     const shardColors = [color, 0xffffff, 0xffb347];
     for (let i = 0; i < shardCount; i += 1) {
       const angle = (Math.PI * 2 * i) / shardCount + Phaser.Math.FloatBetween(-0.35, 0.35);
-      const distance = Phaser.Math.Between(28, 56);
-      const size = Phaser.Math.Between(7, 13);
+      const distance = Phaser.Math.Between(28, 56) * scale;
+      const size = Phaser.Math.Between(7, 13) * scale;
       const shardColor = Phaser.Utils.Array.GetRandom(shardColors);
       const shard = this.add.star(x, y, 4, size * 0.4, size, shardColor)
         .setStrokeStyle(2, 0xffffff)
@@ -329,6 +408,27 @@ export default class GameScene extends Phaser.Scene {
       ease: 'Cubic.easeOut',
       onComplete: () => graphics.destroy(),
     });
+  }
+
+  // 확성기 전용 "소리 충격" 이펙트. 타격 지점에서 동심원 파동 3개가 시간차를 두고 부풀며 사라진다 —
+  // 별 조각/번개 대신 순수하게 "소리가 퍼져나간다"는 느낌만 주는 단순한 링 형태로 구분한다.
+  spawnSoundWaveEffect(x, y) {
+    const ringCount = 3;
+    for (let i = 0; i < ringCount; i += 1) {
+      const ring = this.add.circle(x, y, 6, undefined, 0)
+        .setStrokeStyle(3, 0xe0a63f, 1)
+        .setDepth(1000);
+
+      this.tweens.add({
+        targets: ring,
+        radius: 30,
+        alpha: 0,
+        delay: i * 90,
+        duration: 260,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+    }
   }
 
   spawnDamagePopup({ amount, x, y, color = '#ffffff' }) {

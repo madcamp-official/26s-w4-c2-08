@@ -54,10 +54,86 @@ export const WEAPON_IDS = {
   DART: 'dart',
   TASER: 'taser',
   HAND: 'hand',
+  BAD_HAND: 'bad_hand',
+  KEYBOARD: 'keyboard',
+  MEGAPHONE: 'megaphone',
+  PISTOL: 'pistol',
+  MACHINE_GUN: 'machine_gun',
+  SHOTGUN: 'shotgun',
+  SNIPER: 'sniper',
+  REVOLVER: 'revolver',
+  WHIP: 'whip',
+  BAMBOO_CANE: 'bamboo_cane',
+  SQUISHY: 'squishy',
+  DEBUGGER: 'debugger',
 };
 
 export const TASER_WEAPON_SIZE = 70; // 전기충격기 텍스처 크기 — 방망이보다 작은 소형 휴대 도구
-export const HAND_WEAPON_SIZE = 70; // 쓰다듬는 손 텍스처 크기
+export const HAND_WEAPON_SIZE = 70; // 쓰다듬는 손(착한 손) 텍스처 크기
+export const BAD_HAND_WEAPON_SIZE = 70; // 주먹(나쁜 손) 텍스처 크기
+export const KEYBOARD_WEAPON_SIZE = 90; // 키보드 텍스처 크기
+export const MEGAPHONE_WEAPON_SIZE = 90; // 확성기 텍스처 크기
+export const PISTOL_WEAPON_SIZE = 80; // 권총 텍스처 크기
+export const MACHINE_GUN_WEAPON_SIZE = 90; // 기관총 텍스처 크기 (권총보다 총열이 길어서 조금 더 큼)
+export const SHOTGUN_WEAPON_SIZE = 95; // 산탄총 텍스처 크기 — 펌프 손잡이까지 있어서 기관총보다 살짝 큼
+export const SNIPER_WEAPON_SIZE = 110; // 저격총 텍스처 크기 — 긴 총열 + 스코프라 가장 큼
+export const REVOLVER_WEAPON_SIZE = 78; // 리볼버 텍스처 크기 — 권총과 비슷한 소형
+export const WHIP_WEAPON_SIZE = 100; // 채찍 텍스처 크기 — 지그재그로 넓게 뻗어서 다른 STATIC 무기보다 큼
+export const BAMBOO_CANE_WEAPON_SIZE = 100; // 대나무 회초리 텍스처 크기 — 채찍처럼 길게 뻗는 무기라 동일 크기
+export const SQUISHY_WEAPON_SIZE = 76; // 말랑이 텍스처 크기 — 손/전기충격기 정도의 소형 휴대 크기
+export const DEBUGGER_WEAPON_SIZE = 90; // 디버거 텍스처 크기
+export const DEBUGGER_FREEZE_DURATION = 2000; // ms, 브레이크포인트에 맞으면 드래그로 못 옮기는 시간
+export const SOUND_WAVE_PROJECTILE_SIZE = 34; // 확성기가 쏘는 소리 파동 투사체 텍스처 크기
+// 확성기는 터치형이 아니라 원거리 투척형 — 클릭한 자리와 상관없이 보스 쪽으로 자동 발사되고,
+// 소리 파동이 눈에 잘 보이게 속도는 느긋하게 잡는다.
+export const MEGAPHONE_FIRE_INTERVAL = 450; // ms
+export const MEGAPHONE_PROJECTILE_SPEED = 320; // px/s
+export const BULLET_SIZE = 24; // 총알(투사체) 텍스처 크기 — 야구공/다트보다 작게
+// 총알은 텍스처 자체가 THROW_WEAPON_SIZE보다 작아서 기본 THROW_PROJECTILE_HIT_RADIUS를 그대로 쓰면
+// 판정 원이 텍스처보다 커져버린다 — WEAPON_DEFINITIONS[id].projectileHitRadius로 따로 덮어쓴다.
+export const BULLET_HIT_RADIUS = BULLET_SIZE * 0.35;
+export const PELLET_SIZE = 14; // 산탄총 펠릿(구슬) 텍스처 크기 — 총알보다도 작은 동그란 점
+export const PELLET_HIT_RADIUS = PELLET_SIZE * 0.4;
+
+// 권총: 연사 간격 길고(느림) 한 발이 강함. 기관총: 연사 간격 짧고(빠름) 한 발이 약함 —
+// 초당 기대 데미지가 서로 비슷한 수준이 되도록 간격/배율을 반비례로 잡았다.
+export const PISTOL_FIRE_INTERVAL = 550; // ms
+export const PISTOL_PROJECTILE_SPEED = 700; // px/s
+export const PISTOL_DAMAGE_MULTIPLIER = 1.6;
+export const MACHINE_GUN_FIRE_INTERVAL = 130; // ms
+export const MACHINE_GUN_PROJECTILE_SPEED = 620; // px/s
+export const MACHINE_GUN_DAMAGE_MULTIPLIER = 0.5;
+export const MACHINE_GUN_RECOIL_ANGLE = 10; // deg, 발사할 때마다 총이 뒤로 젖혀지는 각도
+
+// 산탄총: 한 번 당길 때 여러 발(pelletCount)이 부채꼴(spreadAngleDeg)로 동시에 나간다 — 낱개 데미지는
+// 약하지만 다 맞으면 한 방이 세다. 연사 간격은 셋 중 가장 느리다(재장전 텀 느낌).
+export const SHOTGUN_FIRE_INTERVAL = 750; // ms
+export const SHOTGUN_PROJECTILE_SPEED = 560; // px/s
+export const SHOTGUN_DAMAGE_MULTIPLIER = 0.55; // 펠릿 1개당 배율 — 5발 다 맞으면 대략 2.75배
+export const SHOTGUN_PELLET_COUNT = 5;
+export const SHOTGUN_SPREAD_ANGLE_DEG = 30; // 펠릿들이 퍼지는 총 각도
+export const SHOTGUN_RECOIL_ANGLE = 14; // deg, 셋 중 반동이 가장 크다
+
+// 저격총: 연사 간격이 가장 길고 탄속이 가장 빠른 대신 한 발 데미지가 압도적으로 세다.
+export const SNIPER_FIRE_INTERVAL = 1200; // ms
+export const SNIPER_PROJECTILE_SPEED = 950; // px/s
+export const SNIPER_DAMAGE_MULTIPLIER = 3;
+export const SNIPER_RECOIL_ANGLE = 8; // deg
+
+// 리볼버: 권총(느림·강함)과 기관총(빠름·약함) 사이 — 연사/데미지 둘 다 중간값으로 잡아 셋 중 가장 무난하다.
+export const REVOLVER_FIRE_INTERVAL = 340; // ms
+export const REVOLVER_PROJECTILE_SPEED = 660; // px/s
+export const REVOLVER_DAMAGE_MULTIPLIER = 0.9;
+export const REVOLVER_RECOIL_ANGLE = 9; // deg
+
+export const BAMBOO_CANE_DAMAGE_MULTIPLIER = 1.15; // 회초리답게 다른 STATIC 무기보다 한 대가 조금 더 아프다
+
+// 저격총 전용 스코프 뷰 — 화면 왼쪽 위에 별도 카메라(GameScene.createSniperScope)로 보스 주변만 확대해서
+// 보여주는 작은 원형 렌즈. 메인 카메라는 절대 안 건드린다 — HUD(체력바/버튼/무기 패널)까지 같이
+// 확대/이동되면 좌표계가 깨지므로, 스코프 카메라는 그 UI들을 ignore()하고 게임 월드만 따로 확대해서 그린다.
+export const SNIPER_SCOPE_DIAMETER = 190; // px
+export const SNIPER_SCOPE_ZOOM = 2.3;
+export const SNIPER_SCOPE_MARGIN = 120; // px, 화면 좌상단에서 스코프 중심까지 거리 (체력바/패널과 안 겹치는 자리)
 
 // 다트 색 조합 — 실제로 여러 발 던지면 같은 색만 반복돼 단조로우니, 발사할 때마다 이 중 하나를
 // 랜덤으로 골라서 쓴다(WeaponManager.fireProjectile). 순서대로 텍스처 키가 weapon_dart_projectile_0, _1 ...로
@@ -75,9 +151,13 @@ export const DART_PROJECTILE_TEXTURES = DART_COLOR_VARIANTS.map((_, i) => `weapo
 // rotateToTravel: 발사 각도로 투사체 자체를 회전시킬지 — 공은 둥글어서 필요 없지만 다트는 뾰족해서
 // 날아가는 방향을 보고 있어야 자연스럽다 (텍스처가 각도 0 = 오른쪽을 보게 그려져 있어 baked 보정 불필요).
 // stickOnHit: 맞는 순간 즉시 사라지는 대신 그 자리에 잠깐 박힌 채로 남아 있다가 사라지게 할지.
-// fireSound: 발사 시 재생할 사운드 키 (없으면 무음).
+// fireSound: 발사 시(THROW) 재생할 사운드 키. hitSound: 실제로 데미지가 들어갈 때(CombatSystem.handleHit)
+// 재생할 사운드 키 — 무기마다 따로 정의해야 STATIC 카테고리를 공유하는 전기충격기/키보드가 서로
+// 다른 소리를 낼 수 있다 (없으면 무음).
 export const WEAPON_DEFINITIONS = {
-  [WEAPON_IDS.BAT]: { name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable' },
+  [WEAPON_IDS.BAT]: {
+    name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable', hitSound: 'bat_hit',
+  },
   [WEAPON_IDS.BALL]: {
     name: 'BASEBALL',
     category: WEAPON_CATEGORIES.THROW,
@@ -85,6 +165,7 @@ export const WEAPON_DEFINITIONS = {
     projectileTexture: 'weapon_throw_projectile',
     projectileSpeed: BALL_PROJECTILE_SPEED,
     fireSound: 'baseball_throw',
+    hitSound: 'bat_hit', // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
   },
   [WEAPON_IDS.DART]: {
     name: 'DART',
@@ -95,10 +176,133 @@ export const WEAPON_DEFINITIONS = {
     stickOnHit: true,
     fireSound: 'dart_throw',
   },
-  [WEAPON_IDS.TASER]: { category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_taser' },
-  // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — CombatSystem이 이 무기는
-  // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다.
-  [WEAPON_IDS.HAND]: { category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true },
+  [WEAPON_IDS.TASER]: {
+    name: 'TASER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_taser', hitSound: 'taser_shock',
+  },
+  // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — GameScene이 이 무기는
+  // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다(heals 플래그로 판단, weaponId 하드코딩 아님).
+  [WEAPON_IDS.HAND]: {
+    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true,
+  },
+  // 나쁜 손: 착한 손이랑 짝 — 힐링 없이 그냥 주먹으로 때리는 평범한 데미지 무기.
+  [WEAPON_IDS.BAD_HAND]: {
+    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bat_hit',
+  },
+  [WEAPON_IDS.KEYBOARD]: {
+    name: 'KEYBOARD', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_keyboard', hitSound: 'keyboard_smash',
+  },
+  // hitSound 없음(아직 맞는 효과음 에셋이 없어서 무음) — 이펙트(spawnSoundWaveEffect, GameScene)로만 구분.
+  // 클릭한 자리와 상관없이 보스 방향으로 자동 발사되는 원거리형(THROW) — 소리 파동(동심원) 투사체가 날아간다.
+  [WEAPON_IDS.MEGAPHONE]: {
+    name: 'MEGAPHONE',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_megaphone',
+    projectileTexture: 'weapon_sound_wave',
+    projectileSpeed: MEGAPHONE_PROJECTILE_SPEED,
+    fireInterval: MEGAPHONE_FIRE_INTERVAL,
+  },
+  [WEAPON_IDS.PISTOL]: {
+    name: 'PISTOL',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_pistol',
+    projectileTexture: 'weapon_pistol_bullet',
+    projectileSpeed: PISTOL_PROJECTILE_SPEED,
+    projectileHitRadius: BULLET_HIT_RADIUS,
+    fireInterval: PISTOL_FIRE_INTERVAL,
+    damageMultiplier: PISTOL_DAMAGE_MULTIPLIER,
+    rotateToTravel: true,
+    hitSound: 'pistol_impact',
+    hitVolume: 1.4, // 강한 무기라 기본 볼륨(1)보다 크게
+    bigImpact: true, // 데미지가 센 무기라 히트 스파크를 더 크게 띄운다 (GameScene.spawnHitSpark scale 참고)
+  },
+  [WEAPON_IDS.MACHINE_GUN]: {
+    name: 'MACHINE GUN',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_machine_gun',
+    projectileTexture: 'weapon_machine_gun_bullet',
+    projectileSpeed: MACHINE_GUN_PROJECTILE_SPEED,
+    projectileHitRadius: BULLET_HIT_RADIUS,
+    fireInterval: MACHINE_GUN_FIRE_INTERVAL,
+    damageMultiplier: MACHINE_GUN_DAMAGE_MULTIPLIER,
+    recoilAngle: MACHINE_GUN_RECOIL_ANGLE,
+    rotateToTravel: true,
+  },
+  // pelletCount/spreadAngleDeg: WeaponManager.fireProjectile이 한 번 발사할 때 이 각도 범위 안에 고르게
+  // 퍼진 pelletCount개의 투사체를 동시에 만든다 (사운드/반동은 발사 1회당 한 번만).
+  [WEAPON_IDS.SHOTGUN]: {
+    name: 'SHOTGUN',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_shotgun',
+    projectileTexture: 'weapon_pellet',
+    projectileSpeed: SHOTGUN_PROJECTILE_SPEED,
+    projectileHitRadius: PELLET_HIT_RADIUS,
+    fireInterval: SHOTGUN_FIRE_INTERVAL,
+    damageMultiplier: SHOTGUN_DAMAGE_MULTIPLIER,
+    pelletCount: SHOTGUN_PELLET_COUNT,
+    spreadAngleDeg: SHOTGUN_SPREAD_ANGLE_DEG,
+    recoilAngle: SHOTGUN_RECOIL_ANGLE,
+    hitSound: 'pistol_impact',
+  },
+  [WEAPON_IDS.SNIPER]: {
+    name: 'SNIPER',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_sniper',
+    projectileTexture: 'weapon_sniper_bullet',
+    projectileSpeed: SNIPER_PROJECTILE_SPEED,
+    projectileHitRadius: BULLET_HIT_RADIUS,
+    fireInterval: SNIPER_FIRE_INTERVAL,
+    damageMultiplier: SNIPER_DAMAGE_MULTIPLIER,
+    recoilAngle: SNIPER_RECOIL_ANGLE,
+    rotateToTravel: true,
+    hitSound: 'pistol_impact',
+    hitVolume: 1.6, // 셋 중 가장 강한 한 방이라 권총보다도 크게
+    bigImpact: true,
+    // 들고 있는 동안(GameScene pointerdown~pointerup) 왼쪽 위에 확대 스코프 뷰가 뜬다 (createSniperScope).
+    zoomOnAim: true,
+  },
+  [WEAPON_IDS.REVOLVER]: {
+    name: 'REVOLVER',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_revolver',
+    projectileTexture: 'weapon_revolver_bullet',
+    projectileSpeed: REVOLVER_PROJECTILE_SPEED,
+    projectileHitRadius: BULLET_HIT_RADIUS,
+    fireInterval: REVOLVER_FIRE_INTERVAL,
+    damageMultiplier: REVOLVER_DAMAGE_MULTIPLIER,
+    recoilAngle: REVOLVER_RECOIL_ANGLE,
+    rotateToTravel: true,
+    hitSound: 'pistol_impact',
+  },
+  // 방망이처럼 휘두르는 느낌이지만 캡슐(BAT_DIMENSIONS)은 채찍의 지그재그 실루엣과 안 맞아서
+  // STATIC(사각 판정)으로 둔다 — 다른 STATIC 무기보다 텍스처가 넓어서 판정 범위도 자연히 더 넉넉하다.
+  // meleeSwing: 맞는 순간 보스 쪽으로 홱 겨눴다가 원위치로 스프링백하는 스윙 모션을 튼다
+  // (WeaponManager.playMeleeSwing) — 가만히 들고만 있는 다른 STATIC 무기와 달리 채찍답게 후려치는
+  // 느낌을 준다.
+  [WEAPON_IDS.WHIP]: {
+    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true,
+  },
+  // 채찍과 같은 스윙 모션(meleeSwing)을 재사용 — 회초리도 후려치는 무기라 가만히 들고만 있는 다른
+  // STATIC 무기와 결이 다르다. damageMultiplier로 한 대가 조금 더 아프게만 차별화한다.
+  [WEAPON_IDS.BAMBOO_CANE]: {
+    name: 'BAMBOO CANE',
+    category: WEAPON_CATEGORIES.STATIC,
+    texture: 'weapon_bamboo_cane',
+    meleeSwing: true,
+    damageMultiplier: BAMBOO_CANE_DAMAGE_MULTIPLIER,
+    hitSound: 'bat_hit',
+  },
+  // squishHit: 스윙 대신 맞는 순간 말랑하게 눌렸다 되돌아오는 찌부 모션을 튼다 (WeaponManager.playSquish) —
+  // 이름 그대로 "말랑말랑"한 장난감다운 타격감을 주려는 의도. 데미지 계산은 다른 STATIC 무기와 동일.
+  [WEAPON_IDS.SQUISHY]: {
+    name: 'SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_squishy', squishHit: true,
+  },
+  // freezesBoss: 데미지 자체는 평범하지만, 맞으면 GameScene의 drag 리스너가 잠깐 boss.isFrozen을
+  // 보고 드래그 이동을 막는다(Boss.freeze) — 보스가 자체 행동이 없는 게임이라 "기절"보다
+  // "위치 고정"이 실제로 의미 있는 CC라고 판단해서 그렇게 구현했다.
+  // meleeSwing: 노트북을 실제로 휘둘러서 때리는 느낌을 주는 스윙 모션 (WHIP과 같은 메커니즘 재사용).
+  [WEAPON_IDS.DEBUGGER]: {
+    name: 'DEVELOPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_debugger', freezesBoss: true, meleeSwing: true,
+  },
 };
 
 export const DART_STICK_DURATION = 8000; // ms, 다트가 맞은 자리에 박힌 채로 남아 있다가 사라지기까지 시간

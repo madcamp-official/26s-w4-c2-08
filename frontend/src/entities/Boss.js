@@ -15,6 +15,7 @@ import {
   BOSS_FIRE_BREATH_DURATION,
   BOSS_FIRE_BREATH_COOLDOWN_MS,
   FIRE_BREATH_MIN_DAMAGE_STAGE,
+  DEBUGGER_FREEZE_DURATION,
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -40,6 +41,8 @@ export default class Boss {
     this.happyFaceEvent = null;
     this.blinkEvent = null;
     this.lastFireBreathTime = -Infinity;
+    this.isFrozen = false;
+    this.freezeEvent = null;
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
     // 그 여백까지 "몸통"으로 잡는다 — 방망이/투사체가 실제 그림에 닿기도 전에 먼저 겹침이 발생해서,
@@ -145,6 +148,9 @@ export default class Boss {
     this.happyFaceEvent = null;
     this.blinkEvent?.remove();
     this.blinkEvent = null;
+    this.freezeEvent?.remove();
+    this.freezeEvent = null;
+    this.isFrozen = false;
     this.recentHitTimestamps = [];
     this.lastFireBreathTime = -Infinity;
     this.sprite.setTexture(this.getBaseTextureKey());
@@ -218,6 +224,18 @@ export default class Boss {
   flash(color) {
     this.sprite.setTintFill(color);
     this.scene.time.delayedCall(BOSS_FLASH_DURATION, () => this.sprite.clearTint());
+  }
+
+  // 디버거(브레이크포인트) 전용 CC — 이 게임은 보스가 자체 행동을 안 해서 "기절"은 의미가 없어,
+  // 대신 GameScene의 drag 리스너가 isFrozen을 보고 드래그 이동을 막는 "위치 고정"으로 구현했다.
+  // 연타로 다시 맞으면 기존 타이머를 새로 잡아 시간을 갱신한다(showHurtFace와 같은 패턴).
+  freeze(duration = DEBUGGER_FREEZE_DURATION) {
+    this.isFrozen = true;
+    this.freezeEvent?.remove();
+    this.freezeEvent = this.scene.time.delayedCall(duration, () => {
+      this.isFrozen = false;
+      this.freezeEvent = null;
+    });
   }
 
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.

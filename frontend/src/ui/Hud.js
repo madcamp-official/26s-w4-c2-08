@@ -244,8 +244,32 @@ export default class Hud {
     const backgroundContent = this.createBackgroundTabContent(panelWidth, currentBackgroundStyle, onBackgroundSelect);
     container.add([weaponContent.container, bossContent.container, backgroundContent.container]);
 
+    // 무기가 늘어나 격자가 헤더 아래 본문 높이(contentAreaHeight)를 넘어가면 스크롤이 필요하다 —
+    // 탭 바/구분선 아래쪽만 보이도록 사각 마스크로 잘라낸다.
+    // 주의: Phaser의 GeometryMask는 Canvas 렌더러에서 마스크용 Graphics를 부모 컨테이너의 transform 없이
+    // (parentMatrix=null) 그린다 — 그래서 이 마스크를 슬라이드되는 container의 자식으로 넣으면 마스크
+    // 위치가 실제 패널 위치와 어긋나 전부 잘려나간다. container 밖의 독립 객체로 두고, 아래
+    // togglePanel 트윈에서 container.x와 같이 움직이게 해서 슬라이드 중에도 위치가 맞게 한다.
+    const contentAreaHeight = height - headerHeight;
+    const maskShape = this.scene.add.graphics().fillStyle(0xffffff).fillRect(0, headerHeight, panelWidth, contentAreaHeight);
+    maskShape.setPosition(startX, 0);
+    maskShape.setVisible(false); // 마스크 소스로만 쓰고 화면엔 안 그린다 — 안 숨기면 흰 사각형이 그대로 패널을 덮어버린다.
+    const contentMask = maskShape.createGeometryMask();
+    [weaponContent, bossContent, backgroundContent].forEach(({ container: c }) => c.setMask(contentMask));
+    this.maskShape = maskShape;
+
     this.tabContents = { weapon: weaponContent, boss: bossContent, background: backgroundContent };
+    this.contentAreaHeight = contentAreaHeight;
     this.setActiveTab('weapon');
+
+    // 패널이 열려 있는 동안만 휠로 활성 탭을 스크롤한다. 콘텐츠가 본문보다 짧으면 minY가 0 이상이라
+    // 클램프 결과 항상 0으로 고정돼 스크롤이 안 먹는 것처럼(=필요 없으므로) 자연스럽게 동작한다.
+    this.scene.input.on('wheel', (pointer, currentlyOver, dx, dy) => {
+      if (!this.panelOpen) return;
+      const content = this.tabContents[this.activeTab];
+      const minY = Math.min(0, this.contentAreaHeight - content.contentHeight);
+      content.container.y = Phaser.Math.Clamp(content.container.y - dy, minY, 0);
+    });
 
     return {
       container, openX, startX, handle,
@@ -270,6 +294,12 @@ export default class Hud {
     if (shouldOpen === this.panelOpen) return;
     this.panelOpen = shouldOpen;
 
+    // 열 때마다 스크롤 위치를 맨 위로 되돌려서, 스크롤해 둔 채 닫았다가 다시 열었을 때
+    // 첫 줄이 안 보여 패널이 비어 보이는 혼란을 막는다.
+    if (shouldOpen) {
+      Object.values(this.tabContents).forEach((content) => { content.container.y = 0; });
+    }
+
     // 손잡이(X)는 패널이 열렸을 때만, 톱니바퀴 버튼은 반대로 패널이 닫혔을 때만 보인다 —
     // 열려있는 동안 톱니바퀴가 패널 반투명 배경 뒤로 희미하게 비쳐 보이던 문제를 막는다.
     this.sidePanel.handle.bg.setVisible(shouldOpen);
@@ -278,8 +308,10 @@ export default class Hud {
     this.settingsButton.icon.setVisible(!shouldOpen);
 
     const { container, openX, startX } = this.sidePanel;
+    // maskShape는 container 밖의 독립 객체라(위 createSidePanel 주석 참고) 같이 슬라이드되도록
+    // 트윈 타깃에 같이 넣어준다 — 안 그러면 패널만 움직이고 마스크는 그대로 남아 다시 어긋난다.
     this.scene.tweens.add({
-      targets: container,
+      targets: [container, this.maskShape],
       x: shouldOpen ? openX : startX,
       duration: 280,
       ease: 'Cubic.easeOut',
@@ -288,7 +320,7 @@ export default class Hud {
 
   // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃을 쓴다: 2열, 아이콘 바로 밑에 이름,
   // 칸 사이 여백으로 분리감을 준다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
-  // 항목 수가 적어(각 탭 4개 안팎) 세로 스크롤 없이도 패널 안에 다 들어온다.
+  // 무기가 늘어나 패널 높이를 넘어가면 createSidePanel이 이 contentHeight로 스크롤 가능 범위를 계산한다.
   createGridTabContent(panelWidth, items, currentId, onSelect) {
     const container = this.scene.add.container(0, 0);
 
@@ -302,6 +334,8 @@ export default class Hud {
     const gridStartX = (panelWidth - gridWidth) / 2;
     const rowStep = iconSize + labelGap + labelHeight + rowGap;
     const top = 56;
+    const rows = Math.ceil(items.length / columns);
+    const contentHeight = top + rows * rowStep;
 
     const optionEls = [];
 
@@ -328,13 +362,13 @@ export default class Hud {
       optionEls.push({ id, border });
     });
 
-    return { container, optionEls };
+    return { container, optionEls, contentHeight };
   }
 
   createWeaponTabContent(panelWidth, onSelect) {
-    const { container, optionEls } = this.createGridTabContent(panelWidth, WEAPON_OPTIONS, null, onSelect);
+    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, WEAPON_OPTIONS, null, onSelect);
     this.weaponOptionEls = optionEls;
-    return { container };
+    return { container, contentHeight };
   }
 
   setActiveWeaponOption(weaponId) {
@@ -344,9 +378,9 @@ export default class Hud {
   }
 
   createBossTabContent(panelWidth, currentBossTypeId, onSelect) {
-    const { container, optionEls } = this.createGridTabContent(panelWidth, BOSS_OPTIONS, currentBossTypeId, onSelect);
+    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BOSS_OPTIONS, currentBossTypeId, onSelect);
     this.bossOptionEls = optionEls;
-    return { container };
+    return { container, contentHeight };
   }
 
   setActiveBossOption(bossTypeId) {
@@ -356,9 +390,9 @@ export default class Hud {
   }
 
   createBackgroundTabContent(panelWidth, currentStyle, onSelect) {
-    const { container, optionEls } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect);
+    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect);
     this.backgroundOptionEls = optionEls;
-    return { container };
+    return { container, contentHeight };
   }
 
   setActiveBackgroundOption(style) {

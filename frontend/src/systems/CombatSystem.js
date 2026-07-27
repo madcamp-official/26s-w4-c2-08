@@ -4,8 +4,7 @@ import {
   BASE_DAMAGE_MIN,
   BASE_DAMAGE_MAX,
   BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER,
-  WEAPON_CATEGORIES,
-  WEAPON_IDS,
+  WEAPON_DEFINITIONS,
   PET_COOLDOWN,
   HEAL_MIN,
   HEAL_MAX,
@@ -33,28 +32,37 @@ export default class CombatSystem {
 
     // HIT_COOLDOWN을 통과해 실제로 데미지 틱이 발생하는 순간에만 재생 — overlap 콜백 자체는 겹쳐있는
     // 동안 매 프레임 불려서 여기서 안 거르면 효과음이 끊임없이 겹쳐 재생된다.
-    // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
-    const isBatOrBall = triggerWeapon.category === WEAPON_CATEGORIES.PORTABLE
-      || triggerWeapon.weaponId === WEAPON_IDS.BALL;
-    if (isBatOrBall) {
-      this.scene.sound.play('bat_hit');
-    } else if (triggerWeapon.category === WEAPON_CATEGORIES.STATIC) {
-      this.scene.sound.play('taser_shock');
-    }
+    // 무기별 타격음은 WEAPON_DEFINITIONS[id].hitSound로 정의 (야구공은 방망이와 같은 소리를 재사용).
+    // hitVolume(기본 1)으로 권총처럼 센 무기만 더 크게 재생할 수 있다.
+    const definition = WEAPON_DEFINITIONS[triggerWeapon.weaponId];
+    if (definition?.hitSound) this.scene.sound.play(definition.hitSound, { volume: definition.hitVolume ?? 1 });
+    // 채찍/노트북 스윙 모션도 실제 히트 시점에만 — handleOverlap은 매 프레임 불려서 여기서 해야 한다.
+    if (definition?.meleeSwing) this.weaponManager.playMeleeSwing(triggerWeapon);
+    // 말랑이 찌부 모션도 같은 이유로 여기서만 트리거한다.
+    if (definition?.squishHit) this.weaponManager.playSquish(triggerWeapon);
 
     // weaponId를 같이 넘겨서 GameScene.onHit이 무기별로 다른 이펙트(전기충격기 감전 등)를 고를 수 있게 한다.
     const overlappingWeapons = this.weaponManager.getOverlappingDamageDealers();
     const hits = overlappingWeapons.length > 0
       ? overlappingWeapons.map((weapon) => ({
-        amount: this.rollDamage(),
+        amount: this.rollDamage(WEAPON_DEFINITIONS[weapon.weaponId]?.damageMultiplier),
         weaponId: weapon.weaponId,
         ...this.weaponManager.getHitPoint(weapon),
       }))
-      : [{ amount: this.rollDamage(), weaponId: triggerWeapon.weaponId, ...this.weaponManager.getHitPoint(triggerWeapon) }];
+      : [{
+        amount: this.rollDamage(definition?.damageMultiplier),
+        weaponId: triggerWeapon.weaponId,
+        ...this.weaponManager.getHitPoint(triggerWeapon),
+      }];
 
     const damage = hits.reduce((sum, hit) => sum + hit.amount, 0);
     this.boss.takeDamage(damage);
     this.score += damage;
+
+    // 디버거(브레이크포인트)에 맞았으면 데미지와 별개로 잠깐 드래그 이동을 막는다 (Boss.freeze 주석 참고).
+    if (hits.some((hit) => WEAPON_DEFINITIONS[hit.weaponId]?.freezesBoss)) {
+      this.boss.freeze();
+    }
 
     const defeated = this.boss.isDead();
     const deathPosition = defeated ? { x: this.boss.sprite.x, y: this.boss.sprite.y } : null;
@@ -65,8 +73,10 @@ export default class CombatSystem {
     this.onHit(hits, defeated, deathPosition);
   }
 
-  rollDamage() {
-    return Phaser.Math.Between(BASE_DAMAGE_MIN, BASE_DAMAGE_MAX);
+  // multiplier: 무기별 데미지 배율 (WEAPON_DEFINITIONS[id].damageMultiplier, 기본 1) — 기관총처럼
+  // 연사가 빠른 대신 한 발이 약하거나, 권총처럼 느린 대신 한 발이 강한 무기를 표현하는 데 쓴다.
+  rollDamage(multiplier = 1) {
+    return Math.round(Phaser.Math.Between(BASE_DAMAGE_MIN, BASE_DAMAGE_MAX) * multiplier);
   }
 
   // 쓰다듬기(힐링) 전용 경로 — 데미지 계산(handleHit)과 완전히 분리한다. 점수/넉백/피격 표정 등

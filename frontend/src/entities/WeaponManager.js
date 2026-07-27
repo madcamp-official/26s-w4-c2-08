@@ -3,7 +3,6 @@ import {
   CONTACT_OVERLAP,
   THROW_FIRE_INTERVAL,
   THROW_PROJECTILE_SPEED,
-  THROW_WEAPON_SIZE,
   THROW_PROJECTILE_HIT_RADIUS,
   PORTABLE_WEAPON_SIZE,
   WEAPON_CATEGORIES,
@@ -21,9 +20,6 @@ import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry
 const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
 const BAT_BAKED_ROTATION = -Math.PI / 4;
 const BAT_AXIS_RADIUS = BAT_DIMENSIONS.barrelHalfWidth;
-
-// 원형 물리 바디를 텍스처(정사각) 프레임 한가운데 오도록 하는 오프셋
-const PROJECTILE_BODY_OFFSET = (THROW_WEAPON_SIZE - THROW_PROJECTILE_HIT_RADIUS * 2) / 2;
 
 // 필드에 여러 개를 놓아두고 드래그/합체/버리기 하던 예전 방식 대신, 무기 패널에서 카테고리를 고른 뒤
 // 필드를 누르고 있는 동안에만 그 자리에 무기 1개(activeWeapon)가 나타나 데미지를 주고, 손을 떼면 사라진다.
@@ -168,10 +164,11 @@ export default class WeaponManager {
     return capsuleIntersectsRect(x1, y1, x2, y2, radius, this.boss.getHitRect());
   }
 
-  // 야구공 투사체는 둥근 그림이라 사각 히트박스 대신 원(길이 0인 캡슐)으로 보스와의 겹침을 판정한다.
+  // 야구공/총알 등 투사체는 둥근(또는 작은) 그림이라 사각 히트박스 대신 원(길이 0인 캡슐)으로 보스와의
+  // 겹침을 판정한다. 반지름은 spawn 시 저장해둔 projectile.hitRadius(무기별 크기, 기본값 아래) 사용.
   projectileOverlapsBoss(projectile) {
     return capsuleIntersectsRect(
-      projectile.x, projectile.y, projectile.x, projectile.y, THROW_PROJECTILE_HIT_RADIUS, this.boss.getHitRect(),
+      projectile.x, projectile.y, projectile.x, projectile.y, projectile.hitRadius, this.boss.getHitRect(),
     );
   }
 
@@ -185,8 +182,9 @@ export default class WeaponManager {
 
   startFiring(launcher) {
     this.fireProjectile(launcher);
+    const { fireInterval } = WEAPON_DEFINITIONS[launcher.weaponId];
     launcher.fireTimer = this.scene.time.addEvent({
-      delay: THROW_FIRE_INTERVAL,
+      delay: fireInterval ?? THROW_FIRE_INTERVAL,
       loop: true,
       callback: () => this.fireProjectile(launcher),
     });
@@ -199,8 +197,25 @@ export default class WeaponManager {
     }
   }
 
+  // pelletCount/spreadAngleDeg(산탄총)가 있으면 이 각도 범위 안에 고르게 퍼진 여러 발을 동시에 만든다.
+  // 사운드/반동은 발사 1회당 한 번만 나야 해서(펠릿 5개라고 5번 울리면 시끄럽다) 루프 밖에서 처리한다.
   fireProjectile(launcher) {
     const definition = WEAPON_DEFINITIONS[launcher.weaponId];
+    const baseAngle = Phaser.Math.Angle.Between(launcher.x, launcher.y, this.boss.sprite.x, this.boss.sprite.y);
+    const pelletCount = definition.pelletCount ?? 1;
+    const spreadRad = Phaser.Math.DegToRad(definition.spreadAngleDeg ?? 0);
+
+    for (let i = 0; i < pelletCount; i += 1) {
+      const angleOffset = pelletCount > 1 ? spreadRad * (i / (pelletCount - 1) - 0.5) : 0;
+      this.spawnProjectile(launcher, definition, baseAngle + angleOffset);
+    }
+
+    if (definition.fireSound) this.scene.sound.play(definition.fireSound);
+    if (definition.recoilAngle) this.recoilKick(launcher, definition.recoilAngle);
+  }
+
+  // 투사체 한 발 생성 — angle은 fireProjectile이 계산해서 넘겨준 발사 각도(펠릿마다 다를 수 있음).
+  spawnProjectile(launcher, definition, angle) {
     // projectileTextures(여러 색 중 랜덤, 다트)가 있으면 그중 하나, 없으면 단일 projectileTexture(공) 사용.
     const projectileTexture = definition.projectileTextures
       ? Phaser.Utils.Array.GetRandom(definition.projectileTextures)
@@ -208,11 +223,15 @@ export default class WeaponManager {
     const projectile = this.scene.physics.add.image(launcher.x, launcher.y, projectileTexture);
     // 히트 사운드 등에서 어떤 무기가 쐈는지 구분해야 해서(CombatSystem.handleHit) launcher의 무기 종류를 그대로 옮겨둔다.
     projectile.weaponId = launcher.weaponId;
-    // 기본 물리 바디는 텍스처 전체(정사각)를 그대로 쓰는데, 그림은 둥근 이모지라 네 모서리가 비어있다.
-    // Arcade의 자체 겹침 판정부터 원형으로 잡아야 실제 공 크기에 맞게 히트가 들어간다.
-    projectile.body.setCircle(THROW_PROJECTILE_HIT_RADIUS, PROJECTILE_BODY_OFFSET, PROJECTILE_BODY_OFFSET);
+    // 기본 물리 바디는 텍스처 전체(정사각)를 그대로 쓰는데, 그림은 둥글거나(공) 작게 그려져(총알) 네 모서리가
+    // 비어있다. Arcade의 자체 겹침 판정부터 원형으로 잡아야 실제 그림 크기에 맞게 히트가 들어간다.
+    // 총알처럼 텍스처 자체가 THROW_WEAPON_SIZE보다 작은 무기는 projectileHitRadius로 반지름을 따로 정의하고,
+    // 오프셋도 그 무기의 실제 텍스처 크기(projectile.width) 기준으로 다시 계산해야 원이 텍스처 안에 맞게 들어간다.
+    const hitRadius = definition.projectileHitRadius ?? THROW_PROJECTILE_HIT_RADIUS;
+    const bodyOffset = (projectile.width - hitRadius * 2) / 2;
+    projectile.hitRadius = hitRadius;
+    projectile.body.setCircle(hitRadius, bodyOffset, bodyOffset);
     this.projectiles.push(projectile);
-    if (definition.fireSound) this.scene.sound.play(definition.fireSound);
 
     const collider = this.scene.physics.add.overlap(this.boss.sprite, projectile, () => {
       this.onOverlap(projectile);
@@ -221,7 +240,6 @@ export default class WeaponManager {
     }, null, this.scene);
     projectile.overlapCollider = collider;
 
-    const angle = Phaser.Math.Angle.Between(launcher.x, launcher.y, this.boss.sprite.x, this.boss.sprite.y);
     const speed = definition.projectileSpeed ?? THROW_PROJECTILE_SPEED;
     this.scene.physics.velocityFromRotation(angle, speed, projectile.body.velocity);
     // 다트처럼 뾰족한 투사체는 텍스처가 각도 0(오른쪽)을 보게 그려져 있어, baked 보정 없이
@@ -229,6 +247,72 @@ export default class WeaponManager {
     if (definition.rotateToTravel) projectile.rotation = angle;
 
     return projectile;
+  }
+
+  // 발사할 때마다 총 자체가 살짝 뒤로 젖혀졌다가 돌아오는 반동. position이 아니라 angle만 건드려서
+  // moveActiveWeapon(드래그 중 매 프레임 setPosition)과 부딪히지 않게 한다. 연사 중 다음 발사가
+  // 이전 반동이 끝나기 전에 겹치면 이전 트윈을 끊고 새로 시작해서 각도가 꼬이지 않게 한다.
+  recoilKick(launcher, angleDeg) {
+    this.scene.tweens.killTweensOf(launcher);
+    launcher.angle = 0;
+    this.scene.tweens.add({
+      targets: launcher,
+      angle: -angleDeg,
+      duration: 45,
+      yoyo: true,
+      ease: 'Sine.easeOut',
+    });
+  }
+
+  // 채찍/노트북처럼 "휘둘러서 때리는" STATIC 무기가 실제로 맞을 때(CombatSystem.handleHit, 쿨다운을
+  // 통과한 순간)마다 재생하는 스윙 모션: 보스 반대쪽으로 먼저 홱 넘겼다가(windup) 보스 쪽으로 후려친 뒤
+  // 원래 각도로 스프링백한다. handleOverlap(겹쳐있는 동안 매 프레임 호출)에서 하면 계속 재시작돼
+  // 덜덜 떨리므로, 쿨다운이 걸린 실제 히트 시점에만 트리거해야 한다.
+  playMeleeSwing(weapon) {
+    this.scene.tweens.killTweensOf(weapon);
+    const original = weapon.rotation;
+    const toBoss = this.getAngleToBoss(weapon.x, weapon.y);
+    const windup = original - (toBoss - original); // 때리는 방향(toBoss) 반대쪽으로 먼저 넘긴 각도
+
+    this.scene.tweens.add({
+      targets: weapon,
+      rotation: windup,
+      duration: 70,
+      ease: 'Sine.easeOut',
+      onComplete: () => {
+        this.scene.tweens.add({
+          targets: weapon,
+          rotation: toBoss,
+          duration: 90,
+          ease: 'Back.easeIn',
+          onComplete: () => {
+            this.scene.tweens.add({
+              targets: weapon,
+              rotation: original,
+              duration: 120,
+              ease: 'Sine.easeOut',
+            });
+          },
+        });
+      },
+    });
+  }
+
+  // 말랑이(squishHit)가 맞는 순간 재생하는 찌부 모션: 가로로 눌리고 세로로 부푼 뒤 원래 스케일로
+  // 튕겨 돌아온다. 스윙(playMeleeSwing)과 달리 각도가 아니라 스케일만 건드려서 "말랑말랑" 눌리는
+  // 느낌을 준다 — yoyo 트윈이라 별도 복원 없이 시작 스케일로 자동 복귀한다.
+  playSquish(weapon) {
+    this.scene.tweens.killTweensOf(weapon);
+    const baseScaleX = weapon.scaleX;
+    const baseScaleY = weapon.scaleY;
+    this.scene.tweens.add({
+      targets: weapon,
+      scaleX: baseScaleX * 1.3,
+      scaleY: baseScaleY * 0.7,
+      duration: 80,
+      yoyo: true,
+      ease: 'Sine.easeOut',
+    });
   }
 
   destroyProjectile(projectile) {

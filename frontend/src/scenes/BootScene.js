@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import {
-  BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
+  BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
+  KEYBOARD_WEAPON_SIZE, MEGAPHONE_WEAPON_SIZE, PISTOL_WEAPON_SIZE, MACHINE_GUN_WEAPON_SIZE, BULLET_SIZE,
+  SHOTGUN_WEAPON_SIZE, SNIPER_WEAPON_SIZE, REVOLVER_WEAPON_SIZE, PELLET_SIZE,
+  SOUND_WAVE_PROJECTILE_SIZE, WHIP_WEAPON_SIZE, DEBUGGER_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
+  BAMBOO_CANE_WEAPON_SIZE, SQUISHY_WEAPON_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
@@ -8,6 +12,10 @@ import {
 } from '../entities/bossSprite.js';
 import {
   createBaseballCanvas, createBaseballBatCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+  createKeyboardCanvas, createMegaphoneCanvas, createPistolCanvas, createMachineGunCanvas, createBulletCanvas,
+  createShotgunCanvas, createSniperCanvas, createRevolverCanvas, createPelletCanvas,
+  createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
+  createBambooCaneCanvas, createSquishyToyCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -26,6 +34,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
     this.load.audio('baseball_throw', assetUrl('audio/baseball.mp3'));
     this.load.audio('hit_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
+    this.load.audio('keyboard_smash', assetUrl('audio/keyboard_smash.mp3'));
+    this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
     this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
@@ -63,13 +73,20 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_hand', createHandCanvas(HAND_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_bad_hand', createHandCanvas(BAD_HAND_WEAPON_SIZE, { skinColor: '#e0574a', skinStroke: '#8f2e24' }));
+    this.textures.addCanvas('weapon_keyboard', createKeyboardCanvas(KEYBOARD_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_whip', createWhipCanvas(WHIP_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_bamboo_cane', createBambooCaneCanvas(BAMBOO_CANE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_squishy', createSquishyToyCanvas(SQUISHY_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_debugger', createDeveloperCanvas(DEBUGGER_WEAPON_SIZE));
 
     this.createThrowWeaponTexture();
   }
 
-  // 투척형 무기(addThrowWeapon): 야구공/다트. 무기 자체와 던져지는 투사체를 같은 크기로 맞춘다.
-  // 다트는 색 조합(DART_COLOR_VARIANTS)마다 투사체 텍스처를 따로 만들어서, 발사할 때 랜덤으로 골라 쓴다
-  // (WeaponManager.fireProjectile) — 패널 아이콘은 대표로 첫 번째 색 조합 하나만 쓴다.
+  // 투척형 무기(addThrowWeapon): 야구공/다트/권총/기관총/확성기. 무기 자체와 던져지는 투사체를 같은
+  // 크기로 맞춘다(총알만 예외 — BULLET_SIZE로 훨씬 작게). 다트는 색 조합(DART_COLOR_VARIANTS)마다
+  // 투사체 텍스처를 따로 만들어서 발사할 때 랜덤으로 골라 쓴다(WeaponManager.fireProjectile) —
+  // 패널 아이콘은 대표로 첫 번째 색 조합 하나만 쓴다.
   createThrowWeaponTexture() {
     this.textures.addCanvas('weapon_throw', createBaseballCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_throw_projectile', createBaseballCanvas(THROW_WEAPON_SIZE));
@@ -77,5 +94,17 @@ export default class BootScene extends Phaser.Scene {
     DART_COLOR_VARIANTS.forEach((colors, i) => {
       this.textures.addCanvas(DART_PROJECTILE_TEXTURES[i], createDartCanvas(THROW_WEAPON_SIZE, colors));
     });
+    this.textures.addCanvas('weapon_pistol', createPistolCanvas(PISTOL_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_pistol_bullet', createBulletCanvas(BULLET_SIZE, '#c9ced3'));
+    this.textures.addCanvas('weapon_machine_gun', createMachineGunCanvas(MACHINE_GUN_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_machine_gun_bullet', createBulletCanvas(BULLET_SIZE, '#b5844a'));
+    this.textures.addCanvas('weapon_shotgun', createShotgunCanvas(SHOTGUN_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_pellet', createPelletCanvas(PELLET_SIZE, '#2b2d30'));
+    this.textures.addCanvas('weapon_sniper', createSniperCanvas(SNIPER_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_sniper_bullet', createBulletCanvas(BULLET_SIZE, '#e0574a'));
+    this.textures.addCanvas('weapon_revolver', createRevolverCanvas(REVOLVER_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_revolver_bullet', createBulletCanvas(BULLET_SIZE, '#d7dce0'));
+    this.textures.addCanvas('weapon_megaphone', createMegaphoneCanvas(MEGAPHONE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_sound_wave', createSoundWaveProjectileCanvas(SOUND_WAVE_PROJECTILE_SIZE, '#e0a63f'));
   }
 }

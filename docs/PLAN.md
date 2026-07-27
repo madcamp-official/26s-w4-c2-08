@@ -1,6 +1,6 @@
 # 개발 일정 (6일)
 
-VSCode 확장 안에서 동작하는 보스 클리커 게임 + 그룹 랭킹 서버. 전체 아키텍처는 [ARCHITECTURE.md](./ARCHITECTURE.md), API 스펙은 [API.md](./API.md) 참고.
+VSCode 확장 안에서 동작하는 보스 클리커 게임 **Hit the Agent** + 그룹 랭킹 서버. 전체 아키텍처는 [ARCHITECTURE.md](./ARCHITECTURE.md), API 스펙은 [API.md](./API.md) 참고.
 
 ---
 

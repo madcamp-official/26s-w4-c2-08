@@ -41,11 +41,11 @@ function resolveGameContext(cwd: string): GameContext {
 let currentPanel: vscode.WebviewPanel | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const disposable = vscode.commands.registerCommand('bossClicker.start', () => {
+  const disposable = vscode.commands.registerCommand('HitTheAgent.start', () => {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     const cwd = workspaceFolder?.uri.fsPath ?? process.cwd();
     const gameContext = resolveGameContext(cwd);
-    console.log('[bossClicker] gameContext', gameContext); // 확인용 — 디버그 콘솔에서 mode/groupId 검증되면 지워도 됨
+    console.log('[HitTheAgent] gameContext', gameContext); // 확인용 — 디버그 콘솔에서 mode/groupId 검증되면 지워도 됨
 
     // local 모드 결과 화면에서 "내 최고 기록"과 비교할 기준값. online 모드에서는 webview가 무시한다.
     const bestScore = context.globalState.get<number>('bestScore', 0);
@@ -60,8 +60,8 @@ export function activate(context: vscode.ExtensionContext) {
     const distUri = vscode.Uri.file(path.join(context.extensionPath, '..', 'frontend', 'dist'));
 
     currentPanel = vscode.window.createWebviewPanel(
-      'bossClicker',
-      'Boss Clicker',
+      'HitTheAgent',
+      'Hit the Agent',
       vscode.ViewColumn.One,
       {
         enableScripts: true,

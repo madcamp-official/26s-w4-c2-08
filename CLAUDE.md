@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-VSCode 확장 안에서 실행되는 보스 클리커 게임. git repo 단위로 그룹 인식해 팀 랭킹 서버 기록. repo 없으면 로컬 전용 모드.
+VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. git repo 단위로 그룹 인식해 팀 랭킹 서버 기록. repo 없으면 로컬 전용 모드.
 
 ## 프로젝트 목표
 

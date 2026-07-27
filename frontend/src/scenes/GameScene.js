@@ -7,6 +7,8 @@ import {
   UI_FONT_FAMILY,
   BACKGROUND_STYLE,
   BOSS_TYPES,
+  HIT_SPARK_DURATION,
+  HIT_SPARK_COLOR,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -164,8 +166,12 @@ export default class GameScene extends Phaser.Scene {
       const hitY = hits.reduce((sum, hit) => sum + hit.y, 0) / hits.length;
       this.boss.knockback(hitX, hitY);
       this.boss.flash(0xffffff);
+      this.boss.registerHits(hits.length);
       this.boss.showHurtFace();
-      hits.forEach((hit) => this.spawnDamagePopup(hit));
+      hits.forEach((hit) => {
+        this.spawnDamagePopup(hit);
+        this.spawnHitSpark(hit.x, hit.y);
+      });
     }
     if (defeated) {
       this.spawnDefeatPopup(deathPosition);
@@ -180,11 +186,66 @@ export default class GameScene extends Phaser.Scene {
     this.hud.updateHpBar(this.boss);
     this.hud.updateScoreText(this.combat.score);
     this.spawnDamagePopup({ amount, x, y, color: BOSS_PANEL_PUSH_POPUP_COLOR });
+    this.spawnHitSpark(x, y, 0xff5050);
     this.boss.flash(0xff3333);
     this.cameras.main.shake(120, 0.008);
 
     if (defeated) {
       this.spawnDefeatPopup(deathPosition);
+    }
+  }
+
+  // 타격 지점 이펙트. 이미지 에셋 없이 Phaser 내장 도형(Circle/Star)만 써서 다른 이펙트(팝업 텍스트 등)와
+  // 같은 방식으로 tween + destroy on complete로 처리한다. depth를 높게 둬서 보스/무기 뒤로 안 숨는다.
+  // 실제 타격감을 위해 세 가지를 겹친다:
+  //  1) 코어 플래시 — 맞는 순간 확 밝아졌다 사라지는 흰 빛(가산 블렌드)으로 순간적인 "펑" 느낌
+  //  2) 조각별 버스트 — 크기/색을 조각마다 다르게 섞고, 튀어나가기 전에 짧게 팝(overshoot)한 뒤 날아가며
+  //     아주 살짝 중력처럼 아래로 처지게 해서 정적인 방사형보다 훨씬 물리적으로 튀는 느낌을 준다
+  spawnHitSpark(x, y, color = HIT_SPARK_COLOR) {
+    const flash = this.add.circle(x, y, 16, 0xffffff, 0.9)
+      .setDepth(999)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash,
+      scale: 1.8,
+      alpha: 0,
+      duration: HIT_SPARK_DURATION * 0.5,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy(),
+    });
+
+    const shardCount = 8;
+    const shardColors = [color, 0xffffff, 0xffb347];
+    for (let i = 0; i < shardCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / shardCount + Phaser.Math.FloatBetween(-0.35, 0.35);
+      const distance = Phaser.Math.Between(28, 56);
+      const size = Phaser.Math.Between(7, 13);
+      const shardColor = Phaser.Utils.Array.GetRandom(shardColors);
+      const shard = this.add.star(x, y, 4, size * 0.4, size, shardColor)
+        .setStrokeStyle(2, 0xffffff)
+        .setDepth(1000)
+        .setScale(0.3)
+        .setAngle(Phaser.Math.Between(0, 360));
+
+      this.tweens.add({
+        targets: shard,
+        scale: 1,
+        duration: 60,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: shard,
+            x: x + Math.cos(angle) * distance,
+            y: y + Math.sin(angle) * distance + 10,
+            scale: 0.15,
+            alpha: 0,
+            angle: shard.angle + Phaser.Math.Between(-180, 180),
+            duration: HIT_SPARK_DURATION,
+            ease: 'Cubic.easeOut',
+            onComplete: () => shard.destroy(),
+          });
+        },
+      });
     }
   }
 

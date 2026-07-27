@@ -67,14 +67,18 @@ export default class WeaponManager {
 
   // 보스(고정된 사각형)를 완전히 뚫고 지나가지 않도록 후보 좌표 (x,y)를 보정.
   // 방망이는 사각 프레임이 아니라 실제 대각선 실루엣(캡슐) 기준으로, 나머지는 사각 히트박스 기준으로 판정한다.
+  // 방망이는 몸통 전용 사각형(Boss.bodyWidth/Height, 여백 제외)을 써서 상태 표시가 뜬 여백까지
+  // 뚫지 못하는 벽처럼 취급하지 않는다 — 그 자리는 원래 빈 캔버스라 막을 이유가 없다.
   resolveAgainstBoss(weapon, x, y) {
     const boss = this.boss.sprite;
     if (weapon.category === WEAPON_CATEGORIES.PORTABLE) {
-      const bossHalfW = boss.displayWidth / 2;
-      const bossHalfH = boss.displayHeight / 2;
+      const bossHalfW = this.boss.bodyWidth / 2;
+      const bossHalfH = this.boss.bodyHeight / 2;
+      const bossCenterX = this.boss.bodyCenterX;
+      const bossCenterY = this.boss.bodyCenterY;
       const { x1, y1, x2, y2, radius } = this.getBatAxis({ x, y });
-      const pushed = pushRectOutOfCapsule(boss.x, boss.y, bossHalfW, bossHalfH, x1, y1, x2, y2, radius, CONTACT_OVERLAP);
-      return { x: x - (pushed.x - boss.x), y: y - (pushed.y - boss.y) };
+      const pushed = pushRectOutOfCapsule(bossCenterX, bossCenterY, bossHalfW, bossHalfH, x1, y1, x2, y2, radius, CONTACT_OVERLAP);
+      return { x: x - (pushed.x - bossCenterX), y: y - (pushed.y - bossCenterY) };
     }
     return this.resolveOverlap(x, y, weapon.displayWidth / 2, weapon.displayHeight / 2, boss);
   }
@@ -137,16 +141,29 @@ export default class WeaponManager {
     };
   }
 
+  // 이펙트(스파크/데미지 팝업)를 실제 맞은 자리에 띄우기 위한 좌표. weapon.x/y는 방망이의 회전 중심이라
+  // 배럴(보스 쪽으로 항상 향하는 끝)과 멀리 떨어져 있을 수 있어서, 방망이는 배럴 끝(getBatAxis의 x2,y2)을
+  // 쓰고 공처럼 그 자체가 이미 타격 지점인 투사체는 자기 좌표를 그대로 쓴다.
+  getHitPoint(weapon) {
+    if (weapon.category === WEAPON_CATEGORIES.PORTABLE) {
+      const { x2, y2 } = this.getBatAxis(weapon);
+      return { x: x2, y: y2 };
+    }
+    return { x: weapon.x, y: weapon.y };
+  }
+
   // 방망이는 대각선 실루엣이라 사각 히트박스 전체 대신, 실제 그림에 맞춘 캡슐(축+두께)로 보스와의 겹침을 판정한다.
+  // getBounds()(캔버스 전체) 대신 Boss.getHitRect()(여백 제외 몸통)를 써서 느낌표/분노 마크가 뜬
+  // 여백을 때려도 히트로 안 잡히게 한다.
   batOverlapsBoss(weapon) {
     const { x1, y1, x2, y2, radius } = this.getBatAxis(weapon);
-    return capsuleIntersectsRect(x1, y1, x2, y2, radius, this.boss.sprite.getBounds());
+    return capsuleIntersectsRect(x1, y1, x2, y2, radius, this.boss.getHitRect());
   }
 
   // 야구공 투사체는 둥근 그림이라 사각 히트박스 대신 원(길이 0인 캡슐)으로 보스와의 겹침을 판정한다.
   projectileOverlapsBoss(projectile) {
     return capsuleIntersectsRect(
-      projectile.x, projectile.y, projectile.x, projectile.y, THROW_PROJECTILE_HIT_RADIUS, this.boss.sprite.getBounds(),
+      projectile.x, projectile.y, projectile.x, projectile.y, THROW_PROJECTILE_HIT_RADIUS, this.boss.getHitRect(),
     );
   }
 

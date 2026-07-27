@@ -1,14 +1,21 @@
 import Phaser from 'phaser';
 import { BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
-import { createBossCanvas, createBossHurtCanvas, MAX_DAMAGE_STAGE } from '../entities/bossSprite.js';
+import { createBossCanvas, createBossHurtCanvas, createBossFireCanvas, MAX_DAMAGE_STAGE } from '../entities/bossSprite.js';
 import { createBaseballCanvas, createBaseballBatCanvas } from '../entities/weaponSprites.js';
+import { assetUrl } from '../assetBase.js';
 
-// 실제 스프라이트/사운드 에셋이 준비되기 전까지 사용하는 placeholder 텍스처.
-// 에셋 파일이 추가되면 이 생성 로직 대신 this.load.image(...) / this.load.audio(...)로 교체한다.
+// 실제 스프라이트 에셋이 준비되기 전까지 사용하는 placeholder 텍스처.
+// 에셋 파일이 추가되면 이 생성 로직 대신 this.load.image(...)로 교체한다.
 export default class BootScene extends Phaser.Scene {
   constructor() {
     super('BootScene');
+  }
+
+  // preload에서 등록한 로드가 끝나면 Phaser가 알아서 create()를 호출한다.
+  preload() {
+    this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
+    this.load.audio('bat_hit', assetUrl('audio/bat_hit.mp3'));
   }
 
   create() {
@@ -32,6 +39,7 @@ export default class BootScene extends Phaser.Scene {
       for (let damageStage = 0; damageStage <= MAX_DAMAGE_STAGE; damageStage += 1) {
         this.textures.addCanvas(`boss_${id}_d${damageStage}`, createBossCanvas(color, undefined, damageStage));
         this.textures.addCanvas(`boss_hurt_${id}_d${damageStage}`, createBossHurtCanvas(color, undefined, damageStage));
+        this.textures.addCanvas(`boss_fire_${id}_d${damageStage}`, createBossFireCanvas(color, undefined, damageStage));
       }
     });
   }

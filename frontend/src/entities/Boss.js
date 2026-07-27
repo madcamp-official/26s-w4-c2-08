@@ -6,8 +6,13 @@ import {
   BOSS_PANEL_PUSH_DURATION,
   BOSS_FLASH_DURATION,
   BOSS_HURT_FACE_DURATION,
+  COMBO_WINDOW_MS,
+  COMBO_HIT_THRESHOLD,
+  BOSS_FIRE_BREATH_DURATION,
+  BOSS_FIRE_BREATH_COOLDOWN_MS,
+  FIRE_BREATH_MIN_DAMAGE_STAGE,
 } from '../config/constants.js';
-import { MAX_DAMAGE_STAGE } from './bossSprite.js';
+import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
 // HP 비율이 이 값들 이하로 떨어질 때마다 데미지 단계가 하나씩 올라간다 (개수 = MAX_DAMAGE_STAGE).
 // 1단계(<=0.7): 두 눈 처짐 + 입 살짝. 2단계(<=0.3): 눈 더 처짐 + 입 더 벌어짐 + 스파크 표시.
@@ -26,6 +31,9 @@ export default class Boss {
     this.sprite = scene.physics.add.image(BOSS_SPAWN.x, BOSS_SPAWN.y, `boss_${bossTypeId}_d0`);
     this.maxHp = 1000;
     this.hp = this.maxHp;
+    this.recentHitTimestamps = [];
+    this.fireBreathEvent = null;
+    this.lastFireBreathTime = -Infinity;
 
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setInteractive({ draggable: true });
@@ -43,6 +51,36 @@ export default class Boss {
 
   get displayHeight() {
     return this.sprite.displayHeight;
+  }
+
+  // 텍스처 캔버스 왼쪽/위쪽 여백(BOSS_MARGIN_LEFT/TOP, bossSprite.js)에는 느낌표/분노 마크 같은 상태
+  // 표시만 있고 실제 몸통이 없다. displayWidth/Height(=캔버스 전체) 그대로 판정하면 그 여백 — 즉 상태
+  // 표시 아이콘 자리 — 을 때려도 데미지가 들어가 버려서, 히트/오버랩 판정은 여백을 뺀 이 값들을 써야 한다.
+  get bodyWidth() {
+    return this.displayWidth - BOSS_MARGIN_LEFT;
+  }
+
+  get bodyHeight() {
+    return this.displayHeight - BOSS_MARGIN_TOP;
+  }
+
+  get bodyCenterX() {
+    return this.sprite.x + BOSS_MARGIN_LEFT / 2;
+  }
+
+  get bodyCenterY() {
+    return this.sprite.y + BOSS_MARGIN_TOP / 2;
+  }
+
+  // 히트/오버랩 판정 전용 몸통 사각형 (world 좌표). 방망이 캡슐(batOverlapsBoss)과 투사체 원
+  // (projectileOverlapsBoss) 판정에 쓴다 — 자세한 이유는 위 getter들 주석 참고.
+  getHitRect() {
+    return new Phaser.Geom.Rectangle(
+      this.bodyCenterX - this.bodyWidth / 2,
+      this.bodyCenterY - this.bodyHeight / 2,
+      this.bodyWidth,
+      this.bodyHeight,
+    );
   }
 
   setPosition(x, y) {
@@ -78,6 +116,10 @@ export default class Boss {
     this.setPosition(BOSS_SPAWN.x, BOSS_SPAWN.y);
     this.hurtFaceEvent?.remove();
     this.hurtFaceEvent = null;
+    this.fireBreathEvent?.remove();
+    this.fireBreathEvent = null;
+    this.recentHitTimestamps = [];
+    this.lastFireBreathTime = -Infinity;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 
@@ -86,6 +128,8 @@ export default class Boss {
     this.bossTypeId = bossTypeId;
     this.hurtFaceEvent?.remove();
     this.hurtFaceEvent = null;
+    this.fireBreathEvent?.remove();
+    this.fireBreathEvent = null;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 
@@ -145,11 +189,44 @@ export default class Boss {
   }
 
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.
+  // 불 뿜는 연출이 떠 있는 동안은 X_X로 덮어쓰지 않는다 (불 뿜기가 우선).
   showHurtFace() {
+    if (this.fireBreathEvent) return;
     this.hurtFaceEvent?.remove();
     this.sprite.setTexture(`boss_hurt_${this.bossTypeId}_d${this.damageStage}`);
     this.hurtFaceEvent = this.scene.time.delayedCall(BOSS_HURT_FACE_DURATION, () => {
       this.hurtFaceEvent = null;
+      this.sprite.setTexture(this.getBaseTextureKey());
+    });
+  }
+
+  // 최근 COMBO_WINDOW_MS 안에 쌓인 히트 수가 COMBO_HIT_THRESHOLD를 넘으면 불 뿜기 연출을 띄운다.
+  // 순수 비주얼 트리거라 데미지 계산에는 관여하지 않는다 — hitCount는 이번 프레임에 동시에 겹친 히트 수.
+  // 체력이 FIRE_BREATH_MIN_DAMAGE_STAGE 단계 이상 깎이기 전에는(=풀피에 가까우면) 콤보를 채워도 무시한다.
+  // 계속 연타하면 조건을 곧바로 다시 채우므로, BOSS_FIRE_BREATH_COOLDOWN_MS가 지나기 전엔 재발동을 막는다.
+  registerHits(hitCount) {
+    const now = this.scene.time.now;
+    for (let i = 0; i < hitCount; i += 1) this.recentHitTimestamps.push(now);
+    this.recentHitTimestamps = this.recentHitTimestamps.filter((t) => now - t <= COMBO_WINDOW_MS);
+
+    const lowEnoughHp = this.damageStage >= FIRE_BREATH_MIN_DAMAGE_STAGE;
+    const cooledDown = now - this.lastFireBreathTime >= BOSS_FIRE_BREATH_COOLDOWN_MS;
+    if (lowEnoughHp && cooledDown && this.recentHitTimestamps.length >= COMBO_HIT_THRESHOLD) {
+      this.recentHitTimestamps = [];
+      this.lastFireBreathTime = now;
+      this.showFireBreath();
+    }
+  }
+
+  // 콤보로 터지는 "불 뿜기" 표정 + 효과음. X_X 표정보다 우선하며, 끝나면 현재 데미지 단계의 평상시 텍스처로 복귀한다.
+  showFireBreath() {
+    this.hurtFaceEvent?.remove();
+    this.hurtFaceEvent = null;
+    this.fireBreathEvent?.remove();
+    this.sprite.setTexture(`boss_fire_${this.bossTypeId}_d${this.damageStage}`);
+    this.scene.sound.play('boss_fire_roar');
+    this.fireBreathEvent = this.scene.time.delayedCall(BOSS_FIRE_BREATH_DURATION, () => {
+      this.fireBreathEvent = null;
       this.sprite.setTexture(this.getBaseTextureKey());
     });
   }

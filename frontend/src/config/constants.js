@@ -50,6 +50,21 @@ export const BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER = 2; // 패널에 부딪혀 왼�
 export const BOSS_PANEL_PUSH_POPUP_COLOR = '#ff5050'; // 패널 충돌 보너스 데미지 팝업 색 (일반 데미지와 구분)
 export const BOSS_FLASH_DURATION = 120; // ms
 export const BOSS_HURT_FACE_DURATION = 300; // ms, 피격 시 눈이 X_X로 바뀌어 있는 시간
+export const HIT_SPARK_DURATION = 260; // ms, 타격 지점 스파크가 커지면서 사라지는 시간
+export const HIT_SPARK_COLOR = 0xffe066; // 일반 타격 스파크 색 (노랑)
+
+// 연타 콤보: 최근 COMBO_WINDOW_MS 안에 히트가 COMBO_HIT_THRESHOLD번 이상 쌓이면 불 뿜는 연출.
+// 체력 단계(damageStage)와는 무관하게 얼마나 빠르게 연타하느냐만 본다 — 비주얼 전용, 데미지/판정에는 영향 없음.
+// 히트 자체가 HIT_COOLDOWN(300ms)에 걸려 초당 최대 ~3.3번이라, COMBO_WINDOW_MS는 그 한계를 감안해서 잡아야 한다
+// (예: 1000ms 안에 10번은 물리적으로 불가능 — 최대치보다 여유 있게 못 미치는 값으로).
+export const COMBO_WINDOW_MS = 3000;
+export const COMBO_HIT_THRESHOLD = 8;
+export const BOSS_FIRE_BREATH_DURATION = 500; // ms, 불 뿜는 표정이 유지되는 시간
+// 계속 연타하면 콤보가 매번 다시 차서 곧바로 재발동되는 게 시끄러워서, 발동 자체에 최소 간격을 둔다.
+export const BOSS_FIRE_BREATH_COOLDOWN_MS = 6000;
+// 체력이 이 정도는 깎여야("좀 더 낮아졌을 때") 콤보를 채워도 불을 뿜는다. Boss.js DAMAGE_RATIO_BREAKPOINTS
+// 기준 1단계(70% 이하)부터. 풀피 상태에서 그냥 연타만 빨리해도 뿜는 게 어색해서 넣은 조건.
+export const FIRE_BREATH_MIN_DAMAGE_STAGE = 1;
 export const DAMAGE_POPUP_DURATION = 700; // ms
 export const DEFEAT_POPUP_DURATION = 900; // ms
 export const DEFEAT_POPUP_COLOR = '#ffaa00'; // "처치!" 팝업 색 — 뽑기 버튼과 동일 계열

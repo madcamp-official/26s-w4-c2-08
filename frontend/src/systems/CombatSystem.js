@@ -4,6 +4,7 @@ import {
   BASE_DAMAGE_MIN,
   BASE_DAMAGE_MAX,
   BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER,
+  WEAPON_CATEGORIES,
 } from '../config/constants.js';
 
 export default class CombatSystem {
@@ -24,14 +25,19 @@ export default class CombatSystem {
     if (now - this.lastHitTime < HIT_COOLDOWN) return;
     this.lastHitTime = now;
 
+    // HIT_COOLDOWN을 통과해 실제로 데미지 틱이 발생하는 순간에만 재생 — overlap 콜백 자체는 겹쳐있는
+    // 동안 매 프레임 불려서 여기서 안 거르면 효과음이 끊임없이 겹쳐 재생된다.
+    if (triggerWeapon.category === WEAPON_CATEGORIES.PORTABLE) {
+      this.scene.sound.play('bat_hit');
+    }
+
     const overlappingWeapons = this.weaponManager.getOverlappingDamageDealers();
     const hits = overlappingWeapons.length > 0
       ? overlappingWeapons.map((weapon) => ({
         amount: this.rollDamage(),
-        x: weapon.x,
-        y: weapon.y,
+        ...this.weaponManager.getHitPoint(weapon),
       }))
-      : [{ amount: this.rollDamage(), x: triggerWeapon.x, y: triggerWeapon.y }];
+      : [{ amount: this.rollDamage(), ...this.weaponManager.getHitPoint(triggerWeapon) }];
 
     const damage = hits.reduce((sum, hit) => sum + hit.amount, 0);
     this.boss.takeDamage(damage);

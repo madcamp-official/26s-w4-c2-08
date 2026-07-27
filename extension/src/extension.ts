@@ -112,6 +112,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 function getWebviewHtml(webview: vscode.Webview, distUri: vscode.Uri): string {
   const bundleUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'bundle.js'));
+  // dist 폴더 전체를 webview가 신뢰하는 vscode-webview:// 스킴으로 미리 변환해 전역 변수로 심어둔다.
+  // 효과음 등 정적 에셋은 이 base 뒤에 상대경로만 붙이면 되고(frontend/src/assetBase.js), 새 파일을
+  // dist에 추가할 때마다 extension.ts를 매번 고칠 필요가 없다 (CLAUDE.md webview 리소스 불변 조건).
+  const assetBaseUri = webview.asWebviewUri(distUri);
   // default-src 'none' 기준이라 나머지를 전부 명시적으로 허용해야 한다.
   const csp = [
     "default-src 'none'",
@@ -121,6 +125,8 @@ function getWebviewHtml(webview: vscode.Webview, distUri: vscode.Uri): string {
     // Phaser가 내부 기본 텍스처(__DEFAULT/__MISSING 등)를 base64 data URI로 로드한다 —
     // img-src를 안 열어두면 default-src 'none'에 막혀 조용히 실패하고 텍스처 프레임이 없어 크래시난다.
     `img-src ${webview.cspSource} data:`,
+    // 효과음 재생(Phaser Sound Manager)이 HTML5Audio로 폴백할 때 <audio> 태그가 media-src를 탄다.
+    `media-src ${webview.cspSource}`,
   ].join('; ');
 
   return `<!doctype html>
@@ -147,7 +153,7 @@ function getWebviewHtml(webview: vscode.Webview, distUri: vscode.Uri): string {
       }
     </style>
   </head>
-  <body>
+  <body data-asset-base="${assetBaseUri}">
     <div id="game-container">
       <div id="game-stage">
         <div id="pause-overlay">일시정지</div>

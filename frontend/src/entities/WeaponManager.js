@@ -12,11 +12,12 @@ import {
 import { getBaseballBatDimensions } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
-// 방망이 텍스처는 -45도로 회전된 채 미리 그려져 있어(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고),
-// 손잡이 끝/배럴 끝이 weapon.x,y로부터 이 오프셋만큼씩 대각선으로 떨어져 있다. PORTABLE_WEAPON_SIZE가 바뀌면
-// 그림과 항상 같이 맞도록 getBaseballBatDimensions()에서 계산한다.
+// 방망이 텍스처는 로컬 기준 -45도로 미리 그려져 있다(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고).
+// weapon.rotation으로 이 baked 각도를 상쇄해 배럴(헤드)이 항상 보스 쪽을 향하도록 돌리고,
+// 히트박스(캡슐)도 같은 보스 방향 각도로 계산해서 그림과 판정이 항상 같이 움직이게 한다.
+// PORTABLE_WEAPON_SIZE가 바뀌면 그림과 히트박스가 항상 같이 맞도록 getBaseballBatDimensions()에서 계산한다.
 const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
-const BAT_AXIS_OFFSET = BAT_DIMENSIONS.halfLen / Math.SQRT2;
+const BAT_BAKED_ROTATION = -Math.PI / 4;
 const BAT_AXIS_RADIUS = BAT_DIMENSIONS.barrelHalfWidth;
 
 // 원형 물리 바디를 텍스처(정사각) 프레임 한가운데 오도록 하는 오프셋
@@ -45,6 +46,7 @@ export default class WeaponManager {
       this.startFiring(weapon);
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
+      if (category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(weapon);
     }
 
     return weapon;
@@ -60,6 +62,7 @@ export default class WeaponManager {
     if (!this.activeWeapon) return;
     const resolved = this.resolveAgainstBoss(this.activeWeapon, x, y);
     this.activeWeapon.setPosition(resolved.x, resolved.y);
+    if (this.activeWeapon.category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(this.activeWeapon);
   }
 
   // 보스(고정된 사각형)를 완전히 뚫고 지나가지 않도록 후보 좌표 (x,y)를 보정.
@@ -108,13 +111,28 @@ export default class WeaponManager {
     this.activeWeapon = null;
   }
 
-  // 방망이의 손잡이 끝→배럴 끝을 잇는 중심축 (world 좌표). 텍스처가 -45도로 고정 회전되어 있어 오프셋이 항상 같다.
+  // 방망이 위치에서 보스를 바라보는 각도. 투사체 발사 각도 계산과 같은 패턴.
+  getAngleToBoss(x, y) {
+    return Phaser.Math.Angle.Between(x, y, this.boss.sprite.x, this.boss.sprite.y);
+  }
+
+  // 화면에 보이는 방망이가 항상 이 각도를 바라보도록 회전시킨다. 텍스처가 로컬 -45도로 baked되어 있어
+  // 그만큼 보정해줘야 실제로 그려지는 배럴(헤드)이 목표 각도를 향한다.
+  updateBatRotation(weapon) {
+    weapon.rotation = this.getAngleToBoss(weapon.x, weapon.y) - BAT_BAKED_ROTATION;
+  }
+
+  // 방망이의 손잡이 끝→배럴 끝을 잇는 중심축 (world 좌표). 배럴(헤드)이 항상 보스를 향하도록 그리므로
+  // 히트박스 축도 같은 보스 방향 각도로 계산해서 그림과 판정이 어긋나지 않게 한다.
   getBatAxis(weapon) {
+    const angle = this.getAngleToBoss(weapon.x, weapon.y);
+    const dx = Math.cos(angle) * BAT_DIMENSIONS.halfLen;
+    const dy = Math.sin(angle) * BAT_DIMENSIONS.halfLen;
     return {
-      x1: weapon.x - BAT_AXIS_OFFSET,
-      y1: weapon.y + BAT_AXIS_OFFSET,
-      x2: weapon.x + BAT_AXIS_OFFSET,
-      y2: weapon.y - BAT_AXIS_OFFSET,
+      x1: weapon.x - dx,
+      y1: weapon.y - dy,
+      x2: weapon.x + dx,
+      y2: weapon.y + dy,
       radius: BAT_AXIS_RADIUS,
     };
   }

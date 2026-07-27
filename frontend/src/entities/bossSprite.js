@@ -4,7 +4,8 @@
 const CELL = 10;
 
 // 느낌표/분노 표시가 머리 옆 캔버스 바깥 여백에 들어갈 자리를 확보한다 (표시가 커서 여유 있게 잡음).
-const TOP_MARGIN = 18;
+// 여백은 왼쪽에 두고 몸통 전체를 그만큼 오른쪽으로 밀어서 그린다.
+const TOP_MARGIN = 24;
 const SIDE_MARGIN = 20;
 
 const BODY_CELLS = [
@@ -34,7 +35,7 @@ function createCanvas() {
 }
 
 function cellRect(r, c) {
-  return { x: c * CELL, y: r * CELL + TOP_MARGIN, w: CELL, h: CELL };
+  return { x: c * CELL + SIDE_MARGIN, y: r * CELL + TOP_MARGIN, w: CELL, h: CELL };
 }
 
 function drawBody(ctx, bodyColor) {
@@ -112,16 +113,16 @@ function drawMouth(ctx, damageStage) {
   const mouthY = 2 * CELL + TOP_MARGIN + CELL * 0.25;
   const width = damageStage >= 2 ? 30 : 22;
   const height = damageStage >= 2 ? 8 : 6;
-  const x = (BOSS_TEXTURE_WIDTH - SIDE_MARGIN) / 2 - width / 2;
+  const x = SIDE_MARGIN + (COLS * CELL) / 2 - width / 2;
 
   ctx.fillStyle = '#000000';
   ctx.fillRect(x, mouthY, width, height);
 }
 
 // 머리 옆에 크게 뜨는 상태 표시. 1단계는 빨간 느낌표(놀람), 2단계는 빨간 소용돌이 분노 마크로 바뀐다.
-// 캔버스 오른쪽 여백(SIDE_MARGIN)에 그려서 몸통 실루엣을 가리지 않는다.
-const MARK_CENTER = { x: BOSS_TEXTURE_WIDTH - SIDE_MARGIN / 2, y: TOP_MARGIN * 0.55 };
-const MARK_SIZE = 18;
+// 캔버스 왼쪽 여백(SIDE_MARGIN)에 그려서 몸통 실루엣을 가리지 않는다.
+const MARK_CENTER = { x: SIDE_MARGIN / 2, y: TOP_MARGIN * 0.55 };
+const MARK_SIZE = 24;
 
 function drawExclamationMark(ctx, cx, cy, size) {
   ctx.fillStyle = '#e6402f';
@@ -132,29 +133,35 @@ function drawExclamationMark(ctx, cx, cy, size) {
   ctx.fillRect(cx - dotSize / 2, cy + size * 0.16, dotSize, dotSize);
 }
 
-// 4개의 갈고리 모양 획을 중심점 기준 90도씩 돌려 그려서 만화식 "분노 소용돌이" 마크를 흉내낸다.
+// 중심에서 살짝 떨어진 채 따로 떠 있는, 부드럽게 90도로 굽은 획 4개를 90도씩 돌려 그려서
+// 만화식 "분노 마크"를 흉내낸다. 중심에서 모두 만나면 바람개비처럼 뭉쳐 보이므로
+// 시작점을 중심에서 띄워 서로 떨어진 개별 획으로 보이게 한다. arcTo로 꺾이는 부분을 둥글게 굴린다.
 function drawAngerMark(ctx, cx, cy, size) {
-  ctx.strokeStyle = '#c0392b';
-  ctx.lineWidth = size * 0.16;
+  ctx.strokeStyle = '#e6402f';
+  ctx.lineWidth = size * 0.26;
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
   for (let i = 0; i < 4; i += 1) {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate((Math.PI / 2) * i + Math.PI / 4);
     ctx.beginPath();
-    ctx.moveTo(0, -size * 0.12);
-    ctx.quadraticCurveTo(size * 0.5, -size * 0.5, size * 0.14, -size * 0.82);
+    ctx.moveTo(0, -size * 0.28);
+    ctx.arcTo(size * 0.5, -size * 0.28, size * 0.5, -size * 0.85, size * 0.3);
+    ctx.lineTo(size * 0.5, -size * 0.85);
     ctx.stroke();
     ctx.restore();
   }
 }
 
-function drawDamageMark(ctx, damageStage) {
-  if (damageStage < 1) return;
+// forceExclamation: 아직 데미지 단계가 0(평상시)이어도 맞은 직후(hurt) 잠깐 느낌표를 띄우기 위한 플래그.
+function drawDamageMark(ctx, damageStage, { forceExclamation = false } = {}) {
   if (damageStage >= 2) {
     drawAngerMark(ctx, MARK_CENTER.x, MARK_CENTER.y, MARK_SIZE);
-  } else {
+    return;
+  }
+  if (damageStage >= 1 || forceExclamation) {
     drawExclamationMark(ctx, MARK_CENTER.x, MARK_CENTER.y, MARK_SIZE);
   }
 }
@@ -180,7 +187,7 @@ export function createBossHurtCanvas(bodyColor, eyeColor = '#000000', damageStag
   drawBody(ctx, bodyColor);
   drawEyes(ctx, bodyColor, eyeColor, { droopStage: damageStage, forceBothEyesX: true });
   drawMouth(ctx, damageStage);
-  drawDamageMark(ctx, damageStage);
+  drawDamageMark(ctx, damageStage, { forceExclamation: true });
 
   return canvas;
 }

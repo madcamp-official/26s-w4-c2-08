@@ -112,6 +112,7 @@ export const FRYING_PAN_WEAPON_SIZE = 130; // 프라이팬 텍스처 크기 — 
 export const SLIPPER_WEAPON_SIZE = 80; // 슬리퍼 텍스처 크기 — 납작한 실루엣이라 중간 크기
 export const BOXING_GLOVE_WEAPON_SIZE = 80; // 권투 글러브 텍스처 크기 — 손 정도의 중간 휴대 크기
 export const WATERMELON_WEAPON_SIZE = 56; // 수박 텍스처 크기 — 다른 투척형(THROW_WEAPON_SIZE=40)보다 크게
+export const TOMATO_WEAPON_SIZE = 52; // 토마토 텍스처 크기 — 터지는 이펙트(spawnTomatoBurstEffect)가 잘 보이도록 THROW_WEAPON_SIZE보다 크게
 export const BOOMERANG_WEAPON_SIZE = 70; // 부메랑 텍스처 크기 — 전기충격기/손 정도의 소형 휴대 크기
 export const BOOMERANG_HIT_RADIUS = BOOMERANG_WEAPON_SIZE * 0.4; // 날아가는 동안 원형 판정 반지름 (THROW_PROJECTILE_HIT_RADIUS와 같은 비율)
 export const BOOMERANG_OUT_DISTANCE = 110; // px, 놓은 자리에서 보스 반대쪽으로 먼저 날아가는 거리
@@ -391,8 +392,10 @@ export const WEAPON_DEFINITIONS = {
     name: 'SLIPPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_slipper', meleeSwing: true,
   },
   // 직선 펀치답게 다른 STATIC 무기보다 한 방이 더 아프도록 damageMultiplier를 살짝 높게 잡는다.
+  // bigImpact: 히트 스파크를 다른 STATIC 무기보다 크게(spawnHitSpark scale) + GameScene.onHit에서 카메라
+  // shake까지 추가로 겹쳐서 데미지 배율이 높은 무기다운 타격감을 준다.
   [WEAPON_IDS.BOXING_GLOVE]: {
-    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2,
+    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2, bigImpact: true,
   },
   // 놓는 순간 던져지는 1회성 무기 — fireSound는 다른 THROW 무기처럼 발사 시점(WeaponManager.throwBoomerang)에
   // 재생한다. hitSound 에셋은 아직 없어서 무음.

@@ -6,7 +6,7 @@ import {
   SOUND_WAVE_PROJECTILE_SIZE, WHIP_WEAPON_SIZE, DEBUGGER_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
   BAMBOO_CANE_WEAPON_SIZE, SQUISHY_WEAPON_SIZE,
   RUBBER_DUCK_WEAPON_SIZE, TEDDY_BEAR_WEAPON_SIZE, CHEESE_SQUISHY_WEAPON_SIZE, FRYING_PAN_WEAPON_SIZE,
-  SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
+  SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
@@ -19,7 +19,7 @@ import {
   createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
   createBambooCaneCanvas, createSquishyToyCanvas,
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
-  createWatermelonCanvas, createWaterBalloonCanvas, createFryingPanCanvas, createSlipperCanvas,
+  createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
@@ -120,10 +120,12 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_revolver_bullet', createBulletCanvas(BULLET_SIZE, '#d7dce0'));
     this.textures.addCanvas('weapon_megaphone', createMegaphoneCanvas(MEGAPHONE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_sound_wave', createSoundWaveProjectileCanvas(SOUND_WAVE_PROJECTILE_SIZE, '#e0a63f'));
-    this.textures.addCanvas('weapon_tomato', createTomatoCanvas(THROW_WEAPON_SIZE));
-    this.textures.addCanvas('weapon_tomato_projectile', createTomatoCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_tomato', createTomatoCanvas(TOMATO_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_tomato_projectile', createTomatoCanvas(TOMATO_WEAPON_SIZE));
     this.textures.addCanvas('weapon_watermelon', createWatermelonCanvas(WATERMELON_WEAPON_SIZE));
     this.textures.addCanvas('weapon_watermelon_projectile', createWatermelonCanvas(WATERMELON_WEAPON_SIZE));
+    // 수박이 "쪼개지는" 타격 이펙트(GameScene.spawnWatermelonSplitEffect) 전용 반원 단면 텍스처.
+    this.textures.addCanvas('effect_watermelon_slice', createWatermelonSliceCanvas(WATERMELON_WEAPON_SIZE));
     this.textures.addCanvas('weapon_water_balloon', createWaterBalloonCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_water_balloon_projectile', createWaterBalloonCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_beach_ball', createBeachBallCanvas(THROW_WEAPON_SIZE));

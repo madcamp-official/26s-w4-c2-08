@@ -1201,6 +1201,65 @@ export function createWatermelonCanvas(size) {
   return canvas;
 }
 
+// 수박이 "쪼개지는" 타격 이펙트(GameScene.spawnWatermelonSplitEffect) 전용 반원 단면 텍스처.
+// 평평한 잘린 면(빨간 속살 + 씨)이 위, 둥근 초록 겉껍질이 아래를 향하게 그려서 반원 하나만으로도
+// "쪼개진 수박 반쪽"임을 알아볼 수 있게 한다. 두 조각은 같은 텍스처를 하나는 그대로, 하나는
+// setFlipX(true)로 좌우 반전해서 재사용한다(GameScene 참고) — 텍스처를 두 벌 만들 필요가 없다.
+export function createWatermelonSliceCanvas(size) {
+  const rindColor = '#3fae4a';
+  const rindStroke = '#1f6b2c';
+  const rindInnerColor = '#f3f7e8';
+  const fleshColor = '#e0413a';
+  const seedColor = '#2b2d30';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.42;
+
+  // 속살(반원) — 잘린 단면
+  ctx.fillStyle = fleshColor;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+
+  // 흰 속껍질 띠
+  ctx.strokeStyle = rindInnerColor;
+  ctx.lineWidth = size * 0.06;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius - size * 0.02, 0.04 * Math.PI, 0.96 * Math.PI);
+  ctx.stroke();
+
+  // 초록 겉껍질 띠(가장 바깥)
+  ctx.strokeStyle = rindColor;
+  ctx.lineWidth = size * 0.05;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI);
+  ctx.stroke();
+
+  // 씨 몇 개
+  ctx.fillStyle = seedColor;
+  [
+    [-0.5, 0.5], [-0.18, 0.72], [0.16, 0.66], [0.42, 0.46], [0, 0.32],
+  ].forEach(([sx, sy]) => {
+    ctx.beginPath();
+    ctx.ellipse(cx + sx * radius, cy + sy * radius, size * 0.02, size * 0.035, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // 잘린 직선 가장자리
+  ctx.strokeStyle = rindStroke;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.beginPath();
+  ctx.moveTo(cx - radius, cy);
+  ctx.lineTo(cx + radius, cy);
+  ctx.stroke();
+
+  return canvas;
+}
+
 // 물풍선: 위가 둥글고 아래가 살짝 좁아지는 물방울(풍선) 실루엣 + 하단 매듭 + 반투명한 느낌을 주는
 // 밝은 하이라이트. 맞는 순간 GameScene이 spawnHitSpark 색만 파랑으로 바꿔서 스플래시 이펙트를 낸다.
 export function createWaterBalloonCanvas(size) {

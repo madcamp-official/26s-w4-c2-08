@@ -425,11 +425,23 @@ export default class GameScene extends Phaser.Scene {
         const bigImpact = WEAPON_DEFINITIONS[hit.weaponId]?.bigImpact;
         if (hit.weaponId === WEAPON_IDS.TASER) this.spawnElectrocuteEffect();
         else if (hit.weaponId === WEAPON_IDS.MEGAPHONE) this.spawnSoundWaveEffect(hit.x, hit.y);
-        // 토마토/수박: 빨간 스플래터. 물풍선: 파란 스플래시. 전용 이펙트 함수 없이 spawnHitSpark 색만 바꿔 재사용한다.
-        else if (hit.weaponId === WEAPON_IDS.TOMATO || hit.weaponId === WEAPON_IDS.WATERMELON) {
-          this.spawnHitSpark(hit.x, hit.y, 0xc0392b, bigImpact ? 1.8 : 1);
-        } else if (hit.weaponId === WEAPON_IDS.WATER_BALLOON) this.spawnHitSpark(hit.x, hit.y, 0x4fc3f7, bigImpact ? 1.8 : 1);
+        else if (hit.weaponId === WEAPON_IDS.TOMATO) this.spawnTomatoBurstEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.WATERMELON) this.spawnWatermelonSplitEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.WATER_BALLOON) this.spawnWaterSplashEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.BEACH_BALL) this.spawnBeachBallBounceEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.FRYING_PAN) this.spawnMetalClangEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.SLIPPER) this.spawnSlipperSmackEffect(hit.x, hit.y);
         else this.spawnHitSpark(hit.x, hit.y, undefined, bigImpact ? 1.8 : 1);
+
+        // 말랑이 계열 3종 — 기존 찌부 모션(WeaponManager.playSquish)은 그대로 두고, 그 위에 얹는
+        // 오브젝트별 부가 파편 효과로만 서로 구분한다.
+        if (hit.weaponId === WEAPON_IDS.RUBBER_DUCK) this.spawnDuckSqueakEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.TEDDY_BEAR) this.spawnTeddyFluffEffect(hit.x, hit.y);
+        else if (hit.weaponId === WEAPON_IDS.CHEESE_SQUISHY) this.spawnCheeseCrumbEffect(hit.x, hit.y);
+
+        // 권투 글러브: damageMultiplier가 높은 무기답게 화면이 살짝 더 흔들리는 카메라 shake를 겹친다
+        // (applyPanelPushDamage의 패널 충돌 shake보다는 약하게 — 매 히트마다 나는 연출이라 과하면 시끄럽다).
+        if (hit.weaponId === WEAPON_IDS.BOXING_GLOVE) this.cameras.main.shake(90, 0.005);
       });
     }
     if (defeated) {
@@ -592,6 +604,334 @@ export default class GameScene extends Phaser.Scene {
         duration: 260,
         ease: 'Cubic.easeOut',
         onComplete: () => ring.destroy(),
+      });
+    }
+  }
+
+  // 만화적인 "펑" 폭발 버스트 모양 — 원형 플래시 대신 뾰족뾰족한 불규칙 스파이크 윤곽으로 그려서
+  // "터진다"는 느낌을 훨씬 날카롭게 준다. 튀어나오듯 팝(overshoot)한 뒤 살짝 더 부풀며 사라진다.
+  // spikeCount/radius를 무기별로 조절해 토마토/물풍선 등 "터지는" 계열 이펙트가 공유해서 쓴다.
+  spawnBurstShape(x, y, color = 0xffffff, { radius = 26, spikeCount = 12, alpha = 0.9 } = {}) {
+    const points = [];
+    for (let i = 0; i < spikeCount * 2; i += 1) {
+      const angle = (Math.PI * 2 * i) / (spikeCount * 2);
+      const isSpike = i % 2 === 0;
+      const r = isSpike
+        ? radius * Phaser.Math.FloatBetween(0.85, 1.2)
+        : radius * Phaser.Math.FloatBetween(0.32, 0.5);
+      points.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+    }
+
+    const graphics = this.add.graphics({ x, y }).setDepth(999).setScale(0.3);
+    graphics.fillStyle(color, alpha);
+    graphics.fillPoints(points, true);
+
+    this.tweens.add({
+      targets: graphics,
+      scale: 1,
+      duration: 130,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: graphics,
+          scale: 1.2,
+          alpha: 0,
+          duration: 220,
+          ease: 'Cubic.easeOut',
+          onComplete: () => graphics.destroy(),
+        });
+      },
+    });
+
+    return graphics;
+  }
+
+  // 토마토 전용 "터진다" 이펙트. 맞은 자리에 찌부러진 얼룩(자국)이 잠깐 부풀었다 사라지고,
+  // 그 위로 즙 방울 여러 개가 사방으로 튀며 중력을 받아 아래로 처지듯 떨어진다.
+  spawnTomatoBurstEffect(x, y) {
+    // 코어 플래시 — 원형 대신 뾰족한 버스트 모양으로 터지는 순간의 "펑" 느낌을 낸다.
+    this.spawnBurstShape(x, y, 0xffffff, { radius: 32, spikeCount: 10 });
+
+    const stain = this.add.ellipse(x, y + 4, 22, 12, 0xc0392b, 0.55).setDepth(998).setScale(0.4);
+    this.tweens.add({
+      targets: stain,
+      scaleX: 4.8,
+      scaleY: 2.6,
+      duration: 180,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: stain, alpha: 0, duration: 500, delay: 220, onComplete: () => stain.destroy(),
+        });
+      },
+    });
+
+    // 즙 방울 — 둥근 원 대신 끝이 뾰족한 별(star) 모양 파편으로 그려서 "터진다"는 느낌을 더 날카롭게 낸다.
+    // innerRadius를 outerRadius의 1/3 정도로 얇게 잡아 물방울보다는 튀는 파편에 가까운 실루엣을 만든다.
+    const dropletCount = 16;
+    for (let i = 0; i < dropletCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / dropletCount + Phaser.Math.FloatBetween(-0.3, 0.3);
+      const distance = Phaser.Math.Between(50, 100);
+      const size = Phaser.Math.Between(6, 13);
+      const droplet = this.add.star(x, y, 5, size * 0.35, size, 0xc0392b)
+        .setDepth(1000)
+        .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+      this.tweens.add({
+        targets: droplet,
+        x: x + Math.cos(angle) * distance,
+        // 사방으로 퍼지되 y는 항상 아래로 더 밀어서 중력 받아 떨어지는 느낌을 준다
+        y: y + Math.sin(angle) * distance * 0.4 + 64,
+        angle: droplet.angle + Phaser.Math.Between(-160, 160),
+        alpha: 0,
+        duration: 480,
+        ease: 'Cubic.easeIn',
+        onComplete: () => droplet.destroy(),
+      });
+    }
+  }
+
+  // 수박 전용 "쪼개진다" 이펙트. 반원 단면 텍스처(effect_watermelon_slice, weaponSprites.js) 두 장을
+  // 하나는 그대로, 하나는 좌우 반전(setFlipX)해서 좌우로 회전하며 갈라져 날아가게 하고, 씨 파편도 같이 튄다.
+  spawnWatermelonSplitEffect(x, y) {
+    // 원본 텍스처(WATERMELON_WEAPON_SIZE)보다 확대해서 던 조각째 튀는 느낌이 확실히 보이게 한다.
+    const sliceScale = 1.5;
+    const sliceA = this.add.image(x, y, 'effect_watermelon_slice').setDepth(1000).setScale(sliceScale);
+    const sliceB = this.add.image(x, y, 'effect_watermelon_slice').setDepth(1000).setScale(sliceScale).setFlipX(true);
+
+    [{ target: sliceA, dir: -1 }, { target: sliceB, dir: 1 }].forEach(({ target, dir }) => {
+      this.tweens.add({
+        targets: target,
+        x: x + dir * Phaser.Math.Between(46, 70),
+        y: y + Phaser.Math.Between(50, 76),
+        angle: dir * Phaser.Math.Between(50, 80),
+        alpha: 0,
+        duration: 520,
+        ease: 'Cubic.easeIn',
+        onComplete: () => target.destroy(),
+      });
+    });
+
+    const seedCount = 9;
+    for (let i = 0; i < seedCount; i += 1) {
+      const angle = Math.PI * Phaser.Math.FloatBetween(0, 1) + Math.PI; // 아래쪽 절반 위주로 튐
+      const distance = Phaser.Math.Between(30, 56);
+      const seed = this.add.ellipse(x, y, 6, 9, 0x2b2d30).setDepth(1001);
+      this.tweens.add({
+        targets: seed,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance + 30,
+        angle: Phaser.Math.Between(-180, 180),
+        alpha: 0,
+        duration: 420,
+        ease: 'Cubic.easeIn',
+        onComplete: () => seed.destroy(),
+      });
+    }
+  }
+
+  // 물풍선 전용 "터져서 물이 쏟아진다" 이펙트. 파문 링 하나 + 물방울 여러 개가 튀었다가 중력을 받아
+  // 아래로 떨어진다. 기존에는 spawnHitSpark 색만 파랑으로 바꿔 재사용했는데, 스파크(별 조각) 모양이라
+  // 물보다는 불꽃에 가까워 보여서 전용 이펙트로 교체한다.
+  spawnWaterSplashEffect(x, y) {
+    // 터지는 순간 뾰족한 버스트 모양(spawnBurstShape) — 토마토와 같은 방식으로 "펑" 느낌을 준다.
+    this.spawnBurstShape(x, y, 0x4fc3f7, { radius: 26, spikeCount: 10, alpha: 0.75 });
+
+    const dropletCount = 10;
+    for (let i = 0; i < dropletCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(-Math.PI * 0.9, -Math.PI * 0.1); // 위쪽으로 튀었다가
+      const distance = Phaser.Math.Between(18, 40);
+      const droplet = this.add.circle(x, y, Phaser.Math.Between(3, 6), 0x4fc3f7, 0.85).setDepth(1000);
+      this.tweens.add({
+        targets: droplet,
+        x: x + Math.cos(angle) * distance,
+        y: y + Phaser.Math.Between(40, 60), // 중력 받아 떨어지는 낙하
+        alpha: 0,
+        duration: 480,
+        ease: 'Cubic.easeIn',
+        onComplete: () => droplet.destroy(),
+      });
+    }
+  }
+
+  // 비치볼 전용 "통통 튄다" 이펙트. 데미지보다 튕겨나가는 느낌이 맞는 무기라, 실제 공 그림을 임팩트
+  // 지점에 잠깐 띄워 찌그러졌다(squash) 원래 모양으로 돌아오며(stretch) 임의 방향으로 살짝 튕겨나간 뒤
+  // 사라지게 한다. 원본 스케일(baseScale)을 따로 저장해둬야 찌그러진 스케일 위에 또 곱해지지 않는다.
+  spawnBeachBallBounceEffect(x, y) {
+    const baseScale = 0.85;
+    const ball = this.add.image(x, y, 'weapon_beach_ball_projectile').setDepth(1000).setScale(baseScale);
+    const bounceAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+
+    this.tweens.add({
+      targets: ball,
+      scaleX: baseScale * 1.35,
+      scaleY: baseScale * 0.6,
+      duration: 90,
+      ease: 'Sine.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: ball,
+          scaleX: baseScale,
+          scaleY: baseScale,
+          x: ball.x + Math.cos(bounceAngle) * 22,
+          y: ball.y + Math.sin(bounceAngle) * 22,
+          duration: 160,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.tweens.add({
+              targets: ball, alpha: 0, duration: 220, onComplete: () => ball.destroy(),
+            });
+          },
+        });
+      },
+    });
+  }
+
+  // 러버덕 전용 부가 효과 — "삑삑" 소리 나는 느낌으로 별/음표가 작게 튀어 오른다.
+  // squishHit(playSquish, WeaponManager)이 이미 찌부 모션을 담당하므로 이 위에 얹기만 한다.
+  spawnDuckSqueakEffect(x, y) {
+    const symbols = ['★', '♪'];
+    const count = 3;
+    for (let i = 0; i < count; i += 1) {
+      const symbol = Phaser.Utils.Array.GetRandom(symbols);
+      const text = this.add.text(x + Phaser.Math.Between(-12, 12), y - Phaser.Math.Between(0, 6), symbol, {
+        fontSize: `${Phaser.Math.Between(12, 18)}px`,
+        color: '#ffd43b',
+      }).setOrigin(0.5).setDepth(1000);
+
+      this.tweens.add({
+        targets: text,
+        y: text.y - Phaser.Math.Between(24, 36),
+        alpha: 0,
+        duration: 380,
+        delay: i * 50,
+        ease: 'Cubic.easeOut',
+        onComplete: () => text.destroy(),
+      });
+    }
+  }
+
+  // 곰인형 전용 부가 효과 — 솜(하얀 조각)이 살짝 날린다. squishHit 위에 얹는 방식은 러버덕과 동일.
+  spawnTeddyFluffEffect(x, y) {
+    const fluffCount = 5;
+    for (let i = 0; i < fluffCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(-Math.PI, 0);
+      const distance = Phaser.Math.Between(14, 30);
+      const fluff = this.add.circle(x, y, Phaser.Math.Between(3, 5), 0xffffff, 0.9)
+        .setStrokeStyle(1, 0xe8c9a0)
+        .setDepth(1000);
+      this.tweens.add({
+        targets: fluff,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance - Phaser.Math.Between(10, 20),
+        alpha: 0,
+        duration: 500,
+        delay: i * 30,
+        ease: 'Sine.easeOut',
+        onComplete: () => fluff.destroy(),
+      });
+    }
+  }
+
+  // 치즈 말랑이 전용 부가 효과 — 부스러기(작은 노란 조각)가 튄다. squishHit 위에 얹는 방식은 동일.
+  spawnCheeseCrumbEffect(x, y) {
+    const crumbCount = 6;
+    for (let i = 0; i < crumbCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / crumbCount + Phaser.Math.FloatBetween(-0.4, 0.4);
+      const distance = Phaser.Math.Between(16, 32);
+      const crumbSize = Phaser.Math.Between(4, 7);
+      const crumb = this.add.rectangle(x, y, crumbSize, crumbSize, 0xf5cf3d, 0.95)
+        .setStrokeStyle(1, 0xc9971f)
+        .setDepth(1000)
+        .setAngle(Phaser.Math.Between(0, 360));
+      this.tweens.add({
+        targets: crumb,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance * 0.5 + 24, // 부스러기라 살짝 아래로 떨어지듯
+        angle: crumb.angle + Phaser.Math.Between(-120, 120),
+        alpha: 0,
+        duration: 400,
+        ease: 'Cubic.easeIn',
+        onComplete: () => crumb.destroy(),
+      });
+    }
+  }
+
+  // 프라이팬 전용 "쨍" 금속 타격 이펙트. 기본 spawnHitSpark보다 더 밝은 코어 플래시 + 더 얇고 뾰족한
+  // 별(needle-like) 스파크를 짧은 지속시간으로 튀겨서 둥글고 느린 기본 스파크와 확실히 구분한다.
+  spawnMetalClangEffect(x, y) {
+    const flash = this.add.circle(x, y, 20, 0xffffff, 0.95)
+      .setDepth(999)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash,
+      scale: 2.2,
+      alpha: 0,
+      duration: 140,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy(),
+    });
+
+    const sparkCount = 10;
+    const sparkColors = [0xffffff, 0xffe066];
+    for (let i = 0; i < sparkCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / sparkCount + Phaser.Math.FloatBetween(-0.2, 0.2);
+      const distance = Phaser.Math.Between(36, 64);
+      const color = Phaser.Utils.Array.GetRandom(sparkColors);
+      // innerRadius(2)를 outerRadius(10)보다 훨씬 작게 잡아 기본 스파크보다 뾰족한 바늘 모양으로 만든다.
+      const spark = this.add.star(x, y, 4, 2, 10, color).setDepth(1000).setRotation(angle);
+      this.tweens.add({
+        targets: spark,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        scale: 0.2,
+        alpha: 0,
+        duration: 180,
+        ease: 'Cubic.easeOut',
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  // 슬리퍼 전용 "등짝 스매싱" 이펙트. 만화적인 먼지 뭉게구름이 부풀었다 빠르게 사라지고, 그 사이로
+  // 별이 튀어나가는 과장된 임팩트로 그린다.
+  spawnSlipperSmackEffect(x, y) {
+    const puffCount = 4;
+    for (let i = 0; i < puffCount; i += 1) {
+      const offsetAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const offsetDist = Phaser.Math.Between(0, 14);
+      const puff = this.add.circle(
+        x + Math.cos(offsetAngle) * offsetDist,
+        y + Math.sin(offsetAngle) * offsetDist,
+        10,
+        0xcfcfcf,
+        0.55,
+      ).setDepth(998).setScale(0.3);
+      this.tweens.add({
+        targets: puff,
+        scale: 2.4,
+        alpha: 0,
+        duration: 320,
+        delay: i * 25,
+        ease: 'Cubic.easeOut',
+        onComplete: () => puff.destroy(),
+      });
+    }
+
+    const starCount = 4;
+    for (let i = 0; i < starCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / starCount + Phaser.Math.FloatBetween(-0.3, 0.3);
+      const distance = Phaser.Math.Between(30, 50);
+      const star = this.add.star(x, y, 5, 4, 9, 0xffe066).setStrokeStyle(1.5, 0xffffff).setDepth(1000).setScale(0.3);
+      this.tweens.add({
+        targets: star,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        scale: 1,
+        angle: Phaser.Math.Between(0, 360),
+        alpha: 0,
+        duration: 380,
+        ease: 'Cubic.easeOut',
+        onComplete: () => star.destroy(),
       });
     }
   }

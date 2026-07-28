@@ -36,7 +36,7 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. 
 ## 절대 깨면 안 되는 불변 조건
 
 - **groupId 해싱**: `sha256(repoUrl).slice(0, 12)`. extension.ts에서만 계산, 서버는 받은 값 그대로 저장/조회 — 재계산 금지. 클라이언트/서버 양쪽 알고리즘 반드시 동일해야 함.
-- **mode 판별은 extension이 함**: git remote 유무로 `local`/`online` 결정 후 `{ type: 'init', mode, groupId, userName, bestScore }`로 webview에 1회 전달. webview는 이 값을 그대로 신뢰하고 자체 판별하지 않음.
+- **mode 판별은 extension이 함**: git remote 유무로 `local`/`online` 결정 후 `{ type: 'init', mode, groupId, userName, hasUserName, bestScore }`로 webview에 1회 전달. webview는 이 값을 그대로 신뢰하고 자체 판별하지 않음.
 - **webview 리소스는 `asWebviewUri()` 경유**: webview는 `vscode-webview://` 스킴만 신뢰. CSP는 `default-src 'none'` 기준이라 `connect-src`에 VM 주소 명시 안 하면 online 모드 fetch가 조용히 실패함 (에러 안 뜨고 그냥 안 됨 — 네트워크 탭에서 CSP 위반부터 확인).
 - **서버 요청 실패해도 게임은 안 죽어야 함**: online 모드 `submitScore`/`fetchLeaderboard`는 try/catch로 감싸고 실패 시 로컬 표시로 폴백.
 - **Stop 훅은 기본 off, 마커 기반 merge/제거만**: `hitTheAgent.enableTokenWatchHook` 설정으로 켜면 `extension/src/hookManager.ts`가 워크스페이스의 `.claude/settings.local.json`(로컬 전용, gitignore 대상)에 Stop 훅 1개를 등록. 항목 식별은 커맨드 문자열에 `token-watch-hook.js` 포함 여부로 하므로, 등록/해제 시 그 마커로 걸러낸 항목만 건드리고 사용자가 넣어둔 다른 훅은 절대 손대면 안 됨. 파일 파싱 실패 시 덮어쓰지 않고 경고만.
@@ -48,9 +48,12 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. 
 
 | 방향 | type | payload |
 |---|---|---|
-| ext → webview | `init` | `{ mode, groupId, userName, bestScore }` |
+| ext → webview | `init` | `{ mode, groupId, userName, hasUserName, bestScore }` |
 | ext → webview | `agentTaunt` | `{ tokenCount }` |
 | webview → ext | `saveLocalScore` | `{ score }` |
+| webview → ext | `saveUserName` | `{ userName }` |
+
+- **online + username 분기**: `hasUserName`은 extension이 globalState 저장값이나 git `user.name`으로 실제 이름을 알아냈는지를 나타낸다(폴백으로 `'player'`를 쓴 경우 `false`). webview는 `mode === 'online'`이고 `hasUserName === false`일 때만 게임 나가기 시 이름 입력 모달(VSCode 팝업이 아니라 게임 화면 안 DOM 오버레이, `frontend/src/ui/usernameModal.js`)을 띄운다. 이미 이름을 아는 경우(`hasUserName === true`)에는 모달 없이 바로 `submitScore`. 모달에서 확정된 이름은 `saveUserName`으로 `globalState('userName')`에 저장되어, 다음 판부터는 `hasUserName`이 `true`가 되어 다시 뜨지 않는다. local 모드에서는 서버 제출 자체가 없으므로 이 모달은 절대 뜨지 않고 `saveLocalScore`로 바로 로컬 저장.
 
 ## 작업 시 참고
 

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
+  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
   KEYBOARD_WEAPON_SIZE, MEGAPHONE_WEAPON_SIZE, PISTOL_WEAPON_SIZE, MACHINE_GUN_WEAPON_SIZE, BULLET_SIZE,
   SHOTGUN_WEAPON_SIZE, SNIPER_WEAPON_SIZE, REVOLVER_WEAPON_SIZE, PELLET_SIZE,
   SOUND_WAVE_PROJECTILE_SIZE, WHIP_WEAPON_SIZE, DEBUGGER_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
@@ -13,10 +13,11 @@ import {
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
   createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas,
-  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas, MAX_DAMAGE_STAGE,
+  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas,
+  createBossVomitCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
-  createBaseballCanvas, createBaseballBatCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
   createKeyboardCanvas, createMegaphoneCanvas, createPistolCanvas, createMachineGunCanvas, createBulletCanvas,
   createShotgunCanvas, createSniperCanvas, createRevolverCanvas, createPelletCanvas,
   createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
@@ -39,6 +40,7 @@ export default class BootScene extends Phaser.Scene {
   preload() {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
     this.load.audio('bat_hit', assetUrl('audio/hit.mp3'));
+    this.load.audio('wand_hit', assetUrl('audio/wand.mp3'));
     this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
     this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
     this.load.audio('baseball_throw', assetUrl('audio/baseball.mp3'));
@@ -47,6 +49,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
     this.load.audio('panel_open', assetUrl('audio/pannel_open.mp3'));
     this.load.audio('exit_button', assetUrl('audio/exit_button.mp3'));
+    this.load.audio('boss_vomit', assetUrl('audio/obite.mp3'));
     this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
@@ -74,6 +77,7 @@ export default class BootScene extends Phaser.Scene {
         this.textures.addCanvas(`boss_hurt_${id}_d${damageStage}`, createBossHurtCanvas(color, undefined, damageStage));
         this.textures.addCanvas(`boss_fire_${id}_d${damageStage}`, createBossFireCanvas(color, undefined, damageStage));
         this.textures.addCanvas(`boss_blink_${id}_d${damageStage}`, createBossBlinkCanvas(color, undefined, damageStage));
+        this.textures.addCanvas(`boss_vomit_${id}_d${damageStage}`, createBossVomitCanvas(color, undefined, damageStage));
       }
       // 웃는 표정은 HP 단계와 무관해서(항상 같은 눈/입) 단계별로 안 만들고 보스 타입마다 하나씩만 둔다.
       this.textures.addCanvas(`boss_happy_${id}`, createBossHappyCanvas(color));
@@ -88,6 +92,7 @@ export default class BootScene extends Phaser.Scene {
 
   createPlaceholderTextures() {
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_wand', createMagicWandCanvas(WAND_WEAPON_SIZE));
     this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_hand', createHandCanvas(HAND_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bad_hand', createHandCanvas(BAD_HAND_WEAPON_SIZE, { skinColor: '#e0574a', skinStroke: '#8f2e24' }));

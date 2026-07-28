@@ -5,6 +5,8 @@ import {
   THROW_PROJECTILE_SPEED,
   THROW_PROJECTILE_HIT_RADIUS,
   PORTABLE_WEAPON_SIZE,
+  WAND_WEAPON_SIZE,
+  WEAPON_IDS,
   WEAPON_CATEGORIES,
   WEAPON_DEFINITIONS,
   DART_STICK_DURATION,
@@ -15,21 +17,28 @@ import {
   BOOMERANG_BACK_DURATION,
   BOOMERANG_CURVE_BULGE,
   BOOMERANG_SPIN_TURNS,
-  WEAPON_IDS,
   DYNAMITE_CHAIN_LINK_RADIUS,
   DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA,
   DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA,
 } from '../config/constants.js';
-import { getBaseballBatDimensions } from './weaponSprites.js';
+import { getBaseballBatDimensions, getMagicWandDimensions } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
-// 방망이 텍스처는 로컬 기준 -45도로 미리 그려져 있다(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고).
-// weapon.rotation으로 이 baked 각도를 상쇄해 배럴(헤드)이 항상 보스 쪽을 향하도록 돌리고,
-// 히트박스(캡슐)도 같은 보스 방향 각도로 계산해서 그림과 판정이 항상 같이 움직이게 한다.
-// PORTABLE_WEAPON_SIZE가 바뀌면 그림과 히트박스가 항상 같이 맞도록 getBaseballBatDimensions()에서 계산한다.
+// PORTABLE 카테고리(방망이/마술봉처럼 대각선으로 들고 부딪히는 무기) 텍스처는 전부 로컬 기준 -45도로
+// 미리 그려져 있다(그림→히트박스 좌표 변환은 weaponSprites.js 주석 참고). weapon.rotation으로 이 baked
+// 각도를 상쇄해 헤드(끝)가 항상 보스 쪽을 향하도록 돌리고, 히트박스(캡슐)도 같은 보스 방향 각도로
+// 계산해서 그림과 판정이 항상 같이 움직이게 한다.
+const PORTABLE_BAKED_ROTATION = -Math.PI / 4;
+
+// weaponId별 캡슐 판정 치수(중심축 절반 길이 halfLen, 두께 radius) — PORTABLE_WEAPON_SIZE/WAND_WEAPON_SIZE가
+// 바뀌면 그림과 히트박스가 항상 같이 맞도록 각 무기의 getXDimensions()에서 계산한 값을 그대로 쓴다.
+// 새 PORTABLE 무기를 추가할 때는 이 표에도 같이 추가해야 한다.
 const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
-const BAT_BAKED_ROTATION = -Math.PI / 4;
-const BAT_AXIS_RADIUS = BAT_DIMENSIONS.barrelHalfWidth;
+const WAND_DIMENSIONS = getMagicWandDimensions(WAND_WEAPON_SIZE);
+const PORTABLE_AXIS_CONFIG = {
+  [WEAPON_IDS.BAT]: { halfLen: BAT_DIMENSIONS.halfLen, radius: BAT_DIMENSIONS.barrelHalfWidth },
+  [WEAPON_IDS.WAND]: { halfLen: WAND_DIMENSIONS.halfLen, radius: WAND_DIMENSIONS.shaftHalfWidth },
+};
 
 // 필드에 여러 개를 놓아두고 드래그/합체/버리기 하던 예전 방식 대신, 무기 패널에서 카테고리를 고른 뒤
 // 필드를 누르고 있는 동안에만 그 자리에 무기 1개(activeWeapon)가 나타나 데미지를 주고, 손을 떼면 사라진다.
@@ -68,7 +77,7 @@ export default class WeaponManager {
       // 오버랩이 아니라 손을 뗀 뒤(armBomb) 퓨즈가 다 탔을 때 거리로 판정한다.
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
-      if (category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(weapon);
+      if (category === WEAPON_CATEGORIES.PORTABLE) this.updatePortableRotation(weapon);
       else if (WEAPON_DEFINITIONS[weaponId].rotateToBoss) this.faceBoss(weapon);
     }
 
@@ -76,7 +85,7 @@ export default class WeaponManager {
   }
 
   handleOverlap(weapon) {
-    if (weapon.category === WEAPON_CATEGORIES.PORTABLE && !this.batOverlapsBoss(weapon)) return;
+    if (weapon.category === WEAPON_CATEGORIES.PORTABLE && !this.portableOverlapsBoss(weapon)) return;
     this.onOverlap(weapon);
   }
 
@@ -85,16 +94,16 @@ export default class WeaponManager {
     if (!this.activeWeapon) return;
     const resolved = this.resolveAgainstBoss(this.activeWeapon, x, y);
     this.activeWeapon.setPosition(resolved.x, resolved.y);
-    if (this.activeWeapon.category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(this.activeWeapon);
+    if (this.activeWeapon.category === WEAPON_CATEGORIES.PORTABLE) this.updatePortableRotation(this.activeWeapon);
     else if (WEAPON_DEFINITIONS[this.activeWeapon.weaponId].rotateToBoss) this.faceBoss(this.activeWeapon);
   }
 
   // 보스(고정된 사각형)를 완전히 뚫고 지나가지 않도록 후보 좌표 (x,y)를 보정.
-  // 방망이는 사각 프레임이 아니라 실제 대각선 실루엣(캡슐) 기준으로, 나머지는 사각 히트박스 기준으로 판정한다.
-  // 어느 쪽이든 몸통 전용 사각형(Boss.bodyWidth/Height, 여백 제외)을 써서 상태 표시가 뜬 여백까지
-  // 뚫지 못하는 벽처럼 취급하지 않는다 — 그 자리는 원래 빈 캔버스라 막을 이유가 없다. 이걸 캔버스
-  // 전체(this.boss.sprite) 기준으로 하면 위/왼쪽 여백에서 무기가 진짜 몸통까지 다가가지도 못해서
-  // (STATIC/THROW 아이콘) 정작 데미지 판정(getHitRect, 몸통 기준)엔 절대 안 닿는 문제가 있었다.
+  // PORTABLE(방망이/마술봉)은 사각 프레임이 아니라 실제 대각선 실루엣(캡슐) 기준으로, 나머지는 사각
+  // 히트박스 기준으로 판정한다. 어느 쪽이든 몸통 전용 사각형(Boss.bodyWidth/Height, 여백 제외)을 써서
+  // 상태 표시가 뜬 여백까지 뚫지 못하는 벽처럼 취급하지 않는다 — 그 자리는 원래 빈 캔버스라 막을 이유가
+  // 없다. 이걸 캔버스 전체(this.boss.sprite) 기준으로 하면 위/왼쪽 여백에서 무기가 진짜 몸통까지
+  // 다가가지도 못해서(STATIC/THROW 아이콘) 정작 데미지 판정(getHitRect, 몸통 기준)엔 절대 안 닿는 문제가 있었다.
   resolveAgainstBoss(weapon, x, y) {
     const bossCenterX = this.boss.bodyCenterX;
     const bossCenterY = this.boss.bodyCenterY;
@@ -102,7 +111,7 @@ export default class WeaponManager {
     const bossHalfH = this.boss.bodyHeight / 2;
 
     if (weapon.category === WEAPON_CATEGORIES.PORTABLE) {
-      const { x1, y1, x2, y2, radius } = this.getBatAxis({ x, y });
+      const { x1, y1, x2, y2, radius } = this.getPortableAxis({ x, y, weaponId: weapon.weaponId });
       const pushed = pushRectOutOfCapsule(bossCenterX, bossCenterY, bossHalfW, bossHalfH, x1, y1, x2, y2, radius, CONTACT_OVERLAP);
       return { x: x - (pushed.x - bossCenterX), y: y - (pushed.y - bossCenterY) };
     }
@@ -306,6 +315,7 @@ export default class WeaponManager {
   }
 
   // 방망이 위치에서 보스를 바라보는 각도. 투사체 발사 각도 계산과 같은 패턴.
+  // 무기 위치에서 보스를 바라보는 각도. 투사체 발사 각도 계산과 같은 패턴.
   getAngleToBoss(x, y) {
     return Phaser.Math.Angle.Between(x, y, this.boss.sprite.x, this.boss.sprite.y);
   }
@@ -320,43 +330,46 @@ export default class WeaponManager {
     weapon.baseAngle = weapon.angle;
   }
 
-  // 화면에 보이는 방망이가 항상 이 각도를 바라보도록 회전시킨다. 텍스처가 로컬 -45도로 baked되어 있어
-  // 그만큼 보정해줘야 실제로 그려지는 배럴(헤드)이 목표 각도를 향한다.
-  updateBatRotation(weapon) {
-    this.faceBoss(weapon, BAT_BAKED_ROTATION);
+  // 화면에 보이는 PORTABLE 무기(방망이/마술봉)가 항상 이 각도를 바라보도록 회전시킨다. 텍스처가 로컬
+  // -45도로 baked되어 있어 그만큼 보정해줘야 실제로 그려지는 헤드(끝)가 목표 각도를 향한다.
+  updatePortableRotation(weapon) {
+    this.faceBoss(weapon, PORTABLE_BAKED_ROTATION);
   }
 
-  // 방망이의 손잡이 끝→배럴 끝을 잇는 중심축 (world 좌표). 배럴(헤드)이 항상 보스를 향하도록 그리므로
-  // 히트박스 축도 같은 보스 방향 각도로 계산해서 그림과 판정이 어긋나지 않게 한다.
-  getBatAxis(weapon) {
+  // PORTABLE 무기의 손잡이 쪽 끝→헤드 쪽 끝을 잇는 중심축 (world 좌표). 헤드가 항상 보스를 향하도록
+  // 그리므로 히트박스 축도 같은 보스 방향 각도로 계산해서 그림과 판정이 어긋나지 않게 한다.
+  // weaponId별 치수(PORTABLE_AXIS_CONFIG)를 조회해서 쓰므로 방망이/마술봉처럼 길이·두께가 다른
+  // 무기라도 같은 계산을 공유할 수 있다.
+  getPortableAxis(weapon) {
+    const { halfLen, radius } = PORTABLE_AXIS_CONFIG[weapon.weaponId];
     const angle = this.getAngleToBoss(weapon.x, weapon.y);
-    const dx = Math.cos(angle) * BAT_DIMENSIONS.halfLen;
-    const dy = Math.sin(angle) * BAT_DIMENSIONS.halfLen;
+    const dx = Math.cos(angle) * halfLen;
+    const dy = Math.sin(angle) * halfLen;
     return {
       x1: weapon.x - dx,
       y1: weapon.y - dy,
       x2: weapon.x + dx,
       y2: weapon.y + dy,
-      radius: BAT_AXIS_RADIUS,
+      radius,
     };
   }
 
-  // 이펙트(스파크/데미지 팝업)를 실제 맞은 자리에 띄우기 위한 좌표. weapon.x/y는 방망이의 회전 중심이라
-  // 배럴(보스 쪽으로 항상 향하는 끝)과 멀리 떨어져 있을 수 있어서, 방망이는 배럴 끝(getBatAxis의 x2,y2)을
-  // 쓰고 공처럼 그 자체가 이미 타격 지점인 투사체는 자기 좌표를 그대로 쓴다.
+  // 이펙트(스파크/데미지 팝업)를 실제 맞은 자리에 띄우기 위한 좌표. weapon.x/y는 PORTABLE 무기의 회전
+  // 중심이라 헤드(보스 쪽으로 항상 향하는 끝)와 멀리 떨어져 있을 수 있어서, PORTABLE은 헤드 끝
+  // (getPortableAxis의 x2,y2)을 쓰고 공처럼 그 자체가 이미 타격 지점인 투사체는 자기 좌표를 그대로 쓴다.
   getHitPoint(weapon) {
     if (weapon.category === WEAPON_CATEGORIES.PORTABLE) {
-      const { x2, y2 } = this.getBatAxis(weapon);
+      const { x2, y2 } = this.getPortableAxis(weapon);
       return { x: x2, y: y2 };
     }
     return { x: weapon.x, y: weapon.y };
   }
 
-  // 방망이는 대각선 실루엣이라 사각 히트박스 전체 대신, 실제 그림에 맞춘 캡슐(축+두께)로 보스와의 겹침을 판정한다.
-  // getBounds()(캔버스 전체) 대신 Boss.getHitRect()(여백 제외 몸통)를 써서 느낌표/분노 마크가 뜬
-  // 여백을 때려도 히트로 안 잡히게 한다.
-  batOverlapsBoss(weapon) {
-    const { x1, y1, x2, y2, radius } = this.getBatAxis(weapon);
+  // PORTABLE 무기는 대각선 실루엣이라 사각 히트박스 전체 대신, 실제 그림에 맞춘 캡슐(축+두께)로 보스와의
+  // 겹침을 판정한다. getBounds()(캔버스 전체) 대신 Boss.getHitRect()(여백 제외 몸통)를 써서 느낌표/분노
+  // 마크가 뜬 여백을 때려도 히트로 안 잡히게 한다.
+  portableOverlapsBoss(weapon) {
+    const { x1, y1, x2, y2, radius } = this.getPortableAxis(weapon);
     return capsuleIntersectsRect(x1, y1, x2, y2, radius, this.boss.getHitRect());
   }
 
@@ -603,7 +616,7 @@ export default class WeaponManager {
       dealers.push(this.activeWeapon);
     }
     return dealers.filter((weapon) => {
-      if (weapon.category === WEAPON_CATEGORIES.PORTABLE) return this.batOverlapsBoss(weapon);
+      if (weapon.category === WEAPON_CATEGORIES.PORTABLE) return this.portableOverlapsBoss(weapon);
       if (weapon.category === WEAPON_CATEGORIES.STATIC) return this.rectOverlapsBoss(weapon);
       return this.projectileOverlapsBoss(weapon);
     });

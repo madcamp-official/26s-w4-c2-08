@@ -2,7 +2,9 @@
 const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 
 // extension이 init을 보내주기 전까지의 기본값 — dev server에서 독립 실행할 때도 로컬 모드로 죽지 않고 뜨도록.
-export const gameContext = { mode: 'local', groupId: null, userName: 'player', bestScore: 0 };
+export const gameContext = {
+  mode: 'local', groupId: null, userName: 'player', hasUserName: true, bestScore: 0,
+};
 
 const initListeners = [];
 const agentTauntListeners = [];
@@ -28,6 +30,7 @@ window.addEventListener('message', (event) => {
         mode: msg.mode,
         groupId: msg.groupId,
         userName: msg.userName,
+        hasUserName: msg.hasUserName,
         bestScore: msg.bestScore ?? 0,
       });
       initListeners.forEach((cb) => cb(gameContext));

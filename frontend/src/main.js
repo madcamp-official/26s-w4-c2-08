@@ -26,6 +26,11 @@ const config = {
     default: 'arcade',
     arcade: { debug: false },
   },
+  // webview가 다른 에디터/터미널 클릭으로 포커스만 잃어도(iframe blur) Phaser가
+  // 기본적으로 재생 중인 사운드를 멈추므로, 포커스와 무관하게 계속 재생되게 끈다.
+  audio: {
+    pauseOnBlur: false,
+  },
   scene: [BootScene, GameScene],
 };
 
@@ -42,6 +47,26 @@ async function preloadFonts() {
     /* 폰트 로드 실패 시 시스템 폰트로 폴백 */
   }
 }
+
+// pauseOnBlur: false로 Phaser 자체의 블러 시 정지 로직은 껐지만, Chromium이 webview iframe이
+// 포커스를 잃은 동안 AudioContext를 자체적으로(브라우저 레벨에서) suspend시키는 경우까지는 못 막는다.
+// 게다가 pauseOnBlur를 껐기 때문에 포커스가 돌아와도 Phaser가 자동으로 resume()을 호출하지 않아,
+// 한 번 suspend되면 그대로 무음 상태가 유지될 수 있다 — 포커스 복귀 시점마다 직접 resume을 걸어준다.
+// suspend되기 직전 재생 중이던 효과음은 그대로 resume하면 화면상 이미 지나간 타격의 소리 꼬리가
+// 뜬금없이 이어 나와 위화감이 크다 — 다 짧은 1회성 효과음이라 이어 붙일 가치가 없으므로, resume 전에
+// stopAll()로 그 소리는 버리고 그 이후 새로 나는 소리부터 정상 재생되게 한다.
+function resumeAudioContext() {
+  const sound = window.__game?.sound;
+  const context = sound?.context;
+  if (context && context.state === 'suspended') {
+    sound.stopAll();
+    context.resume();
+  }
+}
+window.addEventListener('focus', resumeAudioContext);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') resumeAudioContext();
+});
 
 preloadFonts().finally(() => {
   try {

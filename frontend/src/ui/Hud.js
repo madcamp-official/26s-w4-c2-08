@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import {
   HP_BAR_WIDTH, HP_BAR_X, HP_BAR_Y, TOP_HUD_Y, UI_FONT_FAMILY, BOSS_TYPES,
-  WEAPON_DEFINITIONS,
+  WEAPON_DEFINITIONS, HIT_SPARK_COLOR,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES } from '../config/backgrounds.js';
+import { BOSS_MARGIN_LEFT, BOSS_TEXTURE_WIDTH } from '../entities/bossSprite.js';
 
 // 배경 스타일(backgrounds.js)에는 표시용 이름이 없어서 패널 라벨용으로 여기서만 따로 붙인다.
 const BACKGROUND_STYLE_LABELS = {
@@ -41,12 +42,22 @@ const PANEL_BG = 0x1e1e1e;
 const PANEL_HEADER_BG = 0x161616;
 const PANEL_CONTENT_BG = 0x242424;
 
+// 보스 텍스처(bossSprite.js)는 왼쪽에 상태 마크(느낌표/분노) 자리를 위한 여백(SIDE_MARGIN)이 있어서,
+// 그 텍스처를 그대로 정사각형 아이콘에 채우면 몸통 실루엣이 오른쪽으로 치우쳐 보인다.
+// 아이콘을 이 비율(아이콘 크기 대비)만큼 왼쪽으로 당겨서 시각적으로 가운데에 오게 맞춘다.
+const BOSS_ICON_OFFSET_X_RATIO = -(BOSS_MARGIN_LEFT / 2) / BOSS_TEXTURE_WIDTH;
+
 export default class Hud {
   constructor(scene, {
     onWeaponSelect, onEndButtonClick, currentBackgroundStyle, onBackgroundSelect,
     currentBossType, onBossSelect,
   } = {}) {
     this.scene = scene;
+
+    // isPointerOnUI가 "UI 위"를 판단할 때 currentlyOver를 걸러내는 기준. 보스 스프라이트도
+    // (드래그 때문에) 인터랙티브라 currentlyOver에 같이 잡힐 수 있어서, 길이만 보면 안 되고
+    // 실제로 Hud가 만든 인터랙티브 오브젝트인지 이 Set으로 확인해야 한다.
+    this.uiElements = new Set();
 
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
     // 배경(hpBarBg)에만 테두리를 둬서 안의 초록 fill(hpBar)이 줄어들어도 프레임은 고정된 채 유지된다.
@@ -89,12 +100,18 @@ export default class Hud {
   }
 
   // 패널이 열려있을 때, 상단 버튼들 위 클릭인지 판단. 필드 클릭(무기를 들어 보이기)과 UI 클릭을 구분하는 데 쓴다.
-  // Phaser 자체 히트테스트를 쓰는 이유: 탭/옵션의 pointerdown이 먼저 실행되며 그 자리에서 바로 panelOpen을
-  // 바꿔버리기 때문에, 같은 클릭을 뒤이어 처리하는 씬 레벨 pointerdown에서 panelOpen 값만 보면 "패널이 이미
-  // 닫혔다"고 잘못 판단해 같은 좌표에 필드 무기가 또 스폰되는 버그가 있었다.
-  // hitTestPointer는 그 순간 실제로 그 자리에 있는 인터랙티브 오브젝트를 다시 계산하므로 이 타이밍 문제가 없다.
-  isPointerOnUI(pointer) {
-    return this.scene.input.hitTestPointer(pointer).length > 0;
+  // currentlyOver: 씬 레벨 pointerdown/pointermove 리스너에 Phaser가 같이 넘겨주는, 클릭/이동이
+  // 시작된 그 순간의 히트테스트 스냅샷. 이걸 그대로 써야 하는 이유 — 탭/옵션/패널 닫기 손잡이 같은
+  // 오브젝트 자신의 pointerdown 핸들러가 씬 레벨 리스너보다 먼저 실행되면서 그 자리에서 바로 panelOpen을
+  // 바꾸거나(패널 열기/닫기) 자기 자신을 숨겨버리는데(닫기 손잡이, togglePanel의 setVisible(false)),
+  // 그 뒤에 새로 hitTestPointer를 다시 돌리면 이미 상태가 바뀌거나 사라진 걸 못 잡아 "패널 닫기 버튼을
+  // 눌렀는데 그 자리에 필드 무기가 스폰되는" 버그가 생긴다. currentlyOver는 그런 변경이 일어나기 전에
+  // 계산된 스냅샷이라 이 타이밍 문제가 없다.
+  // currentlyOver.length만 보면 안 되는 이유 — 보스 스프라이트도 드래그 때문에 인터랙티브라 무기를
+  // 들고 커서가 보스 위를 지나가기만 해도 currentlyOver에 잡힌다. uiElements(Hud가 만든 인터랙티브
+  // 오브젝트만 모아둔 Set)에 실제로 속하는지로 걸러야 "보스 위를 지나가면 들고 있던 무기가 사라지는" 오판을 막는다.
+  isPointerOnUI(currentlyOver) {
+    return currentlyOver.some((obj) => this.uiElements.has(obj));
   }
 
   // 패널이 열려 있으면(슬라이드된 상태) 그 왼쪽 경계 x를 반환. 닫혀 있으면 null.
@@ -116,6 +133,9 @@ export default class Hud {
     const bg = this.createPillBackground(x, y, size, 0xff3b3b, onClick);
     const icon = this.scene.add.image(x, y, 'icon_logout').setDisplaySize(20, 20).setTint(0xffffff);
 
+    // GameScene의 방치(idle) 드리프트가 보스를 이 버튼 쪽으로 끌고 가는 목표 좌표로 쓴다.
+    this.endButtonPosition = { x, y };
+
     return { bg, icon };
   }
 
@@ -130,6 +150,7 @@ export default class Hud {
     const hitArea = new Phaser.Geom.Rectangle(x - size / 2, y - size / 2, size, size);
     bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     if (onClick) bg.on('pointerdown', onClick);
+    this.uiElements.add(bg);
 
     return bg;
   }
@@ -173,6 +194,7 @@ export default class Hud {
     const hitArea = new Phaser.Geom.Rectangle(-handleWidth, y - handleHeight / 2, handleWidth, handleHeight);
     bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     bg.on('pointerdown', () => this.togglePanel(false));
+    this.uiElements.add(bg);
 
     // 패널이 닫힌 위치(startX)에 있어도 손잡이가 자체 너비만큼 화면 오른쪽 끝을 넘어와 살짝 보이던 문제가 있어,
     // 위치가 아니라 panelOpen 상태로 직접 보이기/숨기기를 맞춘다 (초기 상태는 닫힘이므로 숨김).
@@ -201,6 +223,7 @@ export default class Hud {
       .setOrigin(0, 0)
       .setInteractive();
     container.add(bg);
+    this.uiElements.add(bg);
 
     // 헤더(탭 바)와 본문을 톤 두 단계로 나눠 패널에 단조롭지 않은 깊이감을 준다
     const headerHeight = 40;
@@ -227,6 +250,7 @@ export default class Hud {
         fontFamily: UI_FONT_FAMILY,
       }).setOrigin(0.5);
       highlight.on('pointerdown', () => this.setActiveTab(tab));
+      this.uiElements.add(highlight);
       container.add([highlight, label]);
       this.tabEls[tab] = { highlight, label };
     });
@@ -299,6 +323,7 @@ export default class Hud {
     if (shouldOpen) {
       Object.values(this.tabContents).forEach((content) => { content.container.y = 0; });
     }
+    this.scene.sound.play('panel_open');
 
     // 손잡이(X)는 패널이 열렸을 때만, 톱니바퀴 버튼은 반대로 패널이 닫혔을 때만 보인다 —
     // 열려있는 동안 톱니바퀴가 패널 반투명 배경 뒤로 희미하게 비쳐 보이던 문제를 막는다.
@@ -321,7 +346,10 @@ export default class Hud {
   // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃을 쓴다: 2열, 아이콘 바로 밑에 이름,
   // 칸 사이 여백으로 분리감을 준다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
   // 무기가 늘어나 패널 높이를 넘어가면 createSidePanel이 이 contentHeight로 스크롤 가능 범위를 계산한다.
-  createGridTabContent(panelWidth, items, currentId, onSelect) {
+  // showLabel: false면 아이콘 밑 이름 텍스트를 안 그린다(AGENT/MAP 탭 — 아이콘만으로 구분 가능해서 글자 없이 간결하게).
+  // iconOffsetXRatio: 아이콘 크기 대비 비율로 아이콘만 좌우로 살짝 밀어준다(테두리 박스는 그대로 중앙) —
+  // 보스 텍스처처럼 이미지 자체 여백 때문에 시각적으로 안 맞는 경우 보정하는 용도(BOSS_ICON_OFFSET_X_RATIO 참고).
+  createGridTabContent(panelWidth, items, currentId, onSelect, { showLabel = true, iconOffsetXRatio = 0 } = {}) {
     const container = this.scene.add.container(0, 0);
 
     const columns = 2;
@@ -345,20 +373,25 @@ export default class Hud {
       const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
       const cy = top + row * rowStep + iconSize / 2;
 
-      const icon = this.scene.add.image(cx, cy, texture)
+      const icon = this.scene.add.image(cx + iconOffsetXRatio * iconSize, cy, texture)
         .setDisplaySize(iconSize, iconSize)
         .setInteractive({ useHandCursor: true });
       const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
         .setStrokeStyle(3, PANEL_ACCENT, id === currentId ? 1 : 0);
-      const label = this.scene.add.text(cx, cy + iconSize / 2 + labelGap, name, {
-        fontSize: '11px',
-        color: '#ffffff',
-        fontFamily: UI_FONT_FAMILY,
-        letterSpacing: 0.7,
-      }).setOrigin(0.5, 0);
 
       icon.on('pointerdown', () => onSelect(id));
-      container.add([icon, border, label]);
+      this.uiElements.add(icon);
+      const elements = [icon, border];
+      if (showLabel) {
+        const label = this.scene.add.text(cx, cy + iconSize / 2 + labelGap, name, {
+          fontSize: '11px',
+          color: '#ffffff',
+          fontFamily: UI_FONT_FAMILY,
+          letterSpacing: 0.7,
+        }).setOrigin(0.5, 0);
+        elements.push(label);
+      }
+      container.add(elements);
       optionEls.push({ id, border });
     });
 
@@ -378,7 +411,10 @@ export default class Hud {
   }
 
   createBossTabContent(panelWidth, currentBossTypeId, onSelect) {
-    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BOSS_OPTIONS, currentBossTypeId, onSelect);
+    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BOSS_OPTIONS, currentBossTypeId, onSelect, {
+      showLabel: false,
+      iconOffsetXRatio: BOSS_ICON_OFFSET_X_RATIO,
+    });
     this.bossOptionEls = optionEls;
     return { container, contentHeight };
   }
@@ -390,7 +426,9 @@ export default class Hud {
   }
 
   createBackgroundTabContent(panelWidth, currentStyle, onSelect) {
-    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect);
+    const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect, {
+      showLabel: false,
+    });
     this.backgroundOptionEls = optionEls;
     return { container, contentHeight };
   }
@@ -425,7 +463,7 @@ export default class Hud {
       align: 'center',
       lineSpacing: 6,
     }).setOrigin(0.5, 0);
-    const restartButton = this.createRestartButton(width / 2, height / 2 + 140, onRestartClick);
+    const restartButton = this.createRestartButton(width / 2, height / 2 + 180, onRestartClick);
 
     return { dim, title, scoreText, statusText, restartButton };
   }
@@ -436,27 +474,109 @@ export default class Hud {
   }
 
   // 게임 전체 톤(그라디언트/외곽선 없는 플랫 스타일)에 맞춰 단색 주황빛 배경 + 단색 글자로 단순하게 구성.
+  // 클릭으로 바로 재시작하지 않는다 — 버튼 자체를 무기처럼 들어서(드래그) 버튼 바로 위에 떠 있는
+  // 작은 에이전트에 부딪혀야("타격") 재시작이 실행된다. bg를 무기/보스처럼 x,y에 위치시키고
+  // 도형은 그 로컬 원점(0,0) 기준으로 그려야, 드래그 중 bg.x/y를 옮기는 것만으로 그림과 히트 영역이
+  // 같이 따라온다 (예전처럼 fillRoundedRect에 절대좌표를 그대로 구워버리면 object.x/y가 항상 0으로
+  // 남아 드래그를 걸 수 없다).
   createRestartButton(x, y, onClick) {
-    const width = 160;
-    const height = 52;
+    // 캐릭터(agent)는 30% 키우고 버튼은 30% 줄여서, 화면에서 "작은 버튼으로 큰 상대를 맞히는" 느낌을 강조한다.
+    const width = 160 * 0.7;
+    const height = 52 * 0.7;
     const radius = height / 2;
 
-    const bg = this.scene.add.graphics();
+    const bg = this.scene.add.graphics().setPosition(x, y);
     bg.fillStyle(0xffb84d, 1);
-    bg.fillRoundedRect(x - width / 2, y - height / 2, width, height, radius);
+    bg.fillRoundedRect(-width / 2, -height / 2, width, height, radius);
 
     const label = this.scene.add.text(x, y, '다시하기', {
-      fontSize: '22px',
+      fontSize: '16px',
       fontStyle: 'bold',
       color: '#000000',
       fontFamily: UI_FONT_FAMILY,
     }).setOrigin(0.5);
 
-    const hitArea = new Phaser.Geom.Rectangle(x - width / 2, y - height / 2, width, height);
+    const hitArea = new Phaser.Geom.Rectangle(-width / 2, -height / 2, width, height);
     bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
-    if (onClick) bg.on('pointerdown', onClick);
+    this.scene.input.setDraggable(bg);
+    this.uiElements.add(bg);
 
-    return { bg, label };
+    const agent = this.createRestartTargetAgent(x, y - height / 2);
+
+    let hasHit = false;
+
+    // GameScene 전역 'drag' 리스너(this.input.on('drag', ...))도 같이 발동하지만 isEnded일 때
+    // markInteraction() 후 곧바로 return하므로 여기 로직과 충돌하지 않는다 — 이 오브젝트 전용
+    // 'drag' 이벤트만으로 위치/충돌 판정을 전부 처리한다.
+    bg.on('drag', (pointer, dragX, dragY) => {
+      if (hasHit) return;
+      bg.x = dragX;
+      bg.y = dragY;
+      label.setPosition(bg.x, bg.y);
+
+      const buttonRect = new Phaser.Geom.Rectangle(bg.x - width / 2, bg.y - height / 2, width, height);
+      if (Phaser.Geom.Intersects.RectangleToRectangle(buttonRect, agent.image.getBounds())) {
+        hasHit = true;
+        this.onRestartHit(agent, () => onClick?.());
+      }
+    });
+
+    // 못 맞히고 손을 뗐으면 다음 시도를 위해 원래 자리로 되돌아온다.
+    bg.on('dragend', () => {
+      if (hasHit) return;
+      this.scene.tweens.add({
+        targets: [bg, label],
+        x,
+        y,
+        duration: 200,
+        ease: 'Back.easeOut',
+      });
+    });
+
+    return {
+      bg, label, agent,
+    };
+  }
+
+  // 다시하기 버튼 위에 떠 있는 작은 타격 대상. 현재 선택된 보스 타입 텍스처를 그대로 재사용해서
+  // "다시하기 = 이 에이전트를 한 번 더 때려잡기"라는 게임 톤을 유지한다.
+  createRestartTargetAgent(x, y) {
+    const size = 48 * 1.3;
+    const gap = 30;
+    const centerY = y - size / 2 - gap;
+    const image = this.scene.add.image(x - 4, centerY, `boss_${this.scene.currentBossType}_d0`).setDisplaySize(size, size);
+
+    const bob = this.scene.tweens.add({
+      targets: image,
+      y: centerY - 8,
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    return { image, bob };
+  }
+
+  // 에이전트에 버튼이 부딪힌 순간의 연출(스파크/플래시/축소소멸) 후 실제 재시작 콜백을 호출한다.
+  // 다른 타격 이펙트(spawnHitSpark)는 GameScene에만 있어서 this.scene을 통해 그대로 재사용한다.
+  onRestartHit(agent, onDone) {
+    agent.bob.remove();
+    this.scene.sound.play('bat_hit');
+    this.scene.spawnHitSpark(agent.image.x, agent.image.y, HIT_SPARK_COLOR, 1.4);
+    agent.image.setTintFill(0xffffff);
+
+    this.scene.tweens.add({
+      targets: agent.image,
+      scaleX: agent.image.scaleX * 1.3,
+      scaleY: agent.image.scaleY * 1.3,
+      alpha: 0,
+      duration: 260,
+      ease: 'Back.easeIn',
+      onComplete: () => agent.image.destroy(),
+    });
+
+    this.scene.time.delayedCall(220, onDone);
   }
 
   updateHpBar(boss) {

@@ -6,6 +6,9 @@ import {
   BOSS_PANEL_PUSH_POPUP_COLOR,
   AGENT_TAUNT_POPUP_DURATION,
   AGENT_TAUNT_TYPING_SPEED,
+  AGENT_TAUNT_INTRO_DELAY,
+  AGENT_TAUNT_LINES_INTRO,
+  AGENT_TAUNT_LINES_IDLE_CAUGHT,
   getAgentTauntLines,
   UI_FONT_FAMILY,
   BACKGROUND_STYLE,
@@ -17,6 +20,13 @@ import {
   SNIPER_SCOPE_DIAMETER,
   SNIPER_SCOPE_ZOOM,
   SNIPER_SCOPE_MARGIN,
+  BOSS_IDLE_TIMEOUT_MS,
+  BOSS_IDLE_DRIFT_SPEED,
+  BOSS_IDLE_WALK_TILT_DEG,
+  BOSS_IDLE_WALK_CYCLE_MS,
+  BOSS_IDLE_ARRIVAL_DISTANCE,
+  BOSS_IDLE_PANEL_PUSH_HOLD_MS,
+  BOSS_IDLE_PANEL_APPROACH_MARGIN,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -40,6 +50,13 @@ export default class GameScene extends Phaser.Scene {
   create() {
     this.isEnded = false;
     this.selectedWeaponId = null;
+    // 방치(idle) 드리프트 판단 기준 시각 — 상호작용이 있을 때마다 markInteraction()으로 갱신된다.
+    this.lastInteractionTime = this.time.now;
+    // 나가기 버튼으로 걷다가 패널을 만나 멈춰서 미는 중일 때의 대기 타이머 — startPanelPush/cancelPanelPush 참고.
+    this.panelPushEvent = null;
+    // updateIdleDrift가 이번 프레임에 실제로 걷고 있는 중인지 — pointerdown 핸들러가 클릭 순간
+    // "걷다가 들켰는지" 판단하는 데 쓴다(walking 중 클릭 → AGENT_TAUNT_LINES_IDLE_CAUGHT 팝업).
+    this.isIdleDrifting = false;
 
     this.currentBackgroundStyle = BACKGROUND_STYLE;
     this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
@@ -68,6 +85,7 @@ export default class GameScene extends Phaser.Scene {
 
     // 보스는 무기를 고른 뒤에도 항상 드래그로 옮길 수 있다 — 보스 위를 직접 누르면 드래그가 우선.
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
+      this.markInteraction();
       if (this.isEnded) return;
       if (this.boss.isFrozen) return; // 디버거(브레이크포인트)에 맞은 동안은 드래그로 못 옮긴다.
       const x = Phaser.Math.Clamp(dragX, 40, this.scale.width - 40);
@@ -77,10 +95,22 @@ export default class GameScene extends Phaser.Scene {
 
     // 무기를 고른 뒤 필드(UI도, 보스 위도 아님)를 누르고 있는 동안에만 그 자리에 무기가 나타나 보스를 때리고,
     // 손을 떼면 사라진다. 보스 위를 직접 누르면 위 'drag' 리스너가 대신 처리하므로 여기서는 건너뛴다.
-    this.input.on('pointerdown', (pointer) => {
+    this.input.on('pointerdown', (pointer, currentlyOver) => {
+      // markInteraction()이 드리프트를 즉시 멈추므로, "걷던 중이었는지"는 그 전에 먼저 봐둬야 한다.
+      const wasIdleDrifting = this.isIdleDrifting;
+      this.markInteraction();
       if (this.isEnded) return;
+      // 나가기 버튼 쪽으로 몰래 걸어가던 도중 클릭에 걸리면 들킨 반응 대사를 띄운다.
+      if (wasIdleDrifting) {
+        this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(AGENT_TAUNT_LINES_IDLE_CAUGHT));
+      }
+      // 패널이 열려 있을 때 패널 바깥(게임 화면)을 클릭하면 패널을 닫고, 그 클릭 자체도
+      // 같은 핸들러에서 이어서 처리해 무기 공격/조준이 바로 적용되게 한다(닫기용 클릭을 따로 낭비하지 않음).
+      if (this.hud.panelOpen && !this.hud.isPointerOnUI(currentlyOver)) {
+        this.hud.togglePanel(false);
+      }
       if (!this.selectedWeaponId) return;
-      if (this.hud.isPointerOnUI(pointer)) return;
+      if (this.hud.isPointerOnUI(currentlyOver)) return;
       if (Phaser.Geom.Rectangle.Contains(this.boss.sprite.getBounds(), pointer.x, pointer.y)) return;
 
       const x = Phaser.Math.Clamp(pointer.x, 40, this.scale.width - 40);
@@ -90,34 +120,161 @@ export default class GameScene extends Phaser.Scene {
       if (WEAPON_DEFINITIONS[this.selectedWeaponId]?.zoomOnAim) this.setSniperScopeVisible(true);
     });
 
-    this.input.on('pointermove', (pointer) => {
+    this.input.on('pointermove', (pointer, currentlyOver) => {
       if (this.isEnded) return;
       if (!pointer.isDown) return;
+      // 필드를 누른 채로 패널 위까지 드래그해 들어가는 경우 — pointerdown 시점엔 필드였으므로
+      // 그때의 UI 체크만으론 못 걸러진다. 여기서도 걸러주지 않으면 투척형은 연사가 계속되고
+      // 근접 무기는 마지막으로 겹쳤던 자리에 그대로 남아 계속 데미지가 들어간다.
+      // 패널 위로 올라가는 순간 손을 뗀 것처럼 무기를 치워 공격을 멈춘다.
+      if (this.hud.isPointerOnUI(currentlyOver)) {
+        this.stopActiveWeapon();
+        return;
+      }
       const x = Phaser.Math.Clamp(pointer.x, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(pointer.y, 40, this.scale.height - 40);
       this.weaponManager.moveActiveWeapon(x, y);
     });
 
     this.input.on('pointerup', () => {
-      // releaseActiveWeapon()이 activeWeapon을 지우기 전에 무기 종류를 먼저 봐둬야
-      // 저격총이었는지 판단해서 스코프를 꺼줄 수 있다.
-      const releasedWeaponId = this.weaponManager.activeWeapon?.weaponId;
-      this.weaponManager.releaseActiveWeapon();
-      if (WEAPON_DEFINITIONS[releasedWeaponId]?.zoomOnAim) this.setSniperScopeVisible(false);
+      this.stopActiveWeapon();
     });
 
     // SessionEnd 훅(토큰 임계치 초과, extension/scripts/session-end-hook.js)이 발동했을 때 게임 시작 직후 1회 전달됨
-    onAgentTaunt((tokenCount) => this.spawnTauntPopup(tokenCount));
+    onAgentTaunt((tokenCount) => this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(getAgentTauntLines(tokenCount))));
+
+    // 실제 토큰 임계치 훅과 별개로, 게임을 켤 때마다 "이미 이 세션을 보고 있다"는 인상을 주는 1회성 인트로 대사.
+    // 씬이 뜨자마자 바로 뜨면 어색해서 살짝 지연 후 띄운다.
+    this.time.delayedCall(AGENT_TAUNT_INTRO_DELAY, () => {
+      this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(AGENT_TAUNT_LINES_INTRO));
+    });
   }
 
-  update() {
+  update(time, delta) {
     this.weaponManager.updateProjectiles();
     this.weaponManager.updateStuckProjectiles();
+    // 무기를 든 채 가만히 누르고 있거나(투척형 자동 연사), 커서를 멈춘 채 계속 때리는 중에는
+    // pointerdown 이후 pointermove가 안 오거나 와도 markInteraction()을 안 불러서 idle 타이머가
+    // 갱신되지 않았다 — 전투 중인데도 2초 뒤 보스가 나가기 버튼 쪽으로 걸어가버리는 원인.
+    // 포인터가 눌려있는 동안은 매 프레임 상호작용 중으로 취급해 이를 막는다.
+    if (this.input.activePointer.isDown) this.markInteraction();
+    // updateIdleDrift가 이번 프레임에 패널을 만났는지(isPushingPanel) 먼저 정해야, 뒤이은
+    // checkBossAgainstPanel이 같은 프레임에 그 상태를 보고 flyOutToLeftWall을 건너뛸 수 있다.
+    this.updateIdleDrift(time, delta);
     this.checkBossAgainstPanel();
     // 보스가 넉백/패널 충돌 등으로 계속 움직이는 동안에도 스코프가 계속 보스를 따라가게 매 프레임 갱신.
     if (this.sniperScope.camera.visible) {
       this.sniperScope.camera.centerOn(this.boss.bodyCenterX, this.boss.bodyCenterY);
     }
+  }
+
+  // 화면 클릭(pointerdown)/드래그가 있을 때마다 호출해 idle 타이머를 리셋한다.
+  // 흔들리는 도중에 상호작용이 들어와 드리프트가 멈추면, 기울어진 채로 멈춰 보이지 않도록 각도도 원위치로 되돌린다.
+  markInteraction() {
+    this.lastInteractionTime = this.time.now;
+    this.boss.sprite.setAngle(0);
+    this.cancelPanelPush(); // 미는 도중 상호작용이 들어오면 어정쩡하게 화난 표정으로 멈춰 있지 않게 취소한다.
+  }
+
+  // BOSS_IDLE_TIMEOUT_MS 동안 클릭이 없으면 보스가 종료 버튼 쪽으로 조금씩 끌려간다.
+  // 넉백/패널 충돌 트윈이 진행 중일 때 끼어들면 그 트윈과 위치를 두고 다투게 되므로 그동안은 쉰다.
+  // 밋밋하게 미끄러지면 부자연스러워서, 이동 방향과 무관하게 좌우로 갸우뚱거리는 걸음 흔들림을 각도에 더한다.
+  updateIdleDrift(time, delta) {
+    // 아래에서 실제로 걷는 프레임에만 true로 다시 켠다 — 이 함수를 벗어나는 모든 경로(타임아웃 전,
+    // 얼음/패널 충돌/미는 중, 목표 도착)는 "걷는 중"이 아니므로 기본값 false로 시작한다.
+    this.isIdleDrifting = false;
+    if (this.isEnded) return;
+    if (this.boss.isFrozen) return;
+    if (this.boss.isPanelBounceActive) return;
+    if (time - this.lastInteractionTime < BOSS_IDLE_TIMEOUT_MS) return;
+    // 패널을 미는 중(화난 표정 유지, startPanelPush의 대기 타이머가 도는 동안)에는 제자리에 멈춰
+    // 있는다 — 타이머가 끝나면 panelPushEvent가 패널을 닫고, 다음 프레임부터 이 함수가 이어서 걷는다.
+    if (this.panelPushEvent) return;
+    this.isIdleDrifting = true;
+
+    // collideWorldBounds가 켜져 있어서(생성자) 보스 중심은 화면 가장자리에서 최소 half폭/높이만큼은
+    // 못 벗어난다. 종료 버튼은 화면 오른쪽 아래 모서리에 바짝 붙어 있어 그 범위 밖(도달 불가능한 좌표)이라,
+    // 목표를 원래 위치 그대로 두면 보스가 영원히 몇 픽셀 못 미친 채 멈추지 못하고 계속 뒤뚱거린다.
+    // knockback()과 같은 clamp 공식으로 목표를 "실제로 도달 가능한" 좌표로 당겨와야 arrival 판정이 맞는다.
+    const halfW = this.boss.displayWidth / 2;
+    const halfH = this.boss.displayHeight / 2;
+
+    // 패널 경계는 실제 경계보다 BOSS_IDLE_PANEL_APPROACH_MARGIN만큼 당겨서(더 넓게) 판정한다.
+    // "이미 그 자리에 서 있는" 경우까지 여기서 바로 잡아낸다 — 목표(종료 버튼)에 도착해서 쉬고 있던
+    // 도중에 패널이 열리는 경우, 아래 도착(arrival) 분기가 그보다 먼저 return해버려서 패널 판정
+    // 자체가 한 번도 안 도는 구멍이 있었다(만나자마자 바로 반대쪽 벽으로 날아가던 원인 중 하나).
+    // 여기서 도착 여부와 무관하게 먼저 확인해 그 구멍을 막는다.
+    const panelBoundaryX = this.hud.getOpenPanelBoundaryX();
+    const approachBoundaryX = panelBoundaryX == null ? null : panelBoundaryX - BOSS_IDLE_PANEL_APPROACH_MARGIN;
+    if (approachBoundaryX != null && this.boss.sprite.x + halfW > approachBoundaryX) {
+      this.boss.sprite.setAngle(0);
+      this.startPanelPush();
+      return;
+    }
+
+    const target = {
+      x: Phaser.Math.Clamp(this.hud.endButtonPosition.x, halfW, this.scale.width - halfW),
+      y: Phaser.Math.Clamp(this.hud.endButtonPosition.y, halfH, this.scale.height - halfH),
+    };
+    const dx = target.x - this.boss.sprite.x;
+    const dy = target.y - this.boss.sprite.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= BOSS_IDLE_ARRIVAL_DISTANCE) {
+      this.boss.sprite.setAngle(0);
+      this.isIdleDrifting = false;
+      return;
+    }
+
+    // 이번 프레임에 이동한 "뒤"의 위치로도 한 번 더 내다본다 — 이동 전(현재) 위치만 보고 판단하면,
+    // 경계를 넘기는 바로 그 프레임엔 아직 isPushingPanel이 안 켜진 채로 몸통이 이미 경계를 넘어버려서
+    // checkBossAgainstPanel이 같은 프레임에 먼저 flyOutToLeftWall로 튕겨내는 경합이 생긴다.
+    // 넘는 프레임엔 그만큼만 이동해 경계에 딱 맞춰 세우고 그 자리에서 바로 미는 연출을 시작한다.
+    const step = Math.min(distance, (BOSS_IDLE_DRIFT_SPEED * delta) / 1000);
+    const angle = Math.atan2(dy, dx);
+    const nextRight = this.boss.sprite.x + Math.cos(angle) * step + halfW;
+    if (approachBoundaryX != null && nextRight > approachBoundaryX) {
+      this.boss.sprite.x = approachBoundaryX - halfW;
+      this.boss.sprite.setAngle(0);
+      this.startPanelPush();
+      return;
+    }
+
+    this.boss.sprite.x += Math.cos(angle) * step;
+    this.boss.sprite.y += Math.sin(angle) * step;
+
+    const wobble = Math.sin((time / BOSS_IDLE_WALK_CYCLE_MS) * Math.PI * 2) * BOSS_IDLE_WALK_TILT_DEG;
+    this.boss.sprite.setAngle(wobble);
+  }
+
+  // 걷다가 열린 패널에 부딪히면 멈춰서 화난 표정(2단계 텍스처)을 BOSS_IDLE_PANEL_PUSH_HOLD_MS 동안
+  // 띄워 미는 연출을 보여준 뒤, 패널을 닫고(togglePanel(false)) 표정을 되돌린다 — 그러면 다음 프레임부터
+  // updateIdleDrift가 막힘 없이 나머지 구간을 걸어간다. 이미 미는 중이면 타이머를 또 잡지 않는다.
+  startPanelPush() {
+    if (this.panelPushEvent) return;
+    this.boss.startPanelPush();
+    this.panelPushEvent = this.time.delayedCall(BOSS_IDLE_PANEL_PUSH_HOLD_MS, () => {
+      this.panelPushEvent = null;
+      this.boss.endPanelPush();
+      this.hud.togglePanel(false);
+    });
+  }
+
+  // 미는 도중 플레이어가 상호작용하면(markInteraction) 대기 중이던 타이머와 화난 표정을 취소해서
+  // 패널은 열어둔 채 어정쩡한 표정으로 멈춰 있지 않게 한다.
+  cancelPanelPush() {
+    if (!this.panelPushEvent) return;
+    this.panelPushEvent.remove();
+    this.panelPushEvent = null;
+    this.boss.endPanelPush();
+  }
+
+  // 들고 있던 무기를 손을 뗀 것처럼 치운다 — releaseActiveWeapon()이 activeWeapon을 지우기 전에
+  // 무기 종류를 먼저 봐둬야 저격총이었는지 판단해서 스코프를 꺼줄 수 있다.
+  // pointerup과, 패널 위로 드래그해 들어가 공격을 강제로 멈춰야 하는 pointermove 양쪽에서 같이 쓴다.
+  stopActiveWeapon() {
+    const releasedWeaponId = this.weaponManager.activeWeapon?.weaponId;
+    this.weaponManager.releaseActiveWeapon();
+    if (WEAPON_DEFINITIONS[releasedWeaponId]?.zoomOnAim) this.setSniperScopeVisible(false);
   }
 
   // 저격총을 들고 있는 동안(pointerdown~pointerup)만 화면 왼쪽 위에 뜨는 원형 확대 렌즈.
@@ -182,6 +339,9 @@ export default class GameScene extends Phaser.Scene {
   checkBossAgainstPanel() {
     if (this.isEnded) return;
     if (this.boss.isPanelBounceActive) return;
+    // 나가기 버튼으로 걸어가다 패널을 만난 경우(updateIdleDrift)는 튕겨나가지 않고 밀고 들어가야 하므로
+    // 여기서는 건너뛴다 — 드래그/넉백으로 패널 안까지 밀려 들어간 경우에만 왼쪽 벽으로 날려보낸다.
+    if (this.boss.isPushingPanel) return;
 
     const panelBoundaryX = this.hud.getOpenPanelBoundaryX();
     if (panelBoundaryX == null) return;
@@ -197,6 +357,7 @@ export default class GameScene extends Phaser.Scene {
   onEndButtonClick() {
     if (this.isEnded) return;
     this.isEnded = true;
+    this.sound.play('exit_button');
 
     // scene.pause()는 씬 전체의 입력 처리까지 멈춰서 결과 화면의 "다시하기" 버튼도 눌리지 않게 되므로 쓰지 않는다.
     // 대신 물리 시뮬레이션만 멈추고(투사체 이동·overlap 판정 정지), 투척형 자동 연사 타이머도 따로 끈다.
@@ -472,9 +633,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // 보스 머리 위에 대사 팝업을 잠깐 띄운다. 데미지 팝업과 달리 위치가 고정돼 있고 더 오래 유지된다.
-  // tokenCount(세션 누적 토큰)에 따라 1000/10000 임계치로 대사 톤이 달라진다.
-  spawnTauntPopup(tokenCount) {
-    const line = Phaser.Utils.Array.GetRandom(getAgentTauntLines(tokenCount));
+  // line은 호출부에서 고른다 — 실제 토큰 임계치 대사(tokenCount 기반 tier)와 게임 시작 인트로 대사가
+  // 서로 다른 대사 풀을 쓰지만 팝업 렌더링 자체는 공유한다.
+  spawnTauntPopup(line) {
     const x = this.boss.bodyCenterX;
     const y = this.boss.sprite.y - this.boss.displayHeight / 2 - 20;
     const style = {

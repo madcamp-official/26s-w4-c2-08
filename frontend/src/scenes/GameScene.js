@@ -24,7 +24,8 @@ import {
   SNIPER_SCOPE_DIAMETER,
   SNIPER_SCOPE_ZOOM,
   SNIPER_SCOPE_MARGIN,
-  BOSS_IDLE_TIMEOUT_MS,
+  BOSS_IDLE_SLEEP_DELAY_MS,
+  BOSS_IDLE_WALK_DELAY_MS,
   BOSS_IDLE_ZZZ_INTERVAL,
   BOSS_IDLE_DRIFT_SPEED,
   BOSS_IDLE_WALK_TILT_DEG,
@@ -57,6 +58,9 @@ export default class GameScene extends Phaser.Scene {
     this.isEnded = false;
     this.selectedWeaponId = null;
     // 방치(idle) 드리프트 판단 기준 시각 — 상호작용이 있을 때마다 markInteraction()으로 갱신된다.
+    // 씬 시작 직후엔 이 값이 this.time.now라 idleFor가 0에서 시작하는데, 그래도 곧장 자거나 걷지
+    // 않는 이유는 updateIdleDrift가 idleFor < BOSS_IDLE_SLEEP_DELAY_MS 구간을 "무반응(평상시)"으로
+    // 두기 때문이다 — 게임을 켜자마자 보스가 잠들어버리던 문제는 이 구간으로 자연히 해결된다.
     this.lastInteractionTime = this.time.now;
     // 나가기 버튼으로 걷다가 패널을 만나 멈춰서 미는 중일 때의 대기 타이머 — startPanelPush/cancelPanelPush 참고.
     this.panelPushEvent = null;
@@ -252,15 +256,16 @@ export default class GameScene extends Phaser.Scene {
     this.cancelPanelPush(); // 미는 도중 상호작용이 들어오면 어정쩡하게 화난 표정으로 멈춰 있지 않게 취소한다.
   }
 
-  // 보스는 "돌아다니거나(종료 버튼 쪽으로 끌려감) 자거나(Boss.isSleeping)" 둘 중 하나의 단순한
-  // 이진 상태만 가진다 — 실제로 포인터를 누르고 있는 동안(조작 중)만 예외로 그 자리에 멈춘다.
-  // 손을 뗀 뒤 BOSS_IDLE_TIMEOUT_MS(1분) 동안 클릭이 한 번도 없으면 잠들고, 그 뒤로는 고정
-  // 지속시간 없이 클릭이 들어올 때까지 계속 잔다 — 클릭 즉시 깨서 다시 돌아다니기 시작한다.
+  // 보스는 "가만히(무반응)" → "자거나(Boss.isSleeping)" → "돌아다니거나(종료 버튼 쪽으로 끌려감)"
+  // 순서의 3단계 상태를 가진다 — 실제로 포인터를 누르고 있는 동안(조작 중)만 예외로 그 자리에 멈춘다.
+  // 손을 뗀 직후부터 BOSS_IDLE_SLEEP_DELAY_MS(10초)가 지나기 전까지는 평상시 모습 그대로 가만히
+  // 있다가, 10초~BOSS_IDLE_WALK_DELAY_MS(30초) 사이에는 자고, 30초가 지나면 클릭이 들어올 때까지
+  // 계속 종료 버튼 쪽으로 걸어간다 — 클릭 즉시 다시 처음(무반응 상태)부터 반복한다.
   // 넉백/패널 충돌 트윈이 진행 중일 때 끼어들면 그 트윈과 위치를 두고 다투게 되므로 그동안은 쉰다.
   // 밋밋하게 미끄러지면 부자연스러워서, 이동 방향과 무관하게 좌우로 갸우뚱거리는 걸음 흔들림을 각도에 더한다.
   updateIdleDrift(time, delta) {
     // 아래에서 실제로 걷는 프레임에만 true로 다시 켠다 — 이 함수를 벗어나는 모든 경로(조작 중,
-    // 얼음/패널 충돌/미는 중, 자는 중, 목표 도착)는 "걷는 중"이 아니므로 기본값 false로 시작한다.
+    // 얼음/패널 충돌/미는 중, 무반응/자는 중, 목표 도착)는 "걷는 중"이 아니므로 기본값 false로 시작한다.
     this.isIdleDrifting = false;
     if (this.isEnded) { this.exitSleep(); return; }
     if (this.boss.isFrozen) { this.exitSleep(); return; }
@@ -270,7 +275,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.input.activePointer.isDown) { this.exitSleep(); return; }
 
     const idleFor = time - this.lastInteractionTime;
-    if (idleFor >= BOSS_IDLE_TIMEOUT_MS) {
+    if (idleFor < BOSS_IDLE_SLEEP_DELAY_MS) { this.exitSleep(); return; } // 아직 무반응 구간 — 평상시 모습 유지.
+    if (idleFor < BOSS_IDLE_WALK_DELAY_MS) {
       this.enterSleep();
       return;
     }
@@ -578,14 +584,16 @@ export default class GameScene extends Phaser.Scene {
       // 마술봉(teleportsBoss)에 맞으면 넉백 대신 화면 안 랜덤한 위치로 순간이동시킨다(Boss.teleportRandom) —
       // 데미지는 다른 PORTABLE 무기와 동일하게 이미 CombatSystem.handleHit에서 처리됐다.
       const isWandHit = hits.some((hit) => WEAPON_DEFINITIONS[hit.weaponId]?.teleportsBoss);
-      if (isWandHit) this.boss.teleportRandom();
-      else this.boss.knockback(hitX, hitY);
+      if (isWandHit) {
+        this.boss.teleportRandom();
+      } else if (this.boss.isNearCorner()) {
+        // 구석(두 벽 사이)에 몰려 있을 때 맞으면 찔끔 밀려나는 평소 knockback 대신 화면을 가로질러
+        // 대각선 반대쪽 구석까지 크게 튕겨나간다.
+        this.boss.flyToOppositeCorner(() => this.cameras.main.shake(100, 0.006));
+      } else {
+        this.boss.knockback(hitX, hitY);
+      }
       this.boss.flash(isTaserHit ? 0x66e0ff : (isWandHit ? WAND_TELEPORT_SPARK_COLOR : 0xffffff));
-      // 구석(두 벽 사이)에 몰려 있을 때 맞으면 찔끔 밀려나는 평소 knockback 대신 화면을 가로질러
-      // 대각선 반대쪽 구석까지 크게 튕겨나간다.
-      if (this.boss.isNearCorner()) this.boss.flyToOppositeCorner(() => this.cameras.main.shake(100, 0.006));
-      else this.boss.knockback(hitX, hitY);
-      this.boss.flash(isTaserHit ? 0x66e0ff : 0xffffff);
       this.boss.registerHits(hits.length);
       this.boss.showHurtFace();
       hits.forEach((hit) => {

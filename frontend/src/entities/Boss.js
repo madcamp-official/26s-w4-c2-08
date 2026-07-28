@@ -542,7 +542,16 @@ export default class Boss {
     this.happyFaceEvent = null;
     this.blinkEvent?.remove();
     this.blinkEvent = null;
-    this.sprite.setTexture(`boss_smirk_${this.bossTypeId}`);
+    this.vomitEvent?.remove();
+    this.sprite.setTexture(`boss_vomit_${this.bossTypeId}_d${this.damageStage}`);
+    this.scene.sound.play('boss_vomit');
+    // 구토 자체가 데미지 이벤트 — GameScene이 combat.applyVomitDamage()로 실제 데미지/점수를 처리하고
+    // 여기서는 팝업/스파크가 뜰 위치(입 근처)만 알려준다.
+    this.onVomit?.(this.bodyCenterX, this.bodyCenterY);
+    this.vomitEvent = this.scene.time.delayedCall(BOSS_VOMIT_DURATION, () => {
+      this.vomitEvent = null;
+      this.sprite.setTexture(this.getBaseTextureKey());
+    });
   }
 
   // 방패가 떠 있는 동안 지금 공격이 들어오는 방향(플레이어가 들고 있는 무기의 실제 타격 지점,
@@ -563,16 +572,6 @@ export default class Boss {
     const x = this.bodyCenterX + Math.cos(angle) * (this.bodyWidth / 2 + margin);
     const y = this.bodyCenterY + Math.sin(angle) * (this.bodyHeight / 2 + margin);
     this.shieldSprite.setPosition(x, y);
-    this.vomitEvent?.remove();
-    this.sprite.setTexture(`boss_vomit_${this.bossTypeId}_d${this.damageStage}`);
-    this.scene.sound.play('boss_vomit');
-    // 구토 자체가 데미지 이벤트 — GameScene이 combat.applyVomitDamage()로 실제 데미지/점수를 처리하고
-    // 여기서는 팝업/스파크가 뜰 위치(입 근처)만 알려준다.
-    this.onVomit?.(this.bodyCenterX, this.bodyCenterY);
-    this.vomitEvent = this.scene.time.delayedCall(BOSS_VOMIT_DURATION, () => {
-      this.vomitEvent = null;
-      this.sprite.setTexture(this.getBaseTextureKey());
-    });
   }
 
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.

@@ -17,11 +17,13 @@ export const HP_BAR_X = 400; // 보스와 같은 x(화면 중앙)를 유지
 export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바를 화면 아래에 두는 보스전 UI 컨벤션
 export const TOP_HUD_Y = 30; // Weapon/End 버튼 상단 y 기준 (HP바가 하단으로 빠지면서 별도 상수로 분리)
 export const BOSS_SPAWN = { x: 400, y: 400 };
-// 상태는 "자거나" 아니면 "돌아다니거나" 둘 중 하나뿐인 단순한 이진 상태다(GameScene.updateIdleDrift).
-// 마우스가 눌려있는 동안(실제로 조작 중)은 둘 다 아니고 그 자리에 멈춰 있는다. 손을 뗀 뒤 이
-// 시간(1분) 동안 클릭이 한 번도 없으면 자기 시작하고, 그 뒤로는 고정된 지속시간 없이 클릭이
-// 들어올 때까지 계속 잔다 — 클릭이 들어오는 순간 곧장 깨서 돌아다니기 시작한다.
-export const BOSS_IDLE_TIMEOUT_MS = 60000;
+// 방치 상태는 "가만히(무반응)" → "자거나" → "돌아다니거나" 순서의 3단계다(GameScene.updateIdleDrift).
+// 마우스가 눌려있는 동안(실제로 조작 중)은 셋 다 아니고 그 자리에 멈춰 있는다. 손을 뗀 뒤
+// BOSS_IDLE_SLEEP_DELAY_MS(10초)가 지나기 전까지는 평상시 모습 그대로 가만히 있다가, 10초~
+// BOSS_IDLE_WALK_DELAY_MS(30초) 사이에는 자고, 30초가 지나면 클릭이 들어올 때까지 계속 종료
+// 버튼 쪽으로 걸어간다 — 클릭이 들어오는 순간 곧장 처음(무반응 상태)부터 다시 센다.
+export const BOSS_IDLE_SLEEP_DELAY_MS = 10000;
+export const BOSS_IDLE_WALK_DELAY_MS = 30000;
 export const BOSS_IDLE_ZZZ_INTERVAL = 1100; // ms, 자는 동안 Zzz 텍스트를 새로 띄우는 간격
 export const BOSS_IDLE_DRIFT_SPEED = 28; // px/s, 종료 버튼을 향해 끌려가는 속도
 // 끌려가는 동안 좌우로 갸우뚱거리며 걷는 느낌을 주는 흔들림 — 진폭(각도)과 한 번 왕복하는 데 걸리는 시간.

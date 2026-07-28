@@ -927,3 +927,591 @@ export function createDeveloperCanvas(size) {
 
   return canvas;
 }
+
+// 러버덕: 몸통(큰 타원) + 머리(작은 원, 오른쪽 위로 offset) + 부리(주황 삼각형) + 눈(점) 하나로
+// 단순화한 노란 오리. STATIC 카테고리라 사각 판정만 쓰고, squishHit(playSquish)로 찌부 모션을 탄다.
+export function createRubberDuckCanvas(size) {
+  const bodyColor = '#ffd43b';
+  const bodyStroke = '#c9971f';
+  const billColor = '#f0883e';
+  const billStroke = '#b85e1f';
+  const eyeColor = '#2b2d30';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+
+  // 몸통
+  const bodyCx = size * 0.46;
+  const bodyCy = size * 0.6;
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.ellipse(bodyCx, bodyCy, size * 0.34, size * 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 머리 — 몸통 오른쪽 위로 겹친 작은 원
+  const headCx = size * 0.66;
+  const headCy = size * 0.34;
+  const headRadius = size * 0.2;
+  ctx.beginPath();
+  ctx.arc(headCx, headCy, headRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 부리 — 머리 오른쪽 끝에서 튀어나온 삼각형
+  ctx.fillStyle = billColor;
+  ctx.strokeStyle = billStroke;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.beginPath();
+  ctx.moveTo(headCx + headRadius * 0.6, headCy - headRadius * 0.15);
+  ctx.lineTo(headCx + headRadius * 1.5, headCy);
+  ctx.lineTo(headCx + headRadius * 0.6, headCy + headRadius * 0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 눈
+  ctx.fillStyle = eyeColor;
+  ctx.beginPath();
+  ctx.arc(headCx + headRadius * 0.15, headCy - headRadius * 0.35, size * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+// 곰인형: 몸통(타원) + 머리(원) + 귀 2개(작은 원) + 배 하이라이트(밝은 타원) + 눈·코.
+// 말랑이(createSquishyToyCanvas)와 같은 방식으로 STATIC + squishHit.
+export function createTeddyBearCanvas(size) {
+  const furColor = '#a9713f';
+  const furStroke = '#7a4e28';
+  const bellyColor = '#e8c9a0';
+  const faceColor = '#2b2d30';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+
+  ctx.fillStyle = furColor;
+  ctx.strokeStyle = furStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+
+  // 몸통
+  const bodyCy = size * 0.62;
+  ctx.beginPath();
+  ctx.ellipse(cx, bodyCy, size * 0.3, size * 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 머리
+  const headCy = size * 0.3;
+  const headRadius = size * 0.22;
+  ctx.beginPath();
+  ctx.arc(cx, headCy, headRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 귀 2개
+  const earRadius = size * 0.09;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.arc(cx + side * headRadius * 0.75, headCy - headRadius * 0.75, earRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // 배 하이라이트
+  ctx.fillStyle = bellyColor;
+  ctx.beginPath();
+  ctx.ellipse(cx, bodyCy + size * 0.03, size * 0.16, size * 0.14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 눈 2개 + 코
+  ctx.fillStyle = faceColor;
+  const eyeOffsetX = size * 0.08;
+  const eyeY = headCy - size * 0.01;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.arc(cx + side * eyeOffsetX, eyeY, size * 0.02, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.beginPath();
+  ctx.ellipse(cx, eyeY + size * 0.06, size * 0.03, size * 0.02, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+// 치즈 말랑이: 노란 둥근 블록 + 랜덤 배치 동그란 구멍(스위스 치즈 실루엣). 기존 SQUISHY(민트색 캐릭터)와
+// 완전히 다른 실루엣으로, 구멍은 destination-out으로 실제로 뚫어서 배경이 비친다.
+// 구멍 위치는 텍스처가 한 번만 생성되므로 고정 좌표(비율)로 둬 매번 같은 모양이 나오게 한다.
+const CHEESE_HOLE_SPOTS = [
+  { x: 0.34, y: 0.32, r: 0.09 },
+  { x: 0.62, y: 0.24, r: 0.06 },
+  { x: 0.72, y: 0.5, r: 0.1 },
+  { x: 0.4, y: 0.62, r: 0.07 },
+  { x: 0.58, y: 0.72, r: 0.05 },
+];
+
+export function createCheeseSquishyCanvas(size) {
+  const bodyColor = '#f5cf3d';
+  const bodyStroke = '#c9971f';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+
+  // 몸통 — 둥근 사각 블록
+  const pad = size * 0.1;
+  const radius = size * 0.12;
+  const left = pad;
+  const top = pad;
+  const w = size - pad * 2;
+  const h = size - pad * 2;
+
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.roundRect(left, top, w, h, radius);
+  ctx.fill();
+  ctx.stroke();
+
+  // 구멍 — 배경까지 실제로 뚫어서 뒤가 비치게 한다
+  ctx.globalCompositeOperation = 'destination-out';
+  CHEESE_HOLE_SPOTS.forEach(({ x, y, r }) => {
+    ctx.beginPath();
+    ctx.arc(size * x, size * y, size * r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalCompositeOperation = 'source-over';
+
+  // 구멍 테두리 — 뚫린 자리에 얇은 안쪽 그림자 느낌으로 테두리만 다시 그려 구멍이 도드라져 보이게 한다
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  CHEESE_HOLE_SPOTS.forEach(({ x, y, r }) => {
+    ctx.beginPath();
+    ctx.arc(size * x, size * y, size * r, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  return canvas;
+}
+
+// 토마토: 빨간 원 몸통 + 꼭지(초록 잎사귀 4갈래). 맞는 순간 GameScene이 spawnHitSpark 색만 빨강으로
+// 바꿔서 스플래터 이펙트를 낸다(전용 이펙트 함수 없음).
+export function createTomatoCanvas(size) {
+  const bodyColor = '#e0413a';
+  const bodyStroke = '#9c231f';
+  const highlightColor = '#f28a80';
+  const stemColor = '#4caf50';
+  const stemStroke = '#2e6b31';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size * 0.56;
+  const radius = size * 0.36;
+
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 하이라이트
+  ctx.fillStyle = highlightColor;
+  ctx.beginPath();
+  ctx.ellipse(cx - radius * 0.35, cy - radius * 0.35, radius * 0.22, radius * 0.14, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 꼭지 — 원 중심에서 4갈래로 퍼진 잎사귀
+  ctx.fillStyle = stemColor;
+  ctx.strokeStyle = stemStroke;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  const stemCy = cy - radius;
+  [-1, -0.4, 0.4, 1].forEach((t) => {
+    const leafAngle = -Math.PI / 2 + t * 0.6;
+    const leafLen = size * 0.14;
+    const tipX = cx + Math.cos(leafAngle) * leafLen;
+    const tipY = stemCy + Math.sin(leafAngle) * leafLen;
+    ctx.beginPath();
+    ctx.moveTo(cx, stemCy);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(cx + Math.cos(leafAngle + 0.3) * leafLen * 0.6, stemCy + Math.sin(leafAngle + 0.3) * leafLen * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  return canvas;
+}
+
+// 수박: 초록 겉 원 + 위아래로 살짝 굽이치는 진초록(거의 검정) 세로 줄무늬. 속살(빨강)은 넣지 않고
+// 겉모습(줄무늬)만으로 수박임을 표현한다.
+export function createWatermelonCanvas(size) {
+  const rindColor = '#3fae4a';
+  const rindStroke = '#1f6b2c';
+  const stripeColor = '#163b1c'; // 검정에 가까운 진초록
+  const highlightColor = 'rgba(255, 255, 255, 0.25)';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.42;
+
+  ctx.fillStyle = rindColor;
+  ctx.strokeStyle = rindStroke;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 줄무늬 — 원 안으로 클립한 뒤 위→아래로 살짝 굽이치는 세로 밴드 여러 개를 그린다
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.strokeStyle = stripeColor;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = size * 0.06;
+  const stripeCount = 5;
+  for (let i = 0; i < stripeCount; i += 1) {
+    const t = (i + 0.5) / stripeCount;
+    const baseX = cx - radius + t * radius * 2;
+    const bulge = Math.sin((i + 1) * 1.7) * radius * 0.2; // 자연스러운 굽이를 위한 좌우 흔들림
+    ctx.beginPath();
+    ctx.moveTo(baseX, cy - radius);
+    ctx.quadraticCurveTo(baseX + bulge, cy, baseX, cy + radius);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 하이라이트
+  ctx.fillStyle = highlightColor;
+  ctx.beginPath();
+  ctx.ellipse(cx - radius * 0.35, cy - radius * 0.35, radius * 0.2, radius * 0.13, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+// 물풍선: 위가 둥글고 아래가 살짝 좁아지는 물방울(풍선) 실루엣 + 하단 매듭 + 반투명한 느낌을 주는
+// 밝은 하이라이트. 맞는 순간 GameScene이 spawnHitSpark 색만 파랑으로 바꿔서 스플래시 이펙트를 낸다.
+export function createWaterBalloonCanvas(size) {
+  const balloonColor = 'rgba(79, 195, 247, 0.85)';
+  const balloonStroke = '#1f7fa8';
+  const highlightColor = 'rgba(255, 255, 255, 0.55)';
+  const knotColor = '#1f7fa8';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size * 0.46;
+  const radiusX = size * 0.34;
+  const radiusY = size * 0.38;
+
+  ctx.fillStyle = balloonColor;
+  ctx.strokeStyle = balloonStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.moveTo(cx - radiusX, cy - radiusY * 0.2);
+  ctx.bezierCurveTo(cx - radiusX, cy - radiusY, cx + radiusX, cy - radiusY, cx + radiusX, cy - radiusY * 0.2);
+  ctx.bezierCurveTo(cx + radiusX, cy + radiusY * 0.75, cx + radiusX * 0.35, cy + radiusY, cx, cy + radiusY);
+  ctx.bezierCurveTo(cx - radiusX * 0.35, cy + radiusY, cx - radiusX, cy + radiusY * 0.75, cx - radiusX, cy - radiusY * 0.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 하이라이트 — 왼쪽 위 반투명 하이라이트로 물풍선 특유의 광택 표현
+  ctx.fillStyle = highlightColor;
+  ctx.beginPath();
+  ctx.ellipse(cx - radiusX * 0.35, cy - radiusY * 0.4, radiusX * 0.22, radiusY * 0.32, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 매듭 — 아래 끝의 작은 삼각 매듭
+  ctx.fillStyle = knotColor;
+  ctx.beginPath();
+  ctx.moveTo(cx - size * 0.04, cy + radiusY);
+  ctx.lineTo(cx + size * 0.04, cy + radiusY);
+  ctx.lineTo(cx, cy + radiusY + size * 0.06);
+  ctx.closePath();
+  ctx.fill();
+
+  return canvas;
+}
+
+// 프라이팬: 검은 원(팬 몸통) + 손잡이(오른쪽으로 뻗은 막대). meleeSwing(WHIP/DEBUGGER와 같은 스윙 모션)이라
+// 방향에 상관없이 항상 이 각도로 그려두고 회전은 WeaponManager.faceBoss가 담당한다.
+export function createFryingPanCanvas(size) {
+  const panColor = '#2b2b2b';
+  const panStroke = '#111111';
+  const rimColor = '#4a4a4a';
+  // 손잡이를 순검정으로 했더니 무기 패널 배경(Hud.js PANEL_BG = 0x1e1e1e, 거의 검정)과 겹쳐서 안 보이던
+  // 문제 — 나무 손잡이 색 + 밝은 stroke로 배경이 뭐든 대비가 나게 한다.
+  const handleColor = '#6b4226';
+  const handleStroke = '#c9a06a';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cy = size / 2;
+  const panCx = size * 0.32; // 손잡이가 더 길어질 자리를 내주려고 팬 몸통을 왼쪽으로 당김
+  const panRadius = size * 0.29;
+
+  // 손잡이 — 팬 몸통 오른쪽으로 뻗은 막대. 0.4 → 0.58로 늘려서 훨씬 길어 보이게 한다.
+  const handleWidth = size * 0.58;
+  const handleHeight = size * 0.09;
+  const handleStartX = panCx + panRadius * 0.3;
+  ctx.fillStyle = handleColor;
+  ctx.strokeStyle = handleStroke;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.fillRect(handleStartX, cy - handleHeight / 2, handleWidth, handleHeight);
+  ctx.strokeRect(handleStartX, cy - handleHeight / 2, handleWidth, handleHeight);
+
+  // 팬 몸통
+  ctx.fillStyle = panColor;
+  ctx.strokeStyle = panStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.arc(panCx, cy, panRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 안쪽 테두리 — 바닥과 구분되는 얇은 원
+  ctx.strokeStyle = rimColor;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.beginPath();
+  ctx.arc(panCx, cy, panRadius * 0.72, 0, Math.PI * 2);
+  ctx.stroke();
+
+  return canvas;
+}
+
+// 슬리퍼: 단순한 타원 밑창 + V자 스트랩(끈). "등짝 스매싱" 밈답게 납작한 실루엣.
+export function createSlipperCanvas(size) {
+  const soleColor = '#5aa9e6';
+  const soleStroke = '#2f6ba0';
+  const strapColor = '#e0574a';
+  const strapStroke = '#8f2e24';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+
+  // 밑창 — 앞이 넓고 뒤가 좁은 타원형 실루엣
+  ctx.fillStyle = soleColor;
+  ctx.strokeStyle = soleStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, size * 0.4, size * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // V자 스트랩 — 앞쪽 발가락 구멍에서 두 갈래로 갈라져 밑창 옆쪽에 붙는 끈
+  const toeX = cx + size * 0.12;
+  const toeY = cy;
+  const leftAnchor = { x: cx - size * 0.16, y: cy - size * 0.14 };
+  const rightAnchor = { x: cx - size * 0.16, y: cy + size * 0.14 };
+  ctx.strokeStyle = strapColor;
+  ctx.lineWidth = Math.max(1, size * 0.045);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(toeX, toeY);
+  ctx.lineTo(leftAnchor.x, leftAnchor.y);
+  ctx.moveTo(toeX, toeY);
+  ctx.lineTo(rightAnchor.x, rightAnchor.y);
+  ctx.stroke();
+
+  ctx.fillStyle = strapStroke;
+  ctx.beginPath();
+  ctx.arc(toeX, toeY, size * 0.025, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+// 권투 글러브: 빨간 주먹 모양(둥근 블록) + 손목 커프(사각) + 엄지 돌출 + 매듭 라인. damageMultiplier가
+// 높은 무기라 직선 펀치답게 뭉툭하고 단단한 실루엣으로 그린다.
+export function createBoxingGloveCanvas(size) {
+  const gloveColor = '#d1483f';
+  const gloveStroke = '#8a2f28';
+  const laceColor = '#f0e6d2';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size * 0.46;
+
+  ctx.fillStyle = gloveColor;
+  ctx.strokeStyle = gloveStroke;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+
+  // 주먹 몸통 — 둥근 사각(roundRect)
+  const fistWidth = size * 0.52;
+  const fistHeight = size * 0.44;
+  ctx.beginPath();
+  ctx.roundRect(cx - fistWidth / 2, cy - fistHeight / 2, fistWidth, fistHeight, fistHeight * 0.4);
+  ctx.fill();
+  ctx.stroke();
+
+  // 엄지 — 옆으로 튀어나온 작은 타원
+  ctx.beginPath();
+  ctx.ellipse(cx - fistWidth * 0.42, cy + fistHeight * 0.1, size * 0.09, size * 0.07, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 손목 커프 — 아래쪽으로 이어지는 사각
+  const cuffWidth = size * 0.34;
+  const cuffHeight = size * 0.22;
+  ctx.beginPath();
+  ctx.rect(cx - cuffWidth / 2, cy + fistHeight / 2 - size * 0.03, cuffWidth, cuffHeight);
+  ctx.fill();
+  ctx.stroke();
+
+  // 매듭(레이스) 라인 — 주먹 위쪽에 가로줄 2개
+  ctx.strokeStyle = laceColor;
+  ctx.lineWidth = Math.max(1, size * 0.018);
+  [-0.12, 0.02].forEach((t) => {
+    ctx.beginPath();
+    ctx.moveTo(cx - fistWidth * 0.28, cy + fistHeight * t);
+    ctx.lineTo(cx + fistWidth * 0.28, cy + fistHeight * t);
+    ctx.stroke();
+  });
+
+  return canvas;
+}
+
+// 비치볼: 흰 원 바탕 위에 노랑/빨강/파랑 조각을 얹은 클래식 배색. 각 조각은 원 중심이 아니라
+// 위쪽으로 치우친 캡(마개) 지점에서 뻗어나가 아래로 갈수록 넓어지는 모양이라 실제 사진처럼 위는
+// 좁고 아래는 넓은 느낌이 난다. 조각의 바깥 경계는 항상 ctx.arc(원)를 그대로 써서 원 가장자리에
+// 수학적으로 딱 맞게 붙게 했다 — 이전 버전은 베지어 곡선으로 근사하다가 가장자리에 빈 틈이 남아
+// 배경이 비쳐 보이는 문제가 있었는데, arc는 반지름을 그대로 쓰므로 그런 틈이 원천적으로 생기지 않는다.
+export function createBeachBallCanvas(size) {
+  const outlineColor = '#c9ced3';
+  const seamColor = 'rgba(0, 0, 0, 0.14)';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.42;
+  const cap = { x: cx, y: cy - radius * 0.52 }; // 조각이 모이는 지점, 원 중심보다 위쪽
+
+  // 바탕 — 흰 원
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 색 조각 3개(노랑/빨강/파랑) — 나머지는 바탕 흰색이 그대로 보이게 비워둔다.
+  // 조각 경계: 캡 지점 → 원 위 시작각 지점(직선) → 원을 따라 끝각까지(arc) → 캡 지점(직선)
+  const wedges = [
+    { color: '#ffd43b', startAngle: -Math.PI * 0.62, endAngle: -Math.PI * 0.28 },
+    { color: '#e0413a', startAngle: -Math.PI * 0.12, endAngle: Math.PI * 0.42 },
+    { color: '#3f7fe0', startAngle: Math.PI * 0.58, endAngle: Math.PI * 0.86 },
+  ];
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+
+  wedges.forEach(({ color, startAngle, endAngle }) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cap.x, cap.y);
+    ctx.lineTo(cx + Math.cos(startAngle) * radius, cy + Math.sin(startAngle) * radius);
+    ctx.arc(cx, cy, radius, startAngle, endAngle);
+    ctx.lineTo(cap.x, cap.y);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // 이음선 — 캡에서 원 가장자리로 뻗는 얇은 선을 조각마다 그려 실제 이어붙인 패널처럼 보이게 한다
+  ctx.strokeStyle = seamColor;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  wedges.forEach(({ startAngle, endAngle }) => {
+    [startAngle, endAngle].forEach((angle) => {
+      ctx.beginPath();
+      ctx.moveTo(cap.x, cap.y);
+      ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+      ctx.stroke();
+    });
+  });
+
+  ctx.restore();
+
+  // 외곽선
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = Math.max(1, size * 0.018);
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 캡(마개) — 조각들이 모이는 지점을 작은 흰 원으로 덮어 자연스럽게 마감한다
+  const capRadius = size * 0.065;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  ctx.beginPath();
+  ctx.arc(cap.x, cap.y, capRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  return canvas;
+}
+
+// 부메랑: 두꺼운 호(arc) 하나를 굵게 그어서 바나나/초승달 실루엣을 만든다 — 직선 팔 두 개를 잇는
+// 대신 단순한 원호 하나로 그려서 곡선이 매끄럽다. 양 끝에는 밝은 색 팁을 찍어 장난감 부메랑 느낌을 준다.
+// BOOMERANG 카테고리 전용 무기: 들고 있는 동안은 판정 없이 따라다니기만 하다가, 놓는 순간
+// WeaponManager.throwBoomerang이 날아가는 동안 이 텍스처를 계속 회전시켜 빙글빙글 도는 것처럼 보이게 한다.
+export function createBoomerangCanvas(size) {
+  const bodyColor = '#f0883e';
+  const bodyStroke = '#b85e1f';
+  const tipColor = '#ffe066';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const arcRadius = size * 0.3;
+  const startAngle = (200 * Math.PI) / 180;
+  const endAngle = (340 * Math.PI) / 180;
+  const armWidth = size * 0.13;
+
+  ctx.lineCap = 'round';
+
+  // 몸통 — 테두리(굵게) 먼저, 안쪽 색(얇게) 나중에 그려서 외곽선 있는 느낌을 낸다
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = armWidth + size * 0.035;
+  ctx.beginPath();
+  ctx.arc(cx, cy, arcRadius, startAngle, endAngle);
+  ctx.stroke();
+
+  ctx.strokeStyle = bodyColor;
+  ctx.lineWidth = armWidth;
+  ctx.beginPath();
+  ctx.arc(cx, cy, arcRadius, startAngle, endAngle);
+  ctx.stroke();
+
+  // 양 끝 밝은 색 팁
+  ctx.fillStyle = tipColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  [startAngle, endAngle].forEach((angle) => {
+    const tipX = cx + Math.cos(angle) * arcRadius;
+    const tipY = cy + Math.sin(angle) * arcRadius;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, armWidth * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  return canvas;
+}

@@ -264,6 +264,10 @@ export default class GameScene extends Phaser.Scene {
         const bigImpact = WEAPON_DEFINITIONS[hit.weaponId]?.bigImpact;
         if (hit.weaponId === WEAPON_IDS.TASER) this.spawnElectrocuteEffect();
         else if (hit.weaponId === WEAPON_IDS.MEGAPHONE) this.spawnSoundWaveEffect(hit.x, hit.y);
+        // 토마토/수박: 빨간 스플래터. 물풍선: 파란 스플래시. 전용 이펙트 함수 없이 spawnHitSpark 색만 바꿔 재사용한다.
+        else if (hit.weaponId === WEAPON_IDS.TOMATO || hit.weaponId === WEAPON_IDS.WATERMELON) {
+          this.spawnHitSpark(hit.x, hit.y, 0xc0392b, bigImpact ? 1.8 : 1);
+        } else if (hit.weaponId === WEAPON_IDS.WATER_BALLOON) this.spawnHitSpark(hit.x, hit.y, 0x4fc3f7, bigImpact ? 1.8 : 1);
         else this.spawnHitSpark(hit.x, hit.y, undefined, bigImpact ? 1.8 : 1);
       });
     }

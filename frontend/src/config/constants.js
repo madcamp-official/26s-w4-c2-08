@@ -40,10 +40,14 @@ export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 // PORTABLE(휴대형)은 방망이 전용 대각선 캡슐 판정으로 들고 부딪혀서 데미지 — WeaponManager의
 // getBatAxis/batOverlapsBoss가 BAT_DIMENSIONS를 그대로 쓰기 때문에 방망이 말고 다른 모양에는 안 맞다.
 // STATIC은 그냥 사각 판정으로 들고 부딪히는 무기(전기충격기 등), THROW는 들고 있는 동안 자동 연사.
+// BOOMERANG: 들고 있는 동안은 판정 없이 그냥 따라다니기만 하다가(보스에 갖다 댈 필요 없음), 손을 떼는
+// 순간(WeaponManager.throwBoomerang) 놓은 자리에서 보스 반대쪽으로 살짝 날아갔다가 보스 쪽으로 곡선을
+// 그리며 되돌아와 부딪히는 1회성 투사체가 된다. THROW(들고 있는 동안 자동 연사)와는 완전히 다른 동작.
 export const WEAPON_CATEGORIES = {
   PORTABLE: 'portable',
   STATIC: 'static',
   THROW: 'throw',
+  BOOMERANG: 'boomerang',
 };
 
 // 무기 패널에 실제로 보이는 개별 무기. category가 동작 방식을 정하고, 같은 category를 여러 무기가
@@ -66,6 +70,17 @@ export const WEAPON_IDS = {
   BAMBOO_CANE: 'bamboo_cane',
   SQUISHY: 'squishy',
   DEBUGGER: 'debugger',
+  RUBBER_DUCK: 'rubber_duck',
+  TEDDY_BEAR: 'teddy_bear',
+  CHEESE_SQUISHY: 'cheese_squishy',
+  TOMATO: 'tomato',
+  WATERMELON: 'watermelon',
+  WATER_BALLOON: 'water_balloon',
+  FRYING_PAN: 'frying_pan',
+  SLIPPER: 'slipper',
+  BOXING_GLOVE: 'boxing_glove',
+  BEACH_BALL: 'beach_ball',
+  BOOMERANG: 'boomerang',
 };
 
 export const TASER_WEAPON_SIZE = 70; // 전기충격기 텍스처 크기 — 방망이보다 작은 소형 휴대 도구
@@ -82,6 +97,20 @@ export const WHIP_WEAPON_SIZE = 100; // 채찍 텍스처 크기 — 지그재그
 export const BAMBOO_CANE_WEAPON_SIZE = 100; // 대나무 회초리 텍스처 크기 — 채찍처럼 길게 뻗는 무기라 동일 크기
 export const SQUISHY_WEAPON_SIZE = 76; // 말랑이 텍스처 크기 — 손/전기충격기 정도의 소형 휴대 크기
 export const DEBUGGER_WEAPON_SIZE = 90; // 디버거 텍스처 크기
+export const RUBBER_DUCK_WEAPON_SIZE = 76; // 러버덕 텍스처 크기 — 말랑이와 같은 소형 휴대 크기
+export const TEDDY_BEAR_WEAPON_SIZE = 80; // 곰인형 텍스처 크기 — 러버덕보다 살짝 큰 봉제인형
+export const CHEESE_SQUISHY_WEAPON_SIZE = 76; // 치즈 말랑이 텍스처 크기 — 말랑이와 동일 소형 크기
+export const FRYING_PAN_WEAPON_SIZE = 130; // 프라이팬 텍스처 크기 — 손잡이를 더 길게 늘려서 채찍/회초리보다 큼
+export const SLIPPER_WEAPON_SIZE = 80; // 슬리퍼 텍스처 크기 — 납작한 실루엣이라 중간 크기
+export const BOXING_GLOVE_WEAPON_SIZE = 80; // 권투 글러브 텍스처 크기 — 손 정도의 중간 휴대 크기
+export const WATERMELON_WEAPON_SIZE = 56; // 수박 텍스처 크기 — 다른 투척형(THROW_WEAPON_SIZE=40)보다 크게
+export const BOOMERANG_WEAPON_SIZE = 70; // 부메랑 텍스처 크기 — 전기충격기/손 정도의 소형 휴대 크기
+export const BOOMERANG_HIT_RADIUS = BOOMERANG_WEAPON_SIZE * 0.4; // 날아가는 동안 원형 판정 반지름 (THROW_PROJECTILE_HIT_RADIUS와 같은 비율)
+export const BOOMERANG_OUT_DISTANCE = 110; // px, 놓은 자리에서 보스 반대쪽으로 먼저 날아가는 거리
+export const BOOMERANG_OUT_DURATION = 260; // ms, 나가는 구간 소요 시간
+export const BOOMERANG_BACK_DURATION = 420; // ms, 보스 쪽으로 곡선을 그리며 되돌아오는 구간 소요 시간
+export const BOOMERANG_CURVE_BULGE = 90; // px, 되돌아오는 경로가 옆으로 부푸는 정도 — 직선이 아니라 진짜 부메랑처럼 곡선으로 돌아오게 한다
+export const BOOMERANG_SPIN_TURNS = 3; // 비행 전체 동안 시각적으로 회전하는 총 바퀴 수
 export const DEBUGGER_FREEZE_DURATION = 2000; // ms, 브레이크포인트에 맞으면 드래그로 못 옮기는 시간
 export const SOUND_WAVE_PROJECTILE_SIZE = 34; // 확성기가 쏘는 소리 파동 투사체 텍스처 크기
 // 확성기는 터치형이 아니라 원거리 투척형 — 클릭한 자리와 상관없이 보스 쪽으로 자동 발사되고,
@@ -303,6 +332,64 @@ export const WEAPON_DEFINITIONS = {
   // meleeSwing: 노트북을 실제로 휘둘러서 때리는 느낌을 주는 스윙 모션 (WHIP과 같은 메커니즘 재사용).
   [WEAPON_IDS.DEBUGGER]: {
     name: 'DEVELOPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_debugger', freezesBoss: true, meleeSwing: true,
+  },
+  // 말랑이(squishHit) 계열 3종 — 모양만 다르고 동작(찌부 모션)은 SQUISHY와 동일하다. hitSound 에셋이
+  // 아직 없어서 무음.
+  [WEAPON_IDS.RUBBER_DUCK]: {
+    name: 'RUBBER DUCK', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_rubber_duck', squishHit: true,
+  },
+  [WEAPON_IDS.TEDDY_BEAR]: {
+    name: 'TEDDY BEAR', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_teddy_bear', squishHit: true,
+  },
+  [WEAPON_IDS.CHEESE_SQUISHY]: {
+    name: 'CHEESE SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_cheese_squishy', squishHit: true,
+  },
+  // 투척형 신규 3종. 토마토/수박은 GameScene.onHit에서 weaponId로 분기해 spawnHitSpark 색만 바꿔
+  // 스플래터/스플래시 이펙트를 낸다 (전용 이펙트 함수 없이 기존 스파크 재사용).
+  [WEAPON_IDS.TOMATO]: {
+    name: 'TOMATO',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_tomato',
+    projectileTexture: 'weapon_tomato_projectile',
+    fireSound: 'baseball_throw',
+  },
+  [WEAPON_IDS.WATERMELON]: {
+    name: 'WATERMELON',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_watermelon',
+    projectileTexture: 'weapon_watermelon_projectile',
+    fireSound: 'baseball_throw',
+    bigImpact: true,
+  },
+  [WEAPON_IDS.WATER_BALLOON]: {
+    name: 'WATER BALLOON',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_water_balloon',
+    projectileTexture: 'weapon_water_balloon_projectile',
+    fireSound: 'baseball_throw',
+  },
+  [WEAPON_IDS.BEACH_BALL]: {
+    name: 'BEACH BALL',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_beach_ball',
+    projectileTexture: 'weapon_beach_ball_projectile',
+    fireSound: 'baseball_throw',
+  },
+  // meleeSwing 계열 3종 — 채찍/노트북과 같은 후려치는 스윙 모션(WeaponManager.playMeleeSwing)을 재사용한다.
+  [WEAPON_IDS.FRYING_PAN]: {
+    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true,
+  },
+  [WEAPON_IDS.SLIPPER]: {
+    name: 'SLIPPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_slipper', meleeSwing: true,
+  },
+  // 직선 펀치답게 다른 STATIC 무기보다 한 방이 더 아프도록 damageMultiplier를 살짝 높게 잡는다.
+  [WEAPON_IDS.BOXING_GLOVE]: {
+    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2,
+  },
+  // 놓는 순간 던져지는 1회성 무기 — fireSound는 다른 THROW 무기처럼 발사 시점(WeaponManager.throwBoomerang)에
+  // 재생한다. hitSound 에셋은 아직 없어서 무음.
+  [WEAPON_IDS.BOOMERANG]: {
+    name: 'BOOMERANG', category: WEAPON_CATEGORIES.BOOMERANG, texture: 'weapon_boomerang', fireSound: 'baseball_throw',
   },
 };
 

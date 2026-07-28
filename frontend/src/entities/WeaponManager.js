@@ -9,6 +9,12 @@ import {
   WEAPON_DEFINITIONS,
   DART_STICK_DURATION,
   DART_EMBED_DEPTH,
+  BOOMERANG_HIT_RADIUS,
+  BOOMERANG_OUT_DISTANCE,
+  BOOMERANG_OUT_DURATION,
+  BOOMERANG_BACK_DURATION,
+  BOOMERANG_CURVE_BULGE,
+  BOOMERANG_SPIN_TURNS,
 } from '../config/constants.js';
 import { getBaseballBatDimensions } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
@@ -45,6 +51,9 @@ export default class WeaponManager {
 
     if (category === WEAPON_CATEGORIES.THROW) {
       this.startFiring(weapon);
+    } else if (category === WEAPON_CATEGORIES.BOOMERANG) {
+      // 들고 있는 동안은 보스에 갖다 댈 필요가 없는 무기라 판정(overlapCollider) 자체를 안 둔다 —
+      // 놓는 순간 throwBoomerang이 날아가는 동안에만 별도로 원형 판정을 건다.
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
       if (category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(weapon);
@@ -111,14 +120,92 @@ export default class WeaponManager {
   }
 
   // 손을 떼면 들고 있던 무기를 화면에서 지운다 (투척형이면 연사도 같이 멈춤).
+  // 부메랑은 지우는 대신 놓은 자리에서 날아가기 시작한다 — activeWeapon 자리는 먼저 비워서
+  // 손을 떼자마자 바로 다른 무기를 새로 집을 수 있게 한다.
   releaseActiveWeapon() {
     const weapon = this.activeWeapon;
     if (!weapon) return;
+    this.activeWeapon = null;
+
+    if (weapon.category === WEAPON_CATEGORIES.BOOMERANG) {
+      this.throwBoomerang(weapon);
+      return;
+    }
 
     if (weapon.category === WEAPON_CATEGORIES.THROW) this.stopFiring(weapon);
     if (weapon.overlapCollider) weapon.overlapCollider.destroy();
     weapon.destroy();
-    this.activeWeapon = null;
+  }
+
+  // 부메랑을 놓은 자리에서 날린다: 보스 반대쪽으로 잠깐 나갔다가(out), 보스 쪽으로 옆으로 부푼
+  // 곡선을 그리며 되돌아온다(back). 날아가는 동안 계속 회전시켜 빙글빙글 도는 느낌을 준다.
+  // 다른 THROW 무기처럼 launcher가 계속 있는 게 아니라 이 한 번의 비행이 끝나면 완전히 사라지는
+  // 1회성 투사체라, startFiring/fireProjectile 파이프라인을 안 타고 별도로 처리한다.
+  throwBoomerang(weapon) {
+    const definition = WEAPON_DEFINITIONS[weapon.weaponId];
+    if (definition.fireSound) this.scene.sound.play(definition.fireSound);
+
+    const startX = weapon.x;
+    const startY = weapon.y;
+    const awayAngle = Phaser.Math.Angle.Between(this.boss.sprite.x, this.boss.sprite.y, startX, startY);
+    const outX = startX + Math.cos(awayAngle) * BOOMERANG_OUT_DISTANCE;
+    const outY = startY + Math.sin(awayAngle) * BOOMERANG_OUT_DISTANCE;
+    // 되돌아오는 경로가 옆으로 부풀 방향 — awayAngle의 수직 방향으로 고정해서 매번 같은 쪽으로 부드럽게 휘게 한다.
+    const bulgeAngle = awayAngle + Math.PI / 2;
+
+    weapon.hitRadius = BOOMERANG_HIT_RADIUS;
+    const bodyOffset = (weapon.width - BOOMERANG_HIT_RADIUS * 2) / 2;
+    weapon.body.setCircle(BOOMERANG_HIT_RADIUS, bodyOffset, bodyOffset);
+    this.projectiles.push(weapon);
+    weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => {
+      this.onOverlap(weapon);
+      this.destroyProjectile(weapon);
+    }, null, this.scene);
+
+    this.scene.tweens.add({
+      targets: weapon,
+      angle: 360 * BOOMERANG_SPIN_TURNS,
+      duration: BOOMERANG_OUT_DURATION + BOOMERANG_BACK_DURATION,
+      ease: 'Linear',
+    });
+
+    const outState = { t: 0 };
+    this.scene.tweens.add({
+      targets: outState,
+      t: 1,
+      duration: BOOMERANG_OUT_DURATION,
+      ease: 'Sine.easeOut',
+      onUpdate: () => {
+        if (!weapon.active) return;
+        weapon.x = Phaser.Math.Linear(startX, outX, outState.t);
+        weapon.y = Phaser.Math.Linear(startY, outY, outState.t);
+      },
+      onComplete: () => {
+        if (!weapon.active) return;
+        // 보스가 드래그로 움직이는 도중에도 매 프레임 최신 보스 위치를 목표로 다시 계산해서 따라가게 한다.
+        const backState = { t: 0 };
+        this.scene.tweens.add({
+          targets: backState,
+          t: 1,
+          duration: BOOMERANG_BACK_DURATION,
+          ease: 'Sine.easeIn',
+          onUpdate: () => {
+            if (!weapon.active) return;
+            const targetX = this.boss.sprite.x;
+            const targetY = this.boss.sprite.y;
+            const controlX = Phaser.Math.Linear(outX, targetX, 0.5) + Math.cos(bulgeAngle) * BOOMERANG_CURVE_BULGE;
+            const controlY = Phaser.Math.Linear(outY, targetY, 0.5) + Math.sin(bulgeAngle) * BOOMERANG_CURVE_BULGE;
+            const t = backState.t;
+            const mt = 1 - t;
+            weapon.x = mt * mt * outX + 2 * mt * t * controlX + t * t * targetX;
+            weapon.y = mt * mt * outY + 2 * mt * t * controlY + t * t * targetY;
+          },
+          onComplete: () => {
+            if (weapon.active) this.destroyProjectile(weapon);
+          },
+        });
+      },
+    });
   }
 
   // 방망이 위치에서 보스를 바라보는 각도. 투사체 발사 각도 계산과 같은 패턴.
@@ -325,6 +412,9 @@ export default class WeaponManager {
 
   destroyProjectile(projectile) {
     this.projectiles = this.projectiles.filter((p) => p !== projectile);
+    // 부메랑은 비행 중 회전/이동 트윈이 걸려 있는 채로 destroy될 수 있어서(보스 명중 시 등)
+    // 죽은 오브젝트에 트윈이 계속 값을 대입하지 않도록 먼저 정리한다.
+    this.scene.tweens.killTweensOf(projectile);
     projectile.overlapCollider.destroy();
     projectile.destroy();
   }
@@ -390,7 +480,13 @@ export default class WeaponManager {
   // 방망이(휴대형)는 대각선 캡슐로, 투사체(공)는 원으로 — 둘 다 사각 히트박스보다 실제 그림에 가깝게 판정한다.
   getOverlappingDamageDealers() {
     const dealers = [...this.projectiles];
-    if (this.activeWeapon && this.activeWeapon.category !== WEAPON_CATEGORIES.THROW) {
+    // 들고 있는(activeWeapon) 부메랑은 아직 hitRadius가 없는 판정 없는 상태라 제외한다 —
+    // 실제 판정은 놓은 뒤 날아가는 동안(this.projectiles에 들어간 뒤)에만 생긴다.
+    if (
+      this.activeWeapon
+      && this.activeWeapon.category !== WEAPON_CATEGORIES.THROW
+      && this.activeWeapon.category !== WEAPON_CATEGORIES.BOOMERANG
+    ) {
       dealers.push(this.activeWeapon);
     }
     return dealers.filter((weapon) => {

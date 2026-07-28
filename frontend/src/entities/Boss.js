@@ -43,6 +43,7 @@ export default class Boss {
     this.lastFireBreathTime = -Infinity;
     this.isFrozen = false;
     this.freezeEvent = null;
+    this.isPushingPanel = false;
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
     // 그 여백까지 "몸통"으로 잡는다 — 방망이/투사체가 실제 그림에 닿기도 전에 먼저 겹침이 발생해서,
@@ -151,6 +152,7 @@ export default class Boss {
     this.freezeEvent?.remove();
     this.freezeEvent = null;
     this.isFrozen = false;
+    this.isPushingPanel = false;
     this.recentHitTimestamps = [];
     this.lastFireBreathTime = -Infinity;
     this.sprite.setTexture(this.getBaseTextureKey());
@@ -167,6 +169,7 @@ export default class Boss {
     this.happyFaceEvent = null;
     this.blinkEvent?.remove();
     this.blinkEvent = null;
+    this.isPushingPanel = false;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 
@@ -219,6 +222,29 @@ export default class Boss {
         onComplete?.(this.sprite.x, this.sprite.y);
       },
     });
+  }
+
+  // 나가기 버튼으로 걸어가다(GameScene.updateIdleDrift) 열린 패널을 만나면 멈춰서, 실제 데미지 단계와
+  // 무관하게 2단계(30% 이하)의 더 처진 눈/큰 입 텍스처를 "화난 표정"으로 잠깐 띄운다 — GameScene이
+  // BOSS_IDLE_PANEL_PUSH_HOLD_MS 뒤에 endPanelPush()로 되돌리고 패널을 닫는다. 더 급한 반응
+  // (피격 X_X/불뿜기)이 떠 있는 동안엔 덮어쓰지 않는다.
+  // GameScene.checkBossAgainstPanel은 isPushingPanel이 true인 동안 flyOutToLeftWall 호출을 건너뛴다.
+  startPanelPush() {
+    if (this.isPushingPanel) return;
+    if (this.fireBreathEvent || this.hurtFaceEvent) return;
+    this.isPushingPanel = true;
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
+    this.sprite.setTexture(`boss_${this.bossTypeId}_d${MAX_DAMAGE_STAGE}`);
+  }
+
+  // 미는 연출이 끝나거나(패널 닫힘), 상호작용으로 드리프트 자체가 취소되면 실제 데미지 단계에 맞는 표정으로 되돌린다.
+  endPanelPush() {
+    if (!this.isPushingPanel) return;
+    this.isPushingPanel = false;
+    if (!this.hurtFaceEvent && !this.fireBreathEvent) this.sprite.setTexture(this.getBaseTextureKey());
   }
 
   flash(color) {

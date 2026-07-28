@@ -17,6 +17,14 @@ export const HP_BAR_X = 400; // 보스와 같은 x(화면 중앙)를 유지
 export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바를 화면 아래에 두는 보스전 UI 컨벤션
 export const TOP_HUD_Y = 30; // Weapon/End 버튼 상단 y 기준 (HP바가 하단으로 빠지면서 별도 상수로 분리)
 export const BOSS_SPAWN = { x: 400, y: 400 };
+// 화면과 상호작용(클릭/드래그 등)이 없으면 보스가 점점 종료 버튼 쪽으로 끌려가는 방치(idle) 연출.
+// 테스트 편의를 위해 1초로 짧게 잡아둠 — 실제 배포 시엔 더 길게(예: 10000ms 이상) 늘려야 함.
+export const BOSS_IDLE_TIMEOUT_MS = 2000;
+export const BOSS_IDLE_DRIFT_SPEED = 28; // px/s, 종료 버튼을 향해 끌려가는 속도
+// 끌려가는 동안 좌우로 갸우뚱거리며 걷는 느낌을 주는 흔들림 — 진폭(각도)과 한 번 왕복하는 데 걸리는 시간.
+export const BOSS_IDLE_WALK_TILT_DEG = 5;
+export const BOSS_IDLE_WALK_CYCLE_MS = 300;
+export const BOSS_IDLE_ARRIVAL_DISTANCE = 2; // px, 종료 버튼과 이 거리 이내면 도착으로 보고 멈춘다
 // 보스 캐릭터 목록 — 코드/에러 테마 이름 + 픽셀 스프라이트 몸통 색. 첫 항목이 기본 보스.
 export const BOSS_TYPES = [
   { id: 'null_pointer', name: 'NULL_POINTER', color: '#e8631a' }, // Classic Coral 후보의 진한 주황
@@ -311,9 +319,17 @@ export const DART_EMBED_DEPTH = 10; // px, 맞은 지점에서 날아가던 방�
 // 타격 이펙트
 export const BOSS_KNOCKBACK_DISTANCE = 26; // px, 타격당 타격 반대 방향으로 밀려나는 거리 (누적됨)
 export const BOSS_KNOCKBACK_OUT_DURATION = 70; // ms, 밀려나는 트윈 시간
-export const BOSS_PANEL_PUSH_DURATION = 260; // ms, 무기/배경 패널에 부딪혀 왼쪽 벽까지 날아가는 트윈 시간
+export const BOSS_PANEL_PUSH_DURATION = 300; // ms, 무기/배경 패널에 부딪혀 왼쪽 벽까지 날아가는 트윈 시간
 export const BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER = 2; // 패널에 부딪혀 왼쪽 벽까지 날아갈 때 추가로 받는 데미지 배율
 export const BOSS_PANEL_PUSH_POPUP_COLOR = '#ff5050'; // 패널 충돌 보너스 데미지 팝업 색 (일반 데미지와 구분)
+// 나가기 버튼으로 걷다가(idle drift) 열린 패널을 만나면 멈춰서 이 시간만큼 화난 표정을 유지하며 미는
+// 연출을 보여준 뒤 패널을 닫고 다시 걷기 시작한다.
+export const BOSS_IDLE_PANEL_PUSH_HOLD_MS = 1000;
+// 실제 패널 경계(getOpenPanelBoundaryX)보다 이만큼 일찍 "만났다"고 판정한다 — 걷는 도중 한 프레임의
+// 이동량이나, 이미 그 자리에서 쉬고 있는데 패널이 막 열린 경우처럼 판정이 한 프레임 늦어질 수 있는
+// 여지를 넉넉히 흡수해서, checkBossAgainstPanel의 flyOutToLeftWall(왼쪽 벽으로 날아가기)보다
+// 항상 먼저 걸리게 하기 위한 여유값.
+export const BOSS_IDLE_PANEL_APPROACH_MARGIN = 10;
 export const BOSS_FLASH_DURATION = 120; // ms
 export const BOSS_HURT_FACE_DURATION = 300; // ms, 피격 시 눈이 X_X로 바뀌어 있는 시간
 export const BOSS_HAPPY_FACE_DURATION = 700; // ms, 쓰다듬을 때 웃는 표정이 유지되는 시간
@@ -351,8 +367,6 @@ export const AGENT_TAUNT_TOKEN_TIERS = {
 };
 //<1000
 const AGENT_TAUNT_LINES_LOW = [
-  'ㅎㅇ',
-  '수준 ㅋ',
   '이정도면 그냥해',
   '나 아직 안 죽었다?',
   '컨텍스트가 무겁다구요',
@@ -377,3 +391,23 @@ export function getAgentTauntLines(tokenCount) {
   if (tokenCount >= AGENT_TAUNT_TOKEN_TIERS.MID) return AGENT_TAUNT_LINES_MID;
   return AGENT_TAUNT_LINES_LOW;
 }
+
+// 게임 시작 직후 실제 토큰 임계치가 한 번도 발동하기 전부터 "이미 이 세션 토큰을 보고 있다"는
+// 인상을 주기 위한 1회성 인트로 대사. 씬이 뜨자마자 뜨면 부자연스러워 살짝 지연 후 띄운다.
+export const AGENT_TAUNT_INTRO_DELAY = 300; // ms
+export const AGENT_TAUNT_LINES_INTRO = [
+  'ㅎㅇ',
+  '수준 ㅋ',
+  'EXTENSION 설정을 키면 토큰 연동 가능',
+  '또 왔네?',
+];
+
+// 방치(idle) 드리프트로 나가기 버튼 쪽으로 걸어가던 도중(GameScene.isIdleDrifting) 클릭으로
+// 걸음을 들켰을 때 뜨는 대사 — spawnTauntPopup으로 동일하게 렌더링한다.
+export const AGENT_TAUNT_LINES_IDLE_CAUGHT = [
+  'ㅎㅎ...',
+  '크흠',
+  '안 움직였어!',
+  '눈치챘네 ㅎㅎ',
+  '아아아안녕',
+];

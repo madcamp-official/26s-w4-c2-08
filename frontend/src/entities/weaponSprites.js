@@ -1706,3 +1706,62 @@ export function createDynamiteCanvas(size) {
 
   return canvas;
 }
+
+// 입술(뽀뽀) 무기: 큐피드 활 모양의 윗입술(가운데 옴폭 파인 두 봉우리) + 도톰한 아랫입술,
+// 가운데 인중선과 광택 하이라이트로 입체감을 준다.
+export function createLipsCanvas(size) {
+  const lipColor = '#d1476b';
+  const lipStroke = '#8a2c46';
+  const seamColor = '#8a2c46';
+  const highlightColor = 'rgba(255, 255, 255, 0.35)';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const width = size * 0.78;
+  const leftX = cx - width / 2;
+  const rightX = cx + width / 2;
+  const topHeight = size * 0.16;
+  const bottomHeight = size * 0.26;
+
+  ctx.fillStyle = lipColor;
+  ctx.strokeStyle = lipStroke;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+
+  // 윗입술 — 왼쪽 봉우리 → 가운데 옴폭(큐피드 활) → 오른쪽 봉우리
+  ctx.beginPath();
+  ctx.moveTo(leftX, cy);
+  ctx.quadraticCurveTo(cx - width * 0.34, cy - topHeight * 1.3, cx - width * 0.16, cy - topHeight * 0.55);
+  ctx.quadraticCurveTo(cx - width * 0.06, cy - topHeight * 0.05, cx, cy - topHeight * 0.3);
+  ctx.quadraticCurveTo(cx + width * 0.06, cy - topHeight * 0.05, cx + width * 0.16, cy - topHeight * 0.55);
+  ctx.quadraticCurveTo(cx + width * 0.34, cy - topHeight * 1.3, rightX, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 아랫입술 — 도톰한 반원형 곡선 하나
+  ctx.beginPath();
+  ctx.moveTo(leftX, cy);
+  ctx.quadraticCurveTo(cx - width * 0.32, cy + bottomHeight * 1.25, cx, cy + bottomHeight);
+  ctx.quadraticCurveTo(cx + width * 0.32, cy + bottomHeight * 1.25, rightX, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 인중선(윗입술-아랫입술 경계)
+  ctx.strokeStyle = seamColor;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.moveTo(leftX + size * 0.03, cy);
+  ctx.quadraticCurveTo(cx, cy + size * 0.015, rightX - size * 0.03, cy);
+  ctx.stroke();
+
+  // 광택 하이라이트 (아랫입술 위쪽)
+  ctx.fillStyle = highlightColor;
+  ctx.beginPath();
+  ctx.ellipse(cx - width * 0.12, cy + bottomHeight * 0.45, width * 0.14, bottomHeight * 0.22, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}

@@ -86,6 +86,8 @@ export default class GameScene extends Phaser.Scene {
     this.combat.onBlocked = (point) => this.onBlocked(point);
     // 방패가 뜨는 순간(Boss.activateShield) 썩소 표정과 같이 "막기!" 계열 대사를 띄운다.
     this.boss.onShieldActivate = () => this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(SHIELD_TAUNT_LINES));
+    // 입술 연타로 토하는 순간(Boss.showVomitFace) 입 아래로 초록 이펙트를 띄운다.
+    this.boss.onVomit = (x, y) => this.spawnVomitEffect(x, y);
     // heals 무기(착한 손)는 데미지가 아니라 힐링이라 combat.handleHit이 아니라 handlePet으로 따로 보낸다.
     // weaponId를 하드코딩하지 않고 WEAPON_DEFINITIONS[id].heals로 판단해서 힐링 무기가 늘어나도 여기 안 고쳐도 되게 한다.
     this.weaponManager = new WeaponManager(this, this.boss, (weapon) => {
@@ -521,8 +523,17 @@ export default class GameScene extends Phaser.Scene {
       if (this.boss.isNearCorner()) this.boss.flyToOppositeCorner(() => this.cameras.main.shake(100, 0.006));
       else this.boss.knockback(hitX, hitY);
       this.boss.flash(isTaserHit ? 0x66e0ff : 0xffffff);
-      this.boss.registerHits(hits.length);
-      this.boss.showHurtFace();
+      // 입술로만(다른 무기가 안 끼고) 계속 맞으면 평소 X_X 대신 threshold를 넘는 순간 토하는 표정으로
+      // 바뀐다(Boss.registerLipsHit) — 다른 무기가 섞이면 연속 기록이 끊긴 것이므로 리셋한다.
+      // 이 콤보는 불 뿜기(registerHits)와 별개라, 입술 연타는 불 뿜기 카운트에 안 들어가야
+      // "토하는 반응" 대신 불을 뿜는 상황이 안 생긴다.
+      const isLipsHit = hits.every((hit) => hit.weaponId === WEAPON_IDS.LIPS);
+      if (isLipsHit) this.boss.registerLipsHit();
+      else {
+        this.boss.registerHits(hits.length);
+        this.boss.resetLipsStreak();
+        this.boss.showHurtFace();
+      }
       hits.forEach((hit) => {
         this.spawnDamagePopup(hit);
         const bigImpact = WEAPON_DEFINITIONS[hit.weaponId]?.bigImpact;
@@ -859,6 +870,27 @@ export default class GameScene extends Phaser.Scene {
         y: y + Phaser.Math.Between(40, 60), // 중력 받아 떨어지는 낙하
         alpha: 0,
         duration: 480,
+        ease: 'Cubic.easeIn',
+        onComplete: () => droplet.destroy(),
+      });
+    }
+  }
+
+  // 입술 연타로 토할 때(Boss.showVomitFace → onVomit) 입 아래로 초록 액체가 쏟아지는 이펙트.
+  // 타격 이펙트들과 달리 사방으로 튀는 게 아니라 아래쪽 부채꼴로만 쏟아져야 "토하는" 느낌이 나서
+  // spawnWaterSplashEffect와 달리 위로 튀는 각도 없이 아래쪽으로만 낙하시킨다.
+  spawnVomitEffect(x, y) {
+    const dropletCount = 12;
+    for (let i = 0; i < dropletCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(Math.PI * 0.15, Math.PI * 0.85); // 아래쪽 부채꼴
+      const distance = Phaser.Math.Between(20, 46);
+      const droplet = this.add.circle(x, y, Phaser.Math.Between(4, 8), 0x7cb83f, 0.85).setDepth(1000);
+      this.tweens.add({
+        targets: droplet,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance + Phaser.Math.Between(30, 60), // 중력 받아 더 떨어짐
+        alpha: 0,
+        duration: 560,
         ease: 'Cubic.easeIn',
         onComplete: () => droplet.destroy(),
       });

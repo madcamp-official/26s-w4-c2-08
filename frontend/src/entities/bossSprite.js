@@ -405,6 +405,31 @@ export function createBossSmirkCanvas(bodyColor, eyeColor = '#000000') {
   return canvas;
 }
 
+// 입술 무기로 연타(Boss.registerLipsHit → LIPS_VOMIT_STREAK_THRESHOLD)당해 토할 때 뜨는 표정.
+// 눈은 피격 때와 같은 어지러운 X(drawSmoothX)를 재사용하고, 입만 크게 벌린 채 초록 액체 두 겹이
+// 흘러내리는 모양(drawFlameLobe와 같은 물방울 실루엣, 색만 초록 계열)으로 덮어씌운다.
+function drawVomitMouth(ctx) {
+  const { x, y, width, height } = drawOpenMouth(ctx);
+  const cx = x + width / 2;
+  const topY = y + height;
+  drawFlameLobe(ctx, cx, topY, 30, 34, '#6fa83a');
+  drawFlameLobe(ctx, cx, topY + 2, 18, 20, '#a9d868');
+}
+
+export function createBossVomitCanvas(bodyColor, eyeColor = '#000000') {
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+
+  drawBody(ctx, bodyColor);
+  EYE_CELLS.forEach(([r, c]) => {
+    const { x, y, w, h } = cellRect(r, c);
+    drawSmoothX(ctx, bodyColor, eyeColor, x, y, w, h);
+  });
+  drawVomitMouth(ctx);
+
+  return canvas;
+}
+
 // 체력 최저 단계에서 가끔 뜨는 무적 방패(Boss.activateShield) 텍스처. 고전적인 방패(heater shield)
 // 실루엣 — 위는 둥근 어깨 두 개가 가운데에서 살짝 파이고, 아래로 갈수록 좁아지다 뾰족한 끝으로 모인다.
 // 은색 프레임(테두리+십자 분할선) 위에 파란 4분할 면을 얹고, 교차점/테두리에 리벳(작은 원)을 찍는다.

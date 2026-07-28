@@ -21,7 +21,10 @@ import {
   BOSS_SHIELD_BREACH_LIMIT,
   BOSS_SHIELD_REARM_COOLDOWN_MS,
   BOSS_CORNER_MARGIN,
+  BOSS_CORNER_BOUNCE_DISTANCE_RATIO,
   BOSS_CORNER_BOUNCE_DURATION,
+  LIPS_VOMIT_STREAK_THRESHOLD,
+  BOSS_VOMIT_FACE_DURATION,
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -59,6 +62,8 @@ export default class Boss {
     this.lastShieldEndTime = -Infinity; // 방패가 깨진 시각 — BOSS_SHIELD_REARM_COOLDOWN_MS 안에는 재발동 안 함
     this.onShieldActivate = null; // GameScene이 생성 후 설정 — 방패 뜰 때 대사 팝업을 띄우는 용도(onPet과 같은 방식)
     this.isSleeping = false; // 방치(idle) 중 걷기 전에 먼저 자는 척하는 단계 — GameScene.updateIdleDrift가 관리
+    this.lipsHitStreak = 0; // 입술 무기로 다른 무기가 안 끼고 연속으로 맞은 횟수 — registerLipsHit/resetLipsStreak가 관리
+    this.onVomit = null; // GameScene이 생성 후 설정 — 토할 때 이펙트를 띄우는 용도(onShieldActivate와 같은 방식)
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
     // 그 여백까지 "몸통"으로 잡는다 — 방망이/투사체가 실제 그림에 닿기도 전에 먼저 겹침이 발생해서,
@@ -243,32 +248,61 @@ export default class Boss {
     return nearHorizontalWall && nearVerticalWall;
   }
 
-  // 구석에 몰려 있을 때 맞으면 그 자리에서 찔끔 밀려나는 대신 화면을 가로질러 대각선 반대쪽 구석까지
-  // 날아가 튕긴다 — flyOutToLeftWall과 같은 패턴(회전 + 도착 시 벽 부딪히는 소리)이지만 목적지가
-  // 항상 왼쪽 벽이 아니라 지금 위치를 화면 중심 기준으로 대칭시킨 반대쪽 구석이다.
+  // 구석에 몰려 있을 때 맞으면 그 자리에서 찔끔 밀려나는 대신 반대쪽 방향으로 조금 더 크게 튕긴다.
+  // 화면을 완전히 가로지르면 너무 멀리 날아가 보여서, 대각선 반대쪽 구석까지 거리 중
+  // BOSS_CORNER_BOUNCE_DISTANCE_RATIO만큼만 이동한다. 직선으로 밀면 뻣뻣해 보여서
+  // WeaponManager.throwBoomerang과 같은 방식으로 경로 중간을 위로 부풀린 2차 베지어 곡선을
+  // 따라가게 하고(던져진 듯한 궤적), 회전은 easeIn과 같이 갈수록 빨라지다 착지 순간 멈추고,
+  // 착지할 때 살짝 눌렸다 튕겨 돌아오는 스쿼시를 더해 벽에 부딪힌 충격감을 낸다.
   flyToOppositeCorner(onComplete) {
     this.scene.tweens.killTweensOf(this.sprite);
     this.isPanelBounceActive = false;
     this.sprite.setAngle(0);
+    this.sprite.setScale(1); // 이전 착지 스쿼시가 안 끝난 채 끊겼을 경우를 대비해 기준 스케일로 정리
 
     const halfW = this.displayWidth / 2;
     const halfH = this.displayHeight / 2;
     const { width, height } = this.scene.scale;
-    const targetX = Phaser.Math.Clamp(width - this.sprite.x, halfW, width - halfW);
-    const targetY = Phaser.Math.Clamp(height - this.sprite.y, halfH, height - halfH);
+    const startX = this.sprite.x;
+    const startY = this.sprite.y;
+    const oppositeX = Phaser.Math.Clamp(width - startX, halfW, width - halfW);
+    const oppositeY = Phaser.Math.Clamp(height - startY, halfH, height - halfH);
+    const targetX = Phaser.Math.Linear(startX, oppositeX, BOSS_CORNER_BOUNCE_DISTANCE_RATIO);
+    const targetY = Phaser.Math.Linear(startY, oppositeY, BOSS_CORNER_BOUNCE_DISTANCE_RATIO);
+
+    // 대각선 직선 대신 경로 중간을 위로 부풀려서(거리에 비례, 최대 60px) 실제로 붕 튕겨나가는 듯한
+    // 곡선 궤적을 만든다 — 부메랑 되돌아오는 곡선과 같은 방식.
+    const travelDistance = Phaser.Math.Distance.Between(startX, startY, targetX, targetY);
+    const bulge = Math.min(travelDistance * 0.22, 60);
+    const controlX = (startX + targetX) / 2;
+    const controlY = (startY + targetY) / 2 - bulge;
 
     this.isPanelBounceActive = true;
+    const state = { t: 0 };
     this.scene.tweens.add({
-      targets: this.sprite,
-      x: targetX,
-      y: targetY,
-      angle: 360,
+      targets: state,
+      t: 1,
       duration: BOSS_CORNER_BOUNCE_DURATION,
-      ease: 'Cubic.easeOut',
+      ease: 'Cubic.easeIn', // 얻어맞고 날아가 갈수록 빨라지다 벽에 처박히는 느낌
+      onUpdate: () => {
+        const t = state.t;
+        const mt = 1 - t;
+        this.sprite.x = mt * mt * startX + 2 * mt * t * controlX + t * t * targetX;
+        this.sprite.y = mt * mt * startY + 2 * mt * t * controlY + t * t * targetY;
+        this.sprite.setAngle(360 * t); // 회전도 같은 easeIn 곡선을 타서 갈수록 빨라진다
+      },
       onComplete: () => {
         this.sprite.setAngle(0);
         this.isPanelBounceActive = false;
         this.scene.sound.play('hit_wall');
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scaleX: 1.25,
+          scaleY: 0.78,
+          duration: 90,
+          yoyo: true,
+          ease: 'Sine.easeOut',
+        });
         onComplete?.(this.sprite.x, this.sprite.y);
       },
     });
@@ -461,6 +495,41 @@ export default class Boss {
     this.blinkEvent = null;
     this.sprite.setTexture(`boss_hurt_${this.bossTypeId}_d${this.damageStage}`);
     this.hurtFaceEvent = this.scene.time.delayedCall(BOSS_HURT_FACE_DURATION, () => {
+      this.hurtFaceEvent = null;
+      this.sprite.setTexture(this.getBaseTextureKey());
+    });
+  }
+
+  // 입술 무기로 다른 무기가 안 끼고 연속으로 맞을 때마다 호출. LIPS_VOMIT_STREAK_THRESHOLD번째에
+  // 도달하면 평소 X_X(showHurtFace) 대신 토하는 표정으로 대신 덮어씌운다.
+  registerLipsHit() {
+    this.lipsHitStreak += 1;
+    if (this.lipsHitStreak >= LIPS_VOMIT_STREAK_THRESHOLD) {
+      this.lipsHitStreak = 0;
+      this.showVomitFace();
+      return;
+    }
+    this.showHurtFace();
+  }
+
+  // 입술이 아닌 다른 무기로 맞으면(GameScene.onHit) 연속 기록이 끊긴 것이므로 스트릭을 리셋한다.
+  resetLipsStreak() {
+    this.lipsHitStreak = 0;
+  }
+
+  // 입술 연타 threshold를 넘으면 잠깐 보여주는 "토하는" 표정. hurtFaceEvent 타이머 슬롯을 그대로
+  // 공유해서(showHurtFace와 동시에 뜰 일이 없음) 우선순위/복귀 가드 로직을 따로 안 늘려도 된다.
+  showVomitFace() {
+    if (this.fireBreathEvent || this.isShielded) return;
+    this.hurtFaceEvent?.remove();
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
+    this.sprite.setTexture(`boss_vomit_${this.bossTypeId}`);
+    this.scene.sound.play('vomit');
+    this.onVomit?.(this.bodyCenterX, this.bodyCenterY + this.bodyHeight * 0.2);
+    this.hurtFaceEvent = this.scene.time.delayedCall(BOSS_VOMIT_FACE_DURATION, () => {
       this.hurtFaceEvent = null;
       this.sprite.setTexture(this.getBaseTextureKey());
     });

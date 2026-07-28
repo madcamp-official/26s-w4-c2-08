@@ -34,6 +34,7 @@ export const BOSS_TYPES = [
   { id: 'segfault', name: 'SEGFAULT', color: '#c0392b' },
   { id: 'stack_overflow', name: 'STACK_OVERFLOW', color: '#8e44ad' },
   { id: 'memory_leak', name: 'MEMORY_LEAK', color: '#27ae60' },
+  { id: 'merge_conflict', name: 'MERGE_CONFLICT', color: '#d4a017' }, // git 컨플릭트 마커(<<<<<<<) 색인 앰버
 ];
 export const DRAW_SCORE_STEP = 100;
 export const INITIAL_FREE_DRAWS = 1; // 필드에 무기가 하나도 없는 상태로 시작하므로 시작 시 무기 뽑기 1회를 무료로 제공
@@ -68,42 +69,53 @@ export const WEAPON_CATEGORIES = {
 
 // 무기 패널에 실제로 보이는 개별 무기. category가 동작 방식을 정하고, 같은 category를 여러 무기가
 // 공유할 수 있다 — 야구공/다트 둘 다 투척형(THROW)이지만 그림(texture/projectileTexture)만 다르다.
+// 무기 패널에 뜨는 순서 그대로 카테고리별로 묶어서 나열한다(총 → 투척 → 부메랑 → 폭탄 → 근접 → 말랑이 → 손/기타).
+// WEAPON_DEFINITIONS도 같은 순서로 맞춰 둬서, 여기 순서를 바꾸면 패널 순서도 그대로 따라간다.
 export const WEAPON_IDS = {
-  BAT: 'bat',
-  BALL: 'ball',
-  DART: 'dart',
-  TASER: 'taser',
-  HAND: 'hand',
-  BAD_HAND: 'bad_hand',
-  KEYBOARD: 'keyboard',
-  MEGAPHONE: 'megaphone',
+  // 총기류
   PISTOL: 'pistol',
   MACHINE_GUN: 'machine_gun',
   SHOTGUN: 'shotgun',
   SNIPER: 'sniper',
   REVOLVER: 'revolver',
-  WHIP: 'whip',
-  BAMBOO_CANE: 'bamboo_cane',
-  SQUISHY: 'squishy',
-  DEBUGGER: 'debugger',
-  RUBBER_DUCK: 'rubber_duck',
-  TEDDY_BEAR: 'teddy_bear',
-  CHEESE_SQUISHY: 'cheese_squishy',
+  // 투척형(공/과일/소리 등)
+  BALL: 'ball',
+  DART: 'dart',
+  MEGAPHONE: 'megaphone',
   TOMATO: 'tomato',
   WATERMELON: 'watermelon',
   WATER_BALLOON: 'water_balloon',
+  BEACH_BALL: 'beach_ball',
+  // 부메랑
+  BOOMERANG: 'boomerang',
+  // 폭탄
+  GRENADE: 'grenade',
+  DYNAMITE: 'dynamite',
+  // 근접 타격
+  BAT: 'bat',
+  WHIP: 'whip',
+  BAMBOO_CANE: 'bamboo_cane',
   FRYING_PAN: 'frying_pan',
   SLIPPER: 'slipper',
   BOXING_GLOVE: 'boxing_glove',
-  BEACH_BALL: 'beach_ball',
-  BOOMERANG: 'boomerang',
-  GRENADE: 'grenade',
-  DYNAMITE: 'dynamite',
+  DEBUGGER: 'debugger',
+  // 말랑이(찌부 모션)
+  SQUISHY: 'squishy',
+  RUBBER_DUCK: 'rubber_duck',
+  TEDDY_BEAR: 'teddy_bear',
+  CHEESE_SQUISHY: 'cheese_squishy',
+  // 손/기타
+  HAND: 'hand',
+  BAD_HAND: 'bad_hand',
+  LIPS: 'lips',
+  TASER: 'taser',
+  KEYBOARD: 'keyboard',
 };
 
 export const TASER_WEAPON_SIZE = 70; // 전기충격기 텍스처 크기 — 방망이보다 작은 소형 휴대 도구
 export const HAND_WEAPON_SIZE = 70; // 쓰다듬는 손(착한 손) 텍스처 크기
 export const BAD_HAND_WEAPON_SIZE = 70; // 주먹(나쁜 손) 텍스처 크기
+export const LIPS_WEAPON_SIZE = 70; // 입술 텍스처 크기
 export const KEYBOARD_WEAPON_SIZE = 90; // 키보드 텍스처 크기
 export const MEGAPHONE_WEAPON_SIZE = 90; // 확성기 텍스처 크기
 export const PISTOL_WEAPON_SIZE = 80; // 권총 텍스처 크기
@@ -220,63 +232,14 @@ export const DART_PROJECTILE_TEXTURES = DART_COLOR_VARIANTS.map((_, i) => `weapo
 // fireSound: 발사 시(THROW) 재생할 사운드 키. hitSound: 실제로 데미지가 들어갈 때(CombatSystem.handleHit)
 // 재생할 사운드 키 — 무기마다 따로 정의해야 STATIC 카테고리를 공유하는 전기충격기/키보드가 서로
 // 다른 소리를 낼 수 있다 (없으면 무음).
+// 아래부터 damageMultiplier는 총기류(연사/한방 트레이드오프)처럼 명시적으로 튜닝된 것들 말고는
+// 대부분 기본값 1이었는데, 실제 무기가 무엇으로 만들어졌는지("물성")와 안 맞는 경우가 많았다
+// (예: 물풍선이 야구 방망이랑 데미지가 같음). 무겁고 단단한 재질일수록 배율을 올리고, 가볍거나
+// 무른(천/고무/물 등) 재질일수록 내려서 무기별로 "맞는 느낌"이 다르게 조정했다.
+// 무기 패널에 뜨는 순서 = 이 객체의 키 순서. WEAPON_IDS와 같은 카테고리 묶음 순서(총 → 투척 →
+// 부메랑 → 폭탄 → 근접 → 말랑이 → 손/기타)로 맞춰서 패널을 쭉 훑었을 때 종류별로 모여 보이게 한다.
 export const WEAPON_DEFINITIONS = {
-  // 아래부터 damageMultiplier는 총기류(연사/한방 트레이드오프)처럼 명시적으로 튜닝된 것들 말고는
-  // 대부분 기본값 1이었는데, 실제 무기가 무엇으로 만들어졌는지("물성")와 안 맞는 경우가 많았다
-  // (예: 물풍선이 야구 방망이랑 데미지가 같음). 무겁고 단단한 재질일수록 배율을 올리고, 가볍거나
-  // 무른(천/고무/물 등) 재질일수록 내려서 무기별로 "맞는 느낌"이 다르게 조정했다.
-  [WEAPON_IDS.BAT]: {
-    // 알루미늄 배트 — 무기 패널에서 가장 단단한 재질 축에 속해서 직접 휘두르는 PORTABLE답게 세게 잡는다.
-    name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable', hitSound: 'bat_hit', damageMultiplier: 1.3,
-  },
-  [WEAPON_IDS.BALL]: {
-    name: 'BASEBALL',
-    category: WEAPON_CATEGORIES.THROW,
-    texture: 'weapon_throw',
-    projectileTexture: 'weapon_throw_projectile',
-    projectileSpeed: BALL_PROJECTILE_SPEED,
-    fireSound: 'baseball_throw',
-    hitSound: 'bat_hit', // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
-    damageMultiplier: 0.9, // 단단하지만 배트보다 작고 가벼운 공
-  },
-  [WEAPON_IDS.DART]: {
-    name: 'DART',
-    category: WEAPON_CATEGORIES.THROW,
-    texture: 'weapon_dart',
-    projectileTextures: DART_PROJECTILE_TEXTURES,
-    rotateToTravel: true,
-    stickOnHit: true,
-    fireSound: 'dart_throw',
-    damageMultiplier: 0.8, // 뾰족하지만 가벼운 투척물
-  },
-  [WEAPON_IDS.TASER]: {
-    name: 'TASER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_taser', hitSound: 'taser_shock',
-    rotateToBoss: true,
-    damageMultiplier: 0.8, // 감전 CC가 본체 역할이라 물리 데미지는 가볍게
-  },
-  // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — GameScene이 이 무기는
-  // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다(heals 플래그로 판단, weaponId 하드코딩 아님).
-  [WEAPON_IDS.HAND]: {
-    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true,
-  },
-  // 나쁜 손: 착한 손이랑 짝 — 힐링 없이 그냥 주먹으로 때리는 평범한 데미지 무기.
-  [WEAPON_IDS.BAD_HAND]: {
-    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bat_hit', damageMultiplier: 0.9,
-  },
-  [WEAPON_IDS.KEYBOARD]: {
-    name: 'KEYBOARD', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_keyboard', hitSound: 'keyboard_smash',
-  },
-  // hitSound 없음(아직 맞는 효과음 에셋이 없어서 무음) — 이펙트(spawnSoundWaveEffect, GameScene)로만 구분.
-  // 클릭한 자리와 상관없이 보스 방향으로 자동 발사되는 원거리형(THROW) — 소리 파동(동심원) 투사체가 날아간다.
-  [WEAPON_IDS.MEGAPHONE]: {
-    name: 'MEGAPHONE',
-    category: WEAPON_CATEGORIES.THROW,
-    texture: 'weapon_megaphone',
-    projectileTexture: 'weapon_sound_wave',
-    projectileSpeed: MEGAPHONE_PROJECTILE_SPEED,
-    fireInterval: MEGAPHONE_FIRE_INTERVAL,
-    damageMultiplier: 0.7, // 소리 파동은 실체가 없는 충격이라 가장 약하게
-  },
+  // ── 총기류 ──
   [WEAPON_IDS.PISTOL]: {
     name: 'PISTOL',
     category: WEAPON_CATEGORIES.THROW,
@@ -302,6 +265,7 @@ export const WEAPON_DEFINITIONS = {
     damageMultiplier: MACHINE_GUN_DAMAGE_MULTIPLIER,
     recoilAngle: MACHINE_GUN_RECOIL_ANGLE,
     rotateToTravel: true,
+    hitSound: 'pistol_impact', // 다른 총기(PISTOL/SHOTGUN/SNIPER/REVOLVER)와 같은 탄환 충격음
   },
   // pelletCount/spreadAngleDeg: WeaponManager.fireProjectile이 한 번 발사할 때 이 각도 범위 안에 고르게
   // 퍼진 pelletCount개의 투사체를 동시에 만든다 (사운드/반동은 발사 1회당 한 번만).
@@ -353,49 +317,40 @@ export const WEAPON_DEFINITIONS = {
     rotateToTravel: true,
     hitSound: 'pistol_impact',
   },
-  // 방망이처럼 휘두르는 느낌이지만 캡슐(BAT_DIMENSIONS)은 채찍의 지그재그 실루엣과 안 맞아서
-  // STATIC(사각 판정)으로 둔다 — 다른 STATIC 무기보다 텍스처가 넓어서 판정 범위도 자연히 더 넉넉하다.
-  // meleeSwing: 맞는 순간 보스 쪽으로 홱 겨눴다가 원위치로 스프링백하는 스윙 모션을 튼다
-  // (WeaponManager.playMeleeSwing) — 가만히 들고만 있는 다른 STATIC 무기와 달리 채찍답게 후려치는
-  // 느낌을 준다.
-  [WEAPON_IDS.WHIP]: {
-    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true, damageMultiplier: 0.9, // 얇은 가죽끈 — 후려치지만 뭉개는 무게감은 없다
+
+  // ── 투척형(공/과일/소리 등) ──
+  [WEAPON_IDS.BALL]: {
+    name: 'BASEBALL',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_throw',
+    projectileTexture: 'weapon_throw_projectile',
+    projectileSpeed: BALL_PROJECTILE_SPEED,
+    fireSound: 'baseball_throw',
+    hitSound: 'bat_hit', // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
+    damageMultiplier: 0.9, // 단단하지만 배트보다 작고 가벼운 공
   },
-  // 채찍과 같은 스윙 모션(meleeSwing)을 재사용 — 회초리도 후려치는 무기라 가만히 들고만 있는 다른
-  // STATIC 무기와 결이 다르다. damageMultiplier로 한 대가 조금 더 아프게만 차별화한다.
-  [WEAPON_IDS.BAMBOO_CANE]: {
-    name: 'BAMBOO CANE',
-    category: WEAPON_CATEGORIES.STATIC,
-    texture: 'weapon_bamboo_cane',
-    meleeSwing: true,
-    damageMultiplier: BAMBOO_CANE_DAMAGE_MULTIPLIER,
-    hitSound: 'bat_hit',
+  [WEAPON_IDS.DART]: {
+    name: 'DART',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_dart',
+    projectileTextures: DART_PROJECTILE_TEXTURES,
+    rotateToTravel: true,
+    stickOnHit: true,
+    fireSound: 'dart_throw',
+    damageMultiplier: 0.8, // 뾰족하지만 가벼운 투척물
   },
-  // squishHit: 스윙 대신 맞는 순간 말랑하게 눌렸다 되돌아오는 찌부 모션을 튼다 (WeaponManager.playSquish) —
-  // 이름 그대로 "말랑말랑"한 장난감다운 타격감을 주려는 의도. 말랑이 계열은 전부 부드러운 재질이라
-  // 다른 STATIC 무기보다 데미지를 낮게 잡는다.
-  [WEAPON_IDS.SQUISHY]: {
-    name: 'SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_squishy', squishHit: true, damageMultiplier: 0.6,
+  // hitSound 없음(아직 맞는 효과음 에셋이 없어서 무음) — 이펙트(spawnSoundWaveEffect, GameScene)로만 구분.
+  // 클릭한 자리와 상관없이 보스 방향으로 자동 발사되는 원거리형(THROW) — 소리 파동(동심원) 투사체가 날아간다.
+  [WEAPON_IDS.MEGAPHONE]: {
+    name: 'MEGAPHONE',
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_megaphone',
+    projectileTexture: 'weapon_sound_wave',
+    projectileSpeed: MEGAPHONE_PROJECTILE_SPEED,
+    fireInterval: MEGAPHONE_FIRE_INTERVAL,
+    damageMultiplier: 0.7, // 소리 파동은 실체가 없는 충격이라 가장 약하게
   },
-  // freezesBoss: 데미지 자체는 평범하지만, 맞으면 GameScene의 drag 리스너가 잠깐 boss.isFrozen을
-  // 보고 드래그 이동을 막는다(Boss.freeze) — 보스가 자체 행동이 없는 게임이라 "기절"보다
-  // "위치 고정"이 실제로 의미 있는 CC라고 판단해서 그렇게 구현했다.
-  // meleeSwing: 노트북을 실제로 휘둘러서 때리는 느낌을 주는 스윙 모션 (WHIP과 같은 메커니즘 재사용).
-  [WEAPON_IDS.DEBUGGER]: {
-    name: 'DEVELOPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_debugger', freezesBoss: true, meleeSwing: true, damageMultiplier: 1.1, // 노트북 — 딱딱한 편
-  },
-  // 말랑이(squishHit) 계열 3종 — 모양만 다르고 동작(찌부 모션)은 SQUISHY와 동일하다. hitSound 에셋이
-  // 아직 없어서 무음. SQUISHY와 같은 이유로 데미지도 낮게 잡는다.
-  [WEAPON_IDS.RUBBER_DUCK]: {
-    name: 'RUBBER DUCK', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_rubber_duck', squishHit: true, damageMultiplier: 0.6,
-  },
-  [WEAPON_IDS.TEDDY_BEAR]: {
-    name: 'TEDDY BEAR', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_teddy_bear', squishHit: true, damageMultiplier: 0.6,
-  },
-  [WEAPON_IDS.CHEESE_SQUISHY]: {
-    name: 'CHEESE SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_cheese_squishy', squishHit: true, damageMultiplier: 0.6,
-  },
-  // 투척형 신규 3종. 토마토/수박은 GameScene.onHit에서 weaponId로 분기해 전용 터짐/쪼개짐 이펙트를 낸다.
+  // 토마토/수박은 GameScene.onHit에서 weaponId로 분기해 전용 터짐/쪼개짐 이펙트를 낸다.
   [WEAPON_IDS.TOMATO]: {
     name: 'TOMATO',
     category: WEAPON_CATEGORIES.THROW,
@@ -429,25 +384,16 @@ export const WEAPON_DEFINITIONS = {
     fireSound: 'baseball_throw',
     damageMultiplier: 0.5, // 속이 빈 공기뿐이라 튕겨나가는 느낌이 맞지 세게 때리는 무기는 아니다
   },
-  // meleeSwing 계열 3종 — 채찍/노트북과 같은 후려치는 스윙 모션(WeaponManager.playMeleeSwing)을 재사용한다.
-  [WEAPON_IDS.FRYING_PAN]: {
-    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질
-  },
-  [WEAPON_IDS.SLIPPER]: {
-    name: 'SLIPPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_slipper', meleeSwing: true, damageMultiplier: 0.8, // 등짝 스매싱 밈이지 실제로 단단한 물건은 아니다
-  },
-  // 직선 펀치답게 다른 STATIC 무기보다 한 방이 더 아프도록 damageMultiplier를 살짝 높게 잡는다.
-  // bigImpact: 히트 스파크를 다른 STATIC 무기보다 크게(spawnHitSpark scale) + GameScene.onHit에서 카메라
-  // shake까지 추가로 겹쳐서 데미지 배율이 높은 무기다운 타격감을 준다.
-  [WEAPON_IDS.BOXING_GLOVE]: {
-    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2, bigImpact: true,
-  },
+
+  // ── 부메랑 ──
   // 놓는 순간 던져지는 1회성 무기 — fireSound는 다른 THROW 무기처럼 발사 시점(WeaponManager.throwBoomerang)에
-  // 재생한다. hitSound 에셋은 아직 없어서 무음.
+  // 재생한다.
   [WEAPON_IDS.BOOMERANG]: {
-    name: 'BOOMERANG', category: WEAPON_CATEGORIES.BOOMERANG, texture: 'weapon_boomerang', fireSound: 'baseball_throw', damageMultiplier: 1.1, // 단단한 나무/플라스틱 재질
+    name: 'BOOMERANG', category: WEAPON_CATEGORIES.BOOMERANG, texture: 'weapon_boomerang', fireSound: 'baseball_throw', damageMultiplier: 1.1, hitSound: 'bat_hit', // 단단한 나무/플라스틱 재질
   },
-  // 폭탄류 — 어디든 놓아두면(WeaponManager.armBomb) 퓨즈가 다 탈 때까지 기다렸다 터진다. 터지는 순간
+
+  // ── 폭탄 ──
+  // 어디든 놓아두면(WeaponManager.armBomb) 퓨즈가 다 탈 때까지 기다렸다 터진다. 터지는 순간
   // 보스가 blastRadius 안에 없으면 그냥 허탕("불발"처럼 보임) — 데미지 없이 폭발 이펙트만 재생된다.
   [WEAPON_IDS.GRENADE]: {
     name: 'GRENADE',
@@ -469,6 +415,91 @@ export const WEAPON_DEFINITIONS = {
     fireSound: 'baseball_throw',
     bigImpact: true,
   },
+
+  // ── 근접 타격 ──
+  [WEAPON_IDS.BAT]: {
+    // 알루미늄 배트 — 무기 패널에서 가장 단단한 재질 축에 속해서 직접 휘두르는 PORTABLE답게 세게 잡는다.
+    name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable', hitSound: 'bat_hit', damageMultiplier: 1.3,
+  },
+  // 방망이처럼 휘두르는 느낌이지만 캡슐(BAT_DIMENSIONS)은 채찍의 지그재그 실루엣과 안 맞아서
+  // STATIC(사각 판정)으로 둔다 — 다른 STATIC 무기보다 텍스처가 넓어서 판정 범위도 자연히 더 넉넉하다.
+  // meleeSwing: 맞는 순간 보스 쪽으로 홱 겨눴다가 원위치로 스프링백하는 스윙 모션을 튼다
+  // (WeaponManager.playMeleeSwing) — 가만히 들고만 있는 다른 STATIC 무기와 달리 채찍답게 후려치는
+  // 느낌을 준다.
+  [WEAPON_IDS.WHIP]: {
+    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true, damageMultiplier: 0.9, hitSound: 'bat_hit', // 얇은 가죽끈 — 후려치지만 뭉개는 무게감은 없다
+  },
+  // 채찍과 같은 스윙 모션(meleeSwing)을 재사용 — 회초리도 후려치는 무기라 가만히 들고만 있는 다른
+  // STATIC 무기와 결이 다르다. damageMultiplier로 한 대가 조금 더 아프게만 차별화한다.
+  [WEAPON_IDS.BAMBOO_CANE]: {
+    name: 'BAMBOO CANE',
+    category: WEAPON_CATEGORIES.STATIC,
+    texture: 'weapon_bamboo_cane',
+    meleeSwing: true,
+    damageMultiplier: BAMBOO_CANE_DAMAGE_MULTIPLIER,
+    hitSound: 'bat_hit',
+  },
+  [WEAPON_IDS.FRYING_PAN]: {
+    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, hitSound: 'hit_wall', // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질이라 다른 근접보다 묵직한 충격음(hit_wall)을 쓴다
+  },
+  [WEAPON_IDS.SLIPPER]: {
+    name: 'SLIPPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_slipper', meleeSwing: true, damageMultiplier: 0.8, hitSound: 'bat_hit', // 등짝 스매싱 밈이지 실제로 단단한 물건은 아니다
+  },
+  // 직선 펀치답게 다른 STATIC 무기보다 한 방이 더 아프도록 damageMultiplier를 살짝 높게 잡는다.
+  // bigImpact: 히트 스파크를 다른 STATIC 무기보다 크게(spawnHitSpark scale) + GameScene.onHit에서 카메라
+  // shake까지 추가로 겹쳐서 데미지 배율이 높은 무기다운 타격감을 준다. hitSound도 총기(pistol_impact)나
+  // 다른 근접(bat_hit)과 겹치지 않게 더 묵직한 hit_wall로 차별화한다.
+  [WEAPON_IDS.BOXING_GLOVE]: {
+    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2, bigImpact: true, hitSound: 'hit_wall',
+  },
+  // freezesBoss: 데미지 자체는 평범하지만, 맞으면 GameScene의 drag 리스너가 잠깐 boss.isFrozen을
+  // 보고 드래그 이동을 막는다(Boss.freeze) — 보스가 자체 행동이 없는 게임이라 "기절"보다
+  // "위치 고정"이 실제로 의미 있는 CC라고 판단해서 그렇게 구현했다.
+  // meleeSwing: 노트북을 실제로 휘둘러서 때리는 느낌을 주는 스윙 모션 (WHIP과 같은 메커니즘 재사용).
+  [WEAPON_IDS.DEBUGGER]: {
+    name: 'DEVELOPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_debugger', freezesBoss: true, meleeSwing: true, damageMultiplier: 1.1, hitSound: 'bat_hit', // 노트북 — 딱딱한 편
+  },
+
+  // ── 말랑이(찌부 모션) ──
+  // squishHit: 스윙 대신 맞는 순간 말랑하게 눌렸다 되돌아오는 찌부 모션을 튼다 (WeaponManager.playSquish) —
+  // 이름 그대로 "말랑말랑"한 장난감다운 타격감을 주려는 의도. 말랑이 계열은 전부 부드러운 재질이라
+  // 다른 STATIC 무기보다 데미지를 낮게 잡는다.
+  [WEAPON_IDS.SQUISHY]: {
+    name: 'SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_squishy', squishHit: true, damageMultiplier: 0.6,
+  },
+  // 모양만 다르고 동작(찌부 모션)은 SQUISHY와 동일. 오리답게 hitSound만 꽥 소리로 차별화한다.
+  [WEAPON_IDS.RUBBER_DUCK]: {
+    name: 'RUBBER DUCK', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_rubber_duck', squishHit: true, damageMultiplier: 0.6, hitSound: 'duck_quack',
+  },
+  [WEAPON_IDS.TEDDY_BEAR]: {
+    name: 'TEDDY BEAR', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_teddy_bear', squishHit: true, damageMultiplier: 0.6,
+  },
+  [WEAPON_IDS.CHEESE_SQUISHY]: {
+    name: 'CHEESE SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_cheese_squishy', squishHit: true, damageMultiplier: 0.6,
+  },
+
+  // ── 손/기타 ──
+  // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — GameScene이 이 무기는
+  // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다(heals 플래그로 판단, weaponId 하드코딩 아님).
+  [WEAPON_IDS.HAND]: {
+    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true,
+  },
+  // 나쁜 손: 착한 손이랑 짝 — 힐링 없이 그냥 주먹으로 때리는 평범한 데미지 무기.
+  [WEAPON_IDS.BAD_HAND]: {
+    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bat_hit', damageMultiplier: 0.9,
+  },
+  // 입술: 뽀뽀 공격 — 말랑이(squishHit)처럼 눌렸다 돌아오는 모션 재사용. 부드러운 살이라 데미지는 낮게.
+  [WEAPON_IDS.LIPS]: {
+    name: 'LIPS by 서윤', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_lips', squishHit: true, damageMultiplier: 0.5,
+  },
+  [WEAPON_IDS.TASER]: {
+    name: 'TASER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_taser', hitSound: 'taser_shock',
+    rotateToBoss: true,
+    damageMultiplier: 0.8, // 감전 CC가 본체 역할이라 물리 데미지는 가볍게
+  },
+  [WEAPON_IDS.KEYBOARD]: {
+    name: 'KEYBOARD', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_keyboard', hitSound: 'keyboard_smash',
+  },
 };
 
 export const DART_STICK_DURATION = 8000; // ms, 다트가 맞은 자리에 박힌 채로 남아 있다가 사라지기까지 시간
@@ -478,10 +509,11 @@ export const DART_EMBED_DEPTH = 10; // px, 맞은 지점에서 날아가던 방�
 export const BOSS_KNOCKBACK_DISTANCE = 26; // px, 타격당 타격 반대 방향으로 밀려나는 거리 (누적됨)
 export const BOSS_KNOCKBACK_OUT_DURATION = 70; // ms, 밀려나는 트윈 시간
 // 보스가 화면 구석(두 벽이 만나는 자리)에 있을 때 맞으면, 그 자리에서 찔끔 밀려나는 평소 knockback
-// 대신 화면을 가로질러 대각선 반대쪽 구석까지 날아가 튕긴다(Boss.flyToOppositeCorner) — 화면을
-// 훨씬 더 가로지르는 이동이라 평소 넉백 지속시간보다 길게 잡는다.
+// 대신 반대쪽 방향으로 살짝 더 크게 튕긴다(Boss.flyToOppositeCorner) — 화면을 완전히 가로지르면
+// 너무 멀리 날아가 보여서, 대각선 반대쪽 구석까지 가는 거리 중 일부만 이동한다.
 export const BOSS_CORNER_MARGIN = 60; // px, 이 거리 안에 두 벽이 동시에 있으면 "구석"으로 본다
-export const BOSS_CORNER_BOUNCE_DURATION = 380; // ms
+export const BOSS_CORNER_BOUNCE_DISTANCE_RATIO = 0.35; // 반대쪽 구석까지 거리 중 이만큼만 이동
+export const BOSS_CORNER_BOUNCE_DURATION = 220; // ms
 export const BOSS_PANEL_PUSH_DURATION = 300; // ms, 무기/배경 패널에 부딪혀 왼쪽 벽까지 날아가는 트윈 시간
 export const BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER = 2; // 패널에 부딪혀 왼쪽 벽까지 날아갈 때 추가로 받는 데미지 배율
 export const BOSS_PANEL_PUSH_POPUP_COLOR = '#ff5050'; // 패널 충돌 보너스 데미지 팝업 색 (일반 데미지와 구분)
@@ -530,6 +562,11 @@ export const COMBO_HIT_THRESHOLD = 8;
 export const BOSS_FIRE_BREATH_DURATION = 500; // ms, 불 뿜는 표정이 유지되는 시간
 // 계속 연타하면 콤보가 매번 다시 차서 곧바로 재발동되는 게 시끄러워서, 발동 자체에 최소 간격을 둔다.
 export const BOSS_FIRE_BREATH_COOLDOWN_MS = 6000;
+
+// 입술 무기로 연속으로(다른 무기가 안 끼고) 맞은 횟수 — 이만큼 쌓이면 평소 X_X 대신 토하는 표정으로
+// 바뀐다(Boss.registerLipsHit). 중간에 다른 무기로 맞으면 Boss.resetLipsStreak으로 리셋된다.
+export const LIPS_VOMIT_STREAK_THRESHOLD = 5;
+export const BOSS_VOMIT_FACE_DURATION = 800; // ms, 토하는 표정이 유지되는 시간 (X_X보다 확실히 오래)
 // 체력이 이 정도는 깎여야("좀 더 낮아졌을 때") 콤보를 채워도 불을 뿜는다. Boss.js DAMAGE_RATIO_BREAKPOINTS
 // 기준 1단계(70% 이하)부터. 풀피 상태에서 그냥 연타만 빨리해도 뿜는 게 어색해서 넣은 조건.
 export const FIRE_BREATH_MIN_DAMAGE_STAGE = 1;

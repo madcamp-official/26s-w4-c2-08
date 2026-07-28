@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   BOSS_TYPES, PORTABLE_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
+  LIPS_WEAPON_SIZE,
   KEYBOARD_WEAPON_SIZE, MEGAPHONE_WEAPON_SIZE, PISTOL_WEAPON_SIZE, MACHINE_GUN_WEAPON_SIZE, BULLET_SIZE,
   SHOTGUN_WEAPON_SIZE, SNIPER_WEAPON_SIZE, REVOLVER_WEAPON_SIZE, PELLET_SIZE,
   SOUND_WAVE_PROJECTILE_SIZE, WHIP_WEAPON_SIZE, DEBUGGER_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
@@ -13,7 +14,7 @@ import {
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
   createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas,
-  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas, MAX_DAMAGE_STAGE,
+  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas, createBossVomitCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
   createBaseballCanvas, createBaseballBatCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
@@ -24,7 +25,7 @@ import {
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
   createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
-  createGrenadeCanvas, createDynamiteCanvas,
+  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -47,6 +48,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
     this.load.audio('panel_open', assetUrl('audio/pannel_open.mp3'));
     this.load.audio('exit_button', assetUrl('audio/exit_button.mp3'));
+    this.load.audio('vomit', assetUrl('audio/obite.mp3'));
+    this.load.audio('duck_quack', assetUrl('audio/duck_quack.mp3'));
     this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
@@ -81,6 +84,8 @@ export default class BootScene extends Phaser.Scene {
       this.textures.addCanvas(`boss_smirk_${id}`, createBossSmirkCanvas(color));
       // 방치 중 잠깐 자는 척하는 표정도 마찬가지로 단일 텍스처.
       this.textures.addCanvas(`boss_sleep_${id}`, createBossSleepCanvas(color));
+      // 입술 연타로 토할 때 표정도 HP 단계와 무관한 단일 텍스처.
+      this.textures.addCanvas(`boss_vomit_${id}`, createBossVomitCanvas(color));
     });
     // 체력 최저 단계에서 가끔 뜨는 방패(Boss.activateShield) — 보스 타입/데미지 단계와 무관한 단일 텍스처.
     this.textures.addCanvas('boss_shield', createBossShieldCanvas(BOSS_SHIELD_SIZE));
@@ -91,6 +96,7 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_hand', createHandCanvas(HAND_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bad_hand', createHandCanvas(BAD_HAND_WEAPON_SIZE, { skinColor: '#e0574a', skinStroke: '#8f2e24' }));
+    this.textures.addCanvas('weapon_lips', createLipsCanvas(LIPS_WEAPON_SIZE));
     this.textures.addCanvas('weapon_keyboard', createKeyboardCanvas(KEYBOARD_WEAPON_SIZE));
     this.textures.addCanvas('weapon_whip', createWhipCanvas(WHIP_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bamboo_cane', createBambooCaneCanvas(BAMBOO_CANE_WEAPON_SIZE));

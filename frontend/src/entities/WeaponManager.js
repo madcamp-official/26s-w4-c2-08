@@ -48,6 +48,7 @@ export default class WeaponManager {
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
       if (category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(weapon);
+      else if (WEAPON_DEFINITIONS[weaponId].rotateToBoss) this.faceBoss(weapon);
     }
 
     return weapon;
@@ -64,6 +65,7 @@ export default class WeaponManager {
     const resolved = this.resolveAgainstBoss(this.activeWeapon, x, y);
     this.activeWeapon.setPosition(resolved.x, resolved.y);
     if (this.activeWeapon.category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(this.activeWeapon);
+    else if (WEAPON_DEFINITIONS[this.activeWeapon.weaponId].rotateToBoss) this.faceBoss(this.activeWeapon);
   }
 
   // 보스(고정된 사각형)를 완전히 뚫고 지나가지 않도록 후보 좌표 (x,y)를 보정.
@@ -124,10 +126,16 @@ export default class WeaponManager {
     return Phaser.Math.Angle.Between(x, y, this.boss.sprite.x, this.boss.sprite.y);
   }
 
+  // weapon.rotation을 보스 쪽 각도로 맞춘다. bakedRotation은 텍스처가 그려진 로컬 각도(그림상 헤드가
+  // 향한 방향)의 보정값 — 그만큼 상쇄해야 실제로 그려지는 헤드가 목표 각도를 향한다.
+  faceBoss(weapon, bakedRotation = 0) {
+    weapon.rotation = this.getAngleToBoss(weapon.x, weapon.y) - bakedRotation;
+  }
+
   // 화면에 보이는 방망이가 항상 이 각도를 바라보도록 회전시킨다. 텍스처가 로컬 -45도로 baked되어 있어
   // 그만큼 보정해줘야 실제로 그려지는 배럴(헤드)이 목표 각도를 향한다.
   updateBatRotation(weapon) {
-    weapon.rotation = this.getAngleToBoss(weapon.x, weapon.y) - BAT_BAKED_ROTATION;
+    this.faceBoss(weapon, BAT_BAKED_ROTATION);
   }
 
   // 방망이의 손잡이 끝→배럴 끝을 잇는 중심축 (world 좌표). 배럴(헤드)이 항상 보스를 향하도록 그리므로

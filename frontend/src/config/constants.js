@@ -178,6 +178,7 @@ export const WEAPON_DEFINITIONS = {
   },
   [WEAPON_IDS.TASER]: {
     name: 'TASER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_taser', hitSound: 'taser_shock',
+    rotateToBoss: true,
   },
   // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — GameScene이 이 무기는
   // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다(heals 플래그로 판단, weaponId 하드코딩 아님).

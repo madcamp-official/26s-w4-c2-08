@@ -20,6 +20,8 @@ import {
   BOSS_SHIELD_CHECK_MAX_INTERVAL,
   BOSS_SHIELD_BREACH_LIMIT,
   BOSS_SHIELD_REARM_COOLDOWN_MS,
+  BOSS_CORNER_MARGIN,
+  BOSS_CORNER_BOUNCE_DURATION,
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -227,6 +229,48 @@ export default class Boss {
       y: targetY,
       duration: BOSS_KNOCKBACK_OUT_DURATION,
       ease: 'Quad.easeOut',
+    });
+  }
+
+  // 지금 두 벽(가로+세로)에 동시에 BOSS_CORNER_MARGIN 안쪽으로 붙어 있으면 "구석"으로 본다 —
+  // GameScene.onHit이 이 경우 평소 knockback 대신 flyToOppositeCorner로 크게 튕겨낸다.
+  isNearCorner() {
+    const { width, height } = this.scene.scale;
+    const halfW = this.displayWidth / 2;
+    const halfH = this.displayHeight / 2;
+    const nearHorizontalWall = this.sprite.x <= halfW + BOSS_CORNER_MARGIN || this.sprite.x >= width - halfW - BOSS_CORNER_MARGIN;
+    const nearVerticalWall = this.sprite.y <= halfH + BOSS_CORNER_MARGIN || this.sprite.y >= height - halfH - BOSS_CORNER_MARGIN;
+    return nearHorizontalWall && nearVerticalWall;
+  }
+
+  // 구석에 몰려 있을 때 맞으면 그 자리에서 찔끔 밀려나는 대신 화면을 가로질러 대각선 반대쪽 구석까지
+  // 날아가 튕긴다 — flyOutToLeftWall과 같은 패턴(회전 + 도착 시 벽 부딪히는 소리)이지만 목적지가
+  // 항상 왼쪽 벽이 아니라 지금 위치를 화면 중심 기준으로 대칭시킨 반대쪽 구석이다.
+  flyToOppositeCorner(onComplete) {
+    this.scene.tweens.killTweensOf(this.sprite);
+    this.isPanelBounceActive = false;
+    this.sprite.setAngle(0);
+
+    const halfW = this.displayWidth / 2;
+    const halfH = this.displayHeight / 2;
+    const { width, height } = this.scene.scale;
+    const targetX = Phaser.Math.Clamp(width - this.sprite.x, halfW, width - halfW);
+    const targetY = Phaser.Math.Clamp(height - this.sprite.y, halfH, height - halfH);
+
+    this.isPanelBounceActive = true;
+    this.scene.tweens.add({
+      targets: this.sprite,
+      x: targetX,
+      y: targetY,
+      angle: 360,
+      duration: BOSS_CORNER_BOUNCE_DURATION,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        this.sprite.setAngle(0);
+        this.isPanelBounceActive = false;
+        this.scene.sound.play('hit_wall');
+        onComplete?.(this.sprite.x, this.sprite.y);
+      },
     });
   }
 

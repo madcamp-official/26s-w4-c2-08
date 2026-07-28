@@ -366,28 +366,29 @@ export function createBossSleepCanvas(bodyColor, eyeColor = '#000000') {
   return canvas;
 }
 
-// 방패를 두를 때(Boss.activateShield) 짓는 "썩소" — 왼쪽 눈은 위로 살짝 휜 웃는 눈(drawHappyEye
-// 재사용), 오른쪽 눈은 찡긋 감은 윙크(drawBlinkEye 재사용)로 비대칭을 주고, 입은 자연스러운
-// 대칭 미소(drawSmileMouth 재사용) + 양쪽 볼터치로 흡족한 표정을 만든다. 예전엔 선글라스를
-// 씌웠는데 눈 사이가 멀어 보이고 입과 겹치는 문제가 있어서, 기존 표정 그리기 함수들을 그대로
-// 재사용하는 이 조합으로 바꿨다. 방패는 항상 최저 체력 단계에서만 뜨지만 표정 자체는 HP와 무관한
-// 순수 반응용이라 happy/blink처럼 damageStage 분기가 필요 없다.
+// 방패를 두를 때(Boss.activateShield) 짓는 "썩소" — 😏 이모지 참고. 눈은 양쪽 다 똑같이 살짝
+// 처진 느긋한 곡선(drawBlinkEye 재사용, 좌우 비대칭 없음)으로 두고, "썩소" 느낌은 전부 입 모양에
+// 싣는다: 왼쪽은 거의 평평하게 다물려 있다가 오른쪽 끝에서만 훅 말려 올라가는 비대칭 곡선
+// (drawSmirkMouth) — 한쪽만 웃는 게 아니라 "다문 입 한쪽 끝만 씩 올라간" 모양이라야 거만해 보인다.
+// 예전엔 한쪽 눈을 웃는 곡선/반개 눈으로 비대칭을 줬는데, 그러면 순진한 웃음이나 어정쩡한 표정으로
+// 보였다. 방패는 항상 최저 체력 단계에서만 뜨지만 표정 자체는 HP와 무관한 순수 반응용이라
+// happy/blink처럼 damageStage 분기가 필요 없다.
 function drawSmirkMouth(ctx) {
-  drawSmileMouth(ctx);
-}
+  const cx = SIDE_MARGIN + (COLS * CELL) / 2;
+  const mouthY = 2 * CELL + TOP_MARGIN + CELL * 0.32;
+  const halfWidth = 13;
 
-// 양쪽 볼의 발그레한 볼터치 — 눈 셀 바로 바깥쪽 아래에 작은 타원 두 개.
-function drawSmirkCheeks(ctx) {
-  const [left, right] = EYE_CELLS.map(([r, c]) => cellRect(r, c));
-  const cheekY = left.y + left.h * 1.1;
-  const cheekOffsetX = left.w * 0.9;
-
-  ctx.fillStyle = '#ffb6c1';
-  [left.x - cheekOffsetX, right.x + right.w + cheekOffsetX].forEach((cx) => {
-    ctx.beginPath();
-    ctx.ellipse(cx, cheekY, CELL * 0.32, CELL * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = CELL * 0.22;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - halfWidth, mouthY);
+  // 왼쪽~중앙은 거의 평평하게(살짝만 처지게) 이어가다가
+  ctx.quadraticCurveTo(cx, mouthY + CELL * 0.06, cx + halfWidth * 0.35, mouthY);
+  // 오른쪽 끝에서만 훅 말려 올라간다 — 이 훅이 "썩소"의 핵심.
+  ctx.quadraticCurveTo(cx + halfWidth * 0.85, mouthY, cx + halfWidth, mouthY - CELL * 0.55);
+  ctx.stroke();
 }
 
 export function createBossSmirkCanvas(bodyColor, eyeColor = '#000000') {
@@ -395,13 +396,11 @@ export function createBossSmirkCanvas(bodyColor, eyeColor = '#000000') {
   const ctx = canvas.getContext('2d');
 
   drawBody(ctx, bodyColor);
-  EYE_CELLS.forEach(([r, c], index) => {
+  EYE_CELLS.forEach(([r, c]) => {
     const { x, y, w, h } = cellRect(r, c);
-    if (index === 0) drawHappyEye(ctx, bodyColor, eyeColor, x, y, w, h);
-    else drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h);
+    drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h);
   });
   drawSmirkMouth(ctx);
-  drawSmirkCheeks(ctx);
 
   return canvas;
 }

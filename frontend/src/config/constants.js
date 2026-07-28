@@ -477,6 +477,11 @@ export const DART_EMBED_DEPTH = 10; // px, 맞은 지점에서 날아가던 방�
 // 타격 이펙트
 export const BOSS_KNOCKBACK_DISTANCE = 26; // px, 타격당 타격 반대 방향으로 밀려나는 거리 (누적됨)
 export const BOSS_KNOCKBACK_OUT_DURATION = 70; // ms, 밀려나는 트윈 시간
+// 보스가 화면 구석(두 벽이 만나는 자리)에 있을 때 맞으면, 그 자리에서 찔끔 밀려나는 평소 knockback
+// 대신 화면을 가로질러 대각선 반대쪽 구석까지 날아가 튕긴다(Boss.flyToOppositeCorner) — 화면을
+// 훨씬 더 가로지르는 이동이라 평소 넉백 지속시간보다 길게 잡는다.
+export const BOSS_CORNER_MARGIN = 60; // px, 이 거리 안에 두 벽이 동시에 있으면 "구석"으로 본다
+export const BOSS_CORNER_BOUNCE_DURATION = 380; // ms
 export const BOSS_PANEL_PUSH_DURATION = 300; // ms, 무기/배경 패널에 부딪혀 왼쪽 벽까지 날아가는 트윈 시간
 export const BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER = 2; // 패널에 부딪혀 왼쪽 벽까지 날아갈 때 추가로 받는 데미지 배율
 export const BOSS_PANEL_PUSH_POPUP_COLOR = '#ff5050'; // 패널 충돌 보너스 데미지 팝업 색 (일반 데미지와 구분)

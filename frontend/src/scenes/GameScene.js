@@ -575,12 +575,20 @@ export default class GameScene extends Phaser.Scene {
       const hitY = hits.reduce((sum, hit) => sum + hit.y, 0) / hits.length;
       // 전기충격기에 맞았으면 흰색 대신 시안색으로 살짝 다르게 번쩍여서 "감전됐다"는 느낌을 준다.
       const isTaserHit = hits.some((hit) => hit.weaponId === WEAPON_IDS.TASER);
+<<<<<<< HEAD
       // 마술봉(teleportsBoss)에 맞으면 넉백 대신 화면 안 랜덤한 위치로 순간이동시킨다(Boss.teleportRandom) —
       // 데미지는 다른 PORTABLE 무기와 동일하게 이미 CombatSystem.handleHit에서 처리됐다.
       const isWandHit = hits.some((hit) => WEAPON_DEFINITIONS[hit.weaponId]?.teleportsBoss);
       if (isWandHit) this.boss.teleportRandom();
       else this.boss.knockback(hitX, hitY);
       this.boss.flash(isTaserHit ? 0x66e0ff : (isWandHit ? WAND_TELEPORT_SPARK_COLOR : 0xffffff));
+=======
+      // 구석(두 벽 사이)에 몰려 있을 때 맞으면 찔끔 밀려나는 평소 knockback 대신 화면을 가로질러
+      // 대각선 반대쪽 구석까지 크게 튕겨나간다.
+      if (this.boss.isNearCorner()) this.boss.flyToOppositeCorner(() => this.cameras.main.shake(100, 0.006));
+      else this.boss.knockback(hitX, hitY);
+      this.boss.flash(isTaserHit ? 0x66e0ff : 0xffffff);
+>>>>>>> e9a18dded374b9d6a3722e2be3fe0944d580c27b
       this.boss.registerHits(hits.length);
       this.boss.showHurtFace();
       hits.forEach((hit) => {

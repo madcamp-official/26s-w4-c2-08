@@ -20,6 +20,7 @@ import {
   BOSS_SHIELD_CHECK_MAX_INTERVAL,
   BOSS_SHIELD_BREACH_LIMIT,
   BOSS_SHIELD_REARM_COOLDOWN_MS,
+<<<<<<< HEAD
   SHAKE_VOMIT_TRIGGER_MS,
   SHAKE_MIN_MOVE_PX,
   SHAKE_REVERSAL_WINDOW_MS,
@@ -27,6 +28,10 @@ import {
   BOSS_VOMIT_DURATION,
   WAND_TELEPORT_OUT_DURATION,
   WAND_TELEPORT_IN_DURATION,
+=======
+  BOSS_CORNER_MARGIN,
+  BOSS_CORNER_BOUNCE_DURATION,
+>>>>>>> e9a18dded374b9d6a3722e2be3fe0944d580c27b
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -246,12 +251,30 @@ export default class Boss {
     });
   }
 
+<<<<<<< HEAD
   // 마술봉(WAND)에 맞으면 넉백 대신 호출된다(GameScene.onHit) — 데미지는 이미 CombatSystem.handleHit이
   // 다른 PORTABLE 무기와 같은 파이프라인으로 처리했고, 여기서는 그 자리에서 작아지며 사라졌다가 화면 안
   // 랜덤한 위치에서 다시 커지며 나타나는 순간이동 연출만 담당한다. halfW/halfH는 축소 트윈이 시작되기
   // 전(스케일 1일 때)에 미리 구해둬야 한다 — displayWidth/Height는 현재 스케일에 비례해서, 트윈이 끝난
   // onComplete 시점(스케일 0)에 계산하면 0이 나와버린다.
   teleportRandom() {
+=======
+  // 지금 두 벽(가로+세로)에 동시에 BOSS_CORNER_MARGIN 안쪽으로 붙어 있으면 "구석"으로 본다 —
+  // GameScene.onHit이 이 경우 평소 knockback 대신 flyToOppositeCorner로 크게 튕겨낸다.
+  isNearCorner() {
+    const { width, height } = this.scene.scale;
+    const halfW = this.displayWidth / 2;
+    const halfH = this.displayHeight / 2;
+    const nearHorizontalWall = this.sprite.x <= halfW + BOSS_CORNER_MARGIN || this.sprite.x >= width - halfW - BOSS_CORNER_MARGIN;
+    const nearVerticalWall = this.sprite.y <= halfH + BOSS_CORNER_MARGIN || this.sprite.y >= height - halfH - BOSS_CORNER_MARGIN;
+    return nearHorizontalWall && nearVerticalWall;
+  }
+
+  // 구석에 몰려 있을 때 맞으면 그 자리에서 찔끔 밀려나는 대신 화면을 가로질러 대각선 반대쪽 구석까지
+  // 날아가 튕긴다 — flyOutToLeftWall과 같은 패턴(회전 + 도착 시 벽 부딪히는 소리)이지만 목적지가
+  // 항상 왼쪽 벽이 아니라 지금 위치를 화면 중심 기준으로 대칭시킨 반대쪽 구석이다.
+  flyToOppositeCorner(onComplete) {
+>>>>>>> e9a18dded374b9d6a3722e2be3fe0944d580c27b
     this.scene.tweens.killTweensOf(this.sprite);
     this.isPanelBounceActive = false;
     this.sprite.setAngle(0);
@@ -259,6 +282,7 @@ export default class Boss {
     const halfW = this.displayWidth / 2;
     const halfH = this.displayHeight / 2;
     const { width, height } = this.scene.scale;
+<<<<<<< HEAD
 
     this.scene.tweens.add({
       targets: this.sprite,
@@ -278,6 +302,24 @@ export default class Boss {
           duration: WAND_TELEPORT_IN_DURATION,
           ease: 'Back.easeOut',
         });
+=======
+    const targetX = Phaser.Math.Clamp(width - this.sprite.x, halfW, width - halfW);
+    const targetY = Phaser.Math.Clamp(height - this.sprite.y, halfH, height - halfH);
+
+    this.isPanelBounceActive = true;
+    this.scene.tweens.add({
+      targets: this.sprite,
+      x: targetX,
+      y: targetY,
+      angle: 360,
+      duration: BOSS_CORNER_BOUNCE_DURATION,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        this.sprite.setAngle(0);
+        this.isPanelBounceActive = false;
+        this.scene.sound.play('hit_wall');
+        onComplete?.(this.sprite.x, this.sprite.y);
+>>>>>>> e9a18dded374b9d6a3722e2be3fe0944d580c27b
       },
     });
   }

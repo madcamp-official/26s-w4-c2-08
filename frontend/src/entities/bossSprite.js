@@ -194,6 +194,39 @@ function drawFireBreath(ctx) {
   drawFlameLobe(ctx, cx, topY + 6, 16, 14, '#ffe066');
 }
 
+// 구토 방울 한 겹 — 입 바로 아래에서 시작해 아래로 갈수록 둥글게 넓어지는 물방울 모양. drawFlameLobe와
+// 같은 방식으로 세 겹(진한 초록 → 중간 초록 → 밝은 초록)을 겹쳐 그려 걸쭉한 느낌을 낸다.
+function drawVomitDrop(ctx, cx, topY, height, width, color) {
+  const halfW = width / 2;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx, topY);
+  ctx.quadraticCurveTo(cx - halfW * 0.7, topY + height * 0.35, cx - halfW * 0.55, topY + height * 0.7);
+  ctx.quadraticCurveTo(cx - halfW * 0.3, topY + height, cx, topY + height);
+  ctx.quadraticCurveTo(cx + halfW * 0.3, topY + height, cx + halfW * 0.55, topY + height * 0.7);
+  ctx.quadraticCurveTo(cx + halfW * 0.7, topY + height * 0.35, cx, topY);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// 흔들기(shake)로 트리거되는 "구토" 연출. 벌어진 입 아래로 초록색 방울 세 겹 + 튄 방울 두 개를 그린다.
+function drawVomit(ctx) {
+  const { x, y, width, height } = drawOpenMouth(ctx);
+  const cx = x + width / 2;
+  const topY = y + height;
+  drawVomitDrop(ctx, cx, topY, 34, 36, '#4c7a1f');
+  drawVomitDrop(ctx, cx, topY + 3, 25, 26, '#7cb342');
+  drawVomitDrop(ctx, cx, topY + 6, 14, 14, '#c5e1a5');
+
+  ctx.fillStyle = '#7cb342';
+  ctx.beginPath();
+  ctx.arc(cx - 15, topY + 32, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx + 13, topY + 28, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 // 머리 옆에 크게 뜨는 상태 표시. 1단계는 빨간 느낌표(놀람), 2단계는 빨간 소용돌이 분노 마크로 바뀐다.
 // 캔버스 왼쪽 여백(SIDE_MARGIN)에 그려서 몸통 실루엣을 가리지 않는다.
 // 분노 마크 반지름(size*0.85)이 SIDE_MARGIN(20)보다 커서 중심을 여백 한가운데 두면 캔버스 밖으로
@@ -275,6 +308,20 @@ export function createBossFireCanvas(bodyColor, eyeColor = '#000000', damageStag
   drawEyes(ctx, bodyColor, eyeColor, { droopStage: damageStage, forceBothEyesX: false });
   drawDamageMark(ctx, damageStage);
   drawFireBreath(ctx);
+
+  return canvas;
+}
+
+// 잡고 흔들다(shake) 일정 시간이 지나면 뜨는 "구토" 표정. 눈은 어지러운 느낌으로 X_X를 쓰고, 입은
+// 불 뿜기와 같은 방식(강제로 크게 벌림)으로 고정한 뒤 그 아래로 초록색 구토물을 그린다.
+export function createBossVomitCanvas(bodyColor, eyeColor = '#000000', damageStage = 0) {
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+
+  drawBody(ctx, bodyColor);
+  drawEyes(ctx, bodyColor, eyeColor, { droopStage: damageStage, forceBothEyesX: true });
+  drawDamageMark(ctx, damageStage);
+  drawVomit(ctx);
 
   return canvas;
 }
@@ -401,31 +448,6 @@ export function createBossSmirkCanvas(bodyColor, eyeColor = '#000000') {
     drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h);
   });
   drawSmirkMouth(ctx);
-
-  return canvas;
-}
-
-// 입술 무기로 연타(Boss.registerLipsHit → LIPS_VOMIT_STREAK_THRESHOLD)당해 토할 때 뜨는 표정.
-// 눈은 피격 때와 같은 어지러운 X(drawSmoothX)를 재사용하고, 입만 크게 벌린 채 초록 액체 두 겹이
-// 흘러내리는 모양(drawFlameLobe와 같은 물방울 실루엣, 색만 초록 계열)으로 덮어씌운다.
-function drawVomitMouth(ctx) {
-  const { x, y, width, height } = drawOpenMouth(ctx);
-  const cx = x + width / 2;
-  const topY = y + height;
-  drawFlameLobe(ctx, cx, topY, 30, 34, '#6fa83a');
-  drawFlameLobe(ctx, cx, topY + 2, 18, 20, '#a9d868');
-}
-
-export function createBossVomitCanvas(bodyColor, eyeColor = '#000000') {
-  const canvas = createCanvas();
-  const ctx = canvas.getContext('2d');
-
-  drawBody(ctx, bodyColor);
-  EYE_CELLS.forEach(([r, c]) => {
-    const { x, y, w, h } = cellRect(r, c);
-    drawSmoothX(ctx, bodyColor, eyeColor, x, y, w, h);
-  });
-  drawVomitMouth(ctx);
 
   return canvas;
 }

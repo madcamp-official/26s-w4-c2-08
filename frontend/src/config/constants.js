@@ -17,11 +17,13 @@ export const HP_BAR_X = 400; // 보스와 같은 x(화면 중앙)를 유지
 export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바를 화면 아래에 두는 보스전 UI 컨벤션
 export const TOP_HUD_Y = 30; // Weapon/End 버튼 상단 y 기준 (HP바가 하단으로 빠지면서 별도 상수로 분리)
 export const BOSS_SPAWN = { x: 400, y: 400 };
-// 상태는 "자거나" 아니면 "돌아다니거나" 둘 중 하나뿐인 단순한 이진 상태다(GameScene.updateIdleDrift).
-// 마우스가 눌려있는 동안(실제로 조작 중)은 둘 다 아니고 그 자리에 멈춰 있는다. 손을 뗀 뒤 이
-// 시간(1분) 동안 클릭이 한 번도 없으면 자기 시작하고, 그 뒤로는 고정된 지속시간 없이 클릭이
-// 들어올 때까지 계속 잔다 — 클릭이 들어오는 순간 곧장 깨서 돌아다니기 시작한다.
-export const BOSS_IDLE_TIMEOUT_MS = 60000;
+// 방치 상태는 "가만히(무반응)" → "자거나" → "돌아다니거나" 순서의 3단계다(GameScene.updateIdleDrift).
+// 마우스가 눌려있는 동안(실제로 조작 중)은 셋 다 아니고 그 자리에 멈춰 있는다. 손을 뗀 뒤
+// BOSS_IDLE_SLEEP_DELAY_MS(10초)가 지나기 전까지는 평상시 모습 그대로 가만히 있다가, 10초~
+// BOSS_IDLE_WALK_DELAY_MS(30초) 사이에는 자고, 30초가 지나면 클릭이 들어올 때까지 계속 종료
+// 버튼 쪽으로 걸어간다 — 클릭이 들어오는 순간 곧장 처음(무반응 상태)부터 다시 센다.
+export const BOSS_IDLE_SLEEP_DELAY_MS = 10000;
+export const BOSS_IDLE_WALK_DELAY_MS = 30000;
 export const BOSS_IDLE_ZZZ_INTERVAL = 1100; // ms, 자는 동안 Zzz 텍스트를 새로 띄우는 간격
 export const BOSS_IDLE_DRIFT_SPEED = 28; // px/s, 종료 버튼을 향해 끌려가는 속도
 // 끌려가는 동안 좌우로 갸우뚱거리며 걷는 느낌을 주는 흔들림 — 진폭(각도)과 한 번 왕복하는 데 걸리는 시간.
@@ -43,14 +45,16 @@ export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles whi
 export const THROW_PROJECTILE_SPEED = 400; // px/s, 기본값 — 무기별로 다르면 WEAPON_DEFINITIONS[id].projectileSpeed로 덮어씀
 export const BALL_PROJECTILE_SPEED = 640; // px/s, 야구공은 기본보다 빠르게
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
+export const WAND_WEAPON_SIZE = 150; // 마술봉 텍스처 크기 — 방망이와 같은 캡슐 판정 파이프라인을 공유(PORTABLE)
 export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 — 무기 자체와 던져지는 투사체가 같은 크기를 쓴다 (기존 50에서 20% 축소)
 // 투사체는 정사각 캔버스에 그린 둥근 이모지라, 사각 히트박스 그대로 쓰면 실제 공 그림이 없는 네 모서리까지
 // 보스와의 판정에 끼어들어 히트박스가 커 보인다. 실제 그림 크기에 맞춰 원형으로 판정한다.
 export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 
 // 무기 동작 방식 — 배경 선택 패널과 같은 방식으로 Hud의 무기 패널에서 종류를 직접 고른다.
-// PORTABLE(휴대형)은 방망이 전용 대각선 캡슐 판정으로 들고 부딪혀서 데미지 — WeaponManager의
-// getBatAxis/batOverlapsBoss가 BAT_DIMENSIONS를 그대로 쓰기 때문에 방망이 말고 다른 모양에는 안 맞다.
+// PORTABLE(휴대형)은 대각선 캡슐 판정으로 들고 부딪혀서 데미지 — WeaponManager의 getPortableAxis/
+// portableOverlapsBoss가 PORTABLE_AXIS_CONFIG에서 weaponId별 치수(길이/반지름)를 조회해서 쓰므로,
+// 방망이(BAT)처럼 새 PORTABLE 무기를 추가할 때는 그 설정도 같이 추가해야 한다(방망이/마술봉 등).
 // STATIC은 그냥 사각 판정으로 들고 부딪히는 무기(전기충격기 등), THROW는 들고 있는 동안 자동 연사.
 // BOOMERANG: 들고 있는 동안은 판정 없이 그냥 따라다니기만 하다가(보스에 갖다 댈 필요 없음), 손을 떼는
 // 순간(WeaponManager.throwBoomerang) 놓은 자리에서 보스 반대쪽으로 살짝 날아갔다가 보스 쪽으로 곡선을
@@ -93,6 +97,7 @@ export const WEAPON_IDS = {
   DYNAMITE: 'dynamite',
   // 근접 타격
   BAT: 'bat',
+  WAND: 'wand',
   WHIP: 'whip',
   BAMBOO_CANE: 'bamboo_cane',
   FRYING_PAN: 'frying_pan',
@@ -421,6 +426,15 @@ export const WEAPON_DEFINITIONS = {
     // 알루미늄 배트 — 무기 패널에서 가장 단단한 재질 축에 속해서 직접 휘두르는 PORTABLE답게 세게 잡는다.
     name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable', hitSound: 'bat_hit', damageMultiplier: 1.3,
   },
+  // 방망이와 같은 PORTABLE 카테고리 — 검은 봉 + 양 끝 흰 캡 실루엣이라 방망이보다 얇은 균일한 두께의
+  // 캡슐로 판정한다(WeaponManager의 PORTABLE_AXIS_CONFIG 참고). 들고 있는 동안 항상 끝(캡)이 보스 쪽을
+  // 향하도록 회전한다. teleportsBoss: 데미지는 다른 PORTABLE 무기와 같은 파이프라인으로 그대로 들어가고,
+  // 맞는 순간 GameScene.onHit이 넉백 대신 Boss.teleportRandom()을 트리거해 화면 안 랜덤한 위치로
+  // 순간이동시킨다(마술봉다운 연출).
+  [WEAPON_IDS.WAND]: {
+    name: 'WAND by 재준', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_wand', hitSound: 'wand_hit',
+    teleportsBoss: true,
+  },
   // 방망이처럼 휘두르는 느낌이지만 캡슐(BAT_DIMENSIONS)은 채찍의 지그재그 실루엣과 안 맞아서
   // STATIC(사각 판정)으로 둔다 — 다른 STATIC 무기보다 텍스처가 넓어서 판정 범위도 자연히 더 넉넉하다.
   // meleeSwing: 맞는 순간 보스 쪽으로 홱 겨눴다가 원위치로 스프링백하는 스윙 모션을 튼다
@@ -563,13 +577,38 @@ export const BOSS_FIRE_BREATH_DURATION = 500; // ms, 불 뿜는 표정이 유지
 // 계속 연타하면 콤보가 매번 다시 차서 곧바로 재발동되는 게 시끄러워서, 발동 자체에 최소 간격을 둔다.
 export const BOSS_FIRE_BREATH_COOLDOWN_MS = 6000;
 
-// 입술 무기로 연속으로(다른 무기가 안 끼고) 맞은 횟수 — 이만큼 쌓이면 평소 X_X 대신 토하는 표정으로
-// 바뀐다(Boss.registerLipsHit). 중간에 다른 무기로 맞으면 Boss.resetLipsStreak으로 리셋된다.
+// 입술 무기로 연속으로(다른 무기가 안 끼고) 맞은 횟수 — 이만큼 쌓이면 평소 X_X 대신 흔들기와 같은
+// 구토 반응(Boss.showVomit)으로 바뀐다(Boss.registerLipsHit). 중간에 다른 무기로 맞으면
+// Boss.resetLipsStreak으로 리셋된다.
 export const LIPS_VOMIT_STREAK_THRESHOLD = 5;
-export const BOSS_VOMIT_FACE_DURATION = 800; // ms, 토하는 표정이 유지되는 시간 (X_X보다 확실히 오래)
 // 체력이 이 정도는 깎여야("좀 더 낮아졌을 때") 콤보를 채워도 불을 뿜는다. Boss.js DAMAGE_RATIO_BREAKPOINTS
 // 기준 1단계(70% 이하)부터. 풀피 상태에서 그냥 연타만 빨리해도 뿜는 게 어색해서 넣은 조건.
 export const FIRE_BREATH_MIN_DAMAGE_STAGE = 1;
+
+// 흔들기(구토): 보스를 잡고(드래그) 방향을 계속 뒤집으며(=반전) 흔드는 상태가 SHAKE_VOMIT_TRIGGER_MS만큼
+// 이어지면 구토 연출을 띄운다. "흔드는 상태"는 최근 SHAKE_REVERSAL_WINDOW_MS 안에 방향 반전이
+// SHAKE_MIN_REVERSALS_IN_WINDOW번 이상 쌓였는지로 판단한다 — 반전 판정 기준 방향은 매 이동마다 갱신하지
+// 않고 실제로 반전이 확인될 때만 갱신한다(한 스윙 안의 같은 방향 샘플들끼리 상쇄되어 버리는 걸 방지).
+// 자세한 판정은 Boss.registerDragMovement 참고.
+export const SHAKE_VOMIT_TRIGGER_MS = 4000;
+// 이보다 작은 이동은 손떨림/드래그 잡음으로 보고 방향 판정에서 무시한다.
+export const SHAKE_MIN_MOVE_PX = 6;
+// 최근 이 시간 안에 쌓인 방향 반전 횟수로 "지금 흔들고 있는지"를 판단한다.
+export const SHAKE_REVERSAL_WINDOW_MS = 800;
+export const SHAKE_MIN_REVERSALS_IN_WINDOW = 3;
+export const BOSS_VOMIT_DURATION = 1200; // ms, 구토 표정이 유지되는 시간
+// 구토 데미지 — 패널 충돌 보너스 데미지(applyPanelPushDamage)와 같은 방식으로 HIT_COOLDOWN과 무관한
+// 1회성 이벤트 데미지로 취급한다. rollDamage(BASE_DAMAGE_MIN~MAX)에 곱해진다.
+export const VOMIT_DAMAGE_MULTIPLIER = 1.5;
+export const VOMIT_POPUP_COLOR = '#7cb342'; // 구토 이펙트와 같은 초록 계열로 데미지 팝업 색을 맞춘다
+
+// 마술봉(WAND)에 맞으면 그 자리에서 작아지며 사라졌다가 화면 안 랜덤한 위치에서 다시 커지며 나타난다
+// (Boss.teleportRandom). 데미지 자체는 다른 PORTABLE 무기와 같은 파이프라인(CombatSystem.handleHit)을
+// 그대로 타므로 별도 배율/색은 없다 — GameScene.onHit이 넉백 대신 이 연출을 트리거하고 스파크 색만 바꾼다.
+export const WAND_TELEPORT_OUT_DURATION = 200; // ms, 작아지며 사라지는 시간
+export const WAND_TELEPORT_IN_DURATION = 260; // ms, 랜덤 위치에서 커지며 나타나는 시간
+export const WAND_TELEPORT_SPARK_COLOR = 0xb388ff; // 마술봉 히트 스파크 색 (연보라)
+
 export const DAMAGE_POPUP_DURATION = 700; // ms
 export const DEFEAT_POPUP_DURATION = 900; // ms
 export const DEFEAT_POPUP_COLOR = '#ffaa00'; // "처치!" 팝업 색 — 뽑기 버튼과 동일 계열

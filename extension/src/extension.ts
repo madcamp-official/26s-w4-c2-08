@@ -13,6 +13,9 @@ interface GameContext {
   mode: 'local' | 'online';
   groupId: string | null;
   userName: string;
+  // false면 실제로 아는 이름이 없어(globalState도, git user.name도 없어) 'player'로 폴백했다는 뜻.
+  // online 모드에서 이 값이 false일 때만 webview가 이름 입력 모달을 띄운다.
+  hasUserName: boolean;
 }
 
 // docs/API.md groupId 해싱과 반드시 동일해야 한다 (서버는 이 값을 재계산하지 않고 그대로 저장/조회).
@@ -30,14 +33,24 @@ function readGitConfig(cwd: string, key: string): string | null {
 }
 
 // git remote 유무로 online/local 판별 (docs/ARCHITECTURE.md 모드 분기). remote 없으면 groupId도 없음.
-function resolveGameContext(cwd: string): GameContext {
+// userName은 이전에 사용자가 직접 입력해 globalState에 저장해둔 이름을 최우선으로 쓰고,
+// 없으면 git user.name, 그것도 없으면 'player'로 폴백한다 (git remote가 있어도 user.name은 없을 수 있음).
+// hasUserName은 그 폴백 여부를 그대로 담아 webview에 전달 — online인데 이 값이 false일 때만 모달을 띄우게 한다.
+function resolveGameContext(context: vscode.ExtensionContext, cwd: string): GameContext {
   const repoUrl = readGitConfig(cwd, 'remote.origin.url');
-  const userName = readGitConfig(cwd, 'user.name') || 'player';
+  const savedUserName = context.globalState.get<string>('userName');
+  const gitUserName = readGitConfig(cwd, 'user.name');
+  const userName = savedUserName || gitUserName || 'player';
+  const hasUserName = Boolean(savedUserName || gitUserName);
 
   if (!repoUrl) {
-    return { mode: 'local', groupId: null, userName };
+    return {
+      mode: 'local', groupId: null, userName, hasUserName,
+    };
   }
-  return { mode: 'online', groupId: computeGroupId(repoUrl), userName };
+  return {
+    mode: 'online', groupId: computeGroupId(repoUrl), userName, hasUserName,
+  };
 }
 
 let currentPanel: vscode.WebviewPanel | undefined;
@@ -83,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const disposable = vscode.commands.registerCommand('HitTheAgent.start', () => {
     const cwd = workspaceFolder?.uri.fsPath ?? process.cwd();
-    const gameContext = resolveGameContext(cwd);
+    const gameContext = resolveGameContext(context, cwd);
     console.log('[HitTheAgent] gameContext', gameContext); // 확인용 — 디버그 콘솔에서 mode/groupId 검증되면 지워도 됨
 
     // local 모드 결과 화면에서 "내 최고 기록"과 비교할 기준값. online 모드에서는 webview가 무시한다.
@@ -123,13 +136,18 @@ export function activate(context: vscode.ExtensionContext) {
 
     currentPanel.webview.html = getWebviewHtml(currentPanel.webview, distUri);
 
-    // webview → extension (docs/FRONTEND.md 메시지 프로토콜): local 모드 최고점수 저장
+    // webview → extension (docs/FRONTEND.md 메시지 프로토콜): local 모드 최고점수 저장 / 리더보드 제출용 이름 저장
     const messageListener = currentPanel.webview.onDidReceiveMessage((message) => {
       if (message?.type === 'saveLocalScore' && typeof message.score === 'number') {
         const best = context.globalState.get<number>('bestScore', 0);
         if (message.score > best) {
           context.globalState.update('bestScore', message.score);
         }
+        return;
+      }
+      // 이름 입력 UI는 webview(게임 화면) 안에서 직접 띄운다 — extension은 확정된 값만 받아 다음 판 prefill용으로 저장.
+      if (message?.type === 'saveUserName' && typeof message.userName === 'string' && message.userName.trim()) {
+        context.globalState.update('userName', message.userName.trim());
       }
     });
 

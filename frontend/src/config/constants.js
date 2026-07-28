@@ -63,12 +63,20 @@ export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 // 자체 퓨즈 타이머가 다 돼야 터진다. 터지는 순간 보스가 폭발 반경(blastRadius) 안에 있으면 그때만
 // 데미지가 들어간다 — BOOMERANG처럼 든 사람 손을 떠난 뒤 자기 혼자 판정을 관리하는 무기라는 점은 같지만,
 // 판정 방식이 오버랩이 아니라 "터지는 순간의 거리"라는 점이 다르다.
+// MACHINE: 세탁기 — BOMB처럼 어디든 놓을 수 있고(들고 있는 동안 판정 없음) 손을 떼면 그 자리에
+// 고정된다(WeaponManager.armWashingMachine). 퓨즈로 자동 폭발하는 BOMB과 달리 영구 설치물이라
+// 터지지 않고, 대신 직접 클릭하면 문이 열리고(WeaponManager.toggleWashingMachineDoor) 문이 열린
+// 상태에서 보스를 가까이 끌고 가면 자동으로 빨려들어가 일정 시간 돌면서 데미지를 받는다
+// (GameScene.checkWashingMachineSuckIn/startWashingMachineSpin) — 오버랩이 아니라 "문이 열린 채
+// 근접"이 트리거인 완전히 새로운 판정 방식이라 별도 카테고리로 둔다. 동시에 1개만 존재할 수 있고
+// 새로 설치하면 기존 것을 교체한다.
 export const WEAPON_CATEGORIES = {
   PORTABLE: 'portable',
   STATIC: 'static',
   THROW: 'throw',
   BOOMERANG: 'boomerang',
   BOMB: 'bomb',
+  MACHINE: 'machine',
 };
 
 // 무기 패널에 실제로 보이는 개별 무기. category가 동작 방식을 정하고, 같은 category를 여러 무기가
@@ -95,6 +103,8 @@ export const WEAPON_IDS = {
   // 폭탄
   GRENADE: 'grenade',
   DYNAMITE: 'dynamite',
+  // 설치형(맵에 고정)
+  WASHING_MACHINE: 'washing_machine',
   // 근접 타격
   BAT: 'bat',
   WAND: 'wand',
@@ -166,6 +176,29 @@ export const DYNAMITE_DAMAGE_MULTIPLIER = 3.2;
 export const DYNAMITE_CHAIN_LINK_RADIUS = 90; // px
 export const DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA = 0.6; // 연쇄당 반경 60%씩 추가
 export const DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA = 0.9; // 연쇄당 데미지 배율 90%씩 추가
+// 세탁기 — 실물 세탁기처럼 폭보다 세로로 긴 텍스처. 문(드럼)은 몸통 중심보다 아래쪽에 있어서
+// weaponSprites.getWashingMachineDoorMetrics(width, height)가 그 반지름/오프셋을 계산해준다
+// (그리기와 판정이 항상 같은 값을 쓰도록 하나의 함수로 통일 — PORTABLE_AXIS_CONFIG와 같은 이유).
+export const WASHING_MACHINE_WIDTH = 200;
+export const WASHING_MACHINE_HEIGHT = 230;
+// 문이 열려 있을 때 보스 몸통 중심이 문 중심으로부터 이 거리 안으로 드래그되면 자동으로 빨려들어간다.
+export const WASHING_MACHINE_SUCK_RADIUS = 100;
+// 빨려들어간 뒤 자동으로 튀어나오기까지 도는 전체 시간 — 이 시간 동안은 드래그로 꺼낼 수 없다(Boss.isInWashingMachine).
+export const WASHING_MACHINE_SPIN_DURATION = 4000;
+export const WASHING_MACHINE_SPIN_ROTATION_MS = 260; // ms, 도는 동안 한 바퀴 회전에 걸리는 시간
+export const WASHING_MACHINE_DAMAGE_TICK_INTERVAL = 500; // ms, 도는 동안 데미지가 들어가는 간격
+export const WASHING_MACHINE_DAMAGE_MULTIPLIER = 1.1;
+// 도는 동안 캐릭터가 문 중심 기준 상하좌우로 흔들리는 폭(px)과 그 위치를 새로 뽑는 간격 —
+// 매 프레임 다시 뽑으면 너무 정신없어 보여서, 짧은 간격으로 스텝처럼 움직이게 한다.
+export const WASHING_MACHINE_JITTER_RANGE = 10;
+export const WASHING_MACHINE_JITTER_INTERVAL_MS = 70;
+// 도는 동안 보스 위(depth 기준 더 높은 자리)를 덮는 검은 원의 불투명도 — 완전히 안 보이게 가리지는
+// 않고, 도는 실루엣이 흐릿하게 비치는 정도로만 어둡게 한다.
+export const WASHING_MACHINE_OVERLAY_ALPHA = 0.8;
+export const WASHING_MACHINE_POPUP_COLOR = '#4aa3df'; // 물빨래를 연상시키는 파란 계열로 다른 데미지 팝업과 구분
+// 다 돌고 튀어나올 때 문 바로 밖(안 겹치는 자리)까지 밀어내는 여유 거리
+export const WASHING_MACHINE_EJECT_MARGIN = 20;
+
 export const SOUND_WAVE_PROJECTILE_SIZE = 34; // 확성기가 쏘는 소리 파동 투사체 텍스처 크기
 // 확성기는 터치형이 아니라 원거리 투척형 — 클릭한 자리와 상관없이 보스 쪽으로 자동 발사되고,
 // 소리 파동이 눈에 잘 보이게 속도는 느긋하게 잡는다.
@@ -419,6 +452,15 @@ export const WEAPON_DEFINITIONS = {
     damageMultiplier: DYNAMITE_DAMAGE_MULTIPLIER,
     fireSound: 'baseball_throw',
     bigImpact: true,
+  },
+
+  // ── 설치형(맵에 고정) ──
+  // 폭탄류처럼 어디든 놓을 수 있지만(WeaponManager.armWashingMachine) 자동으로 터지지 않고 그 자리에
+  // 영구히 남는다 — 데미지는 오버랩이 아니라 문을 연 채 보스를 가까이 끌고 가면 자동으로 빨려들어가
+  // 도는 동안 주기적으로 들어간다(GameScene.startWashingMachineSpin). damageMultiplier 없음 —
+  // CombatSystem.applyWashingMachineDamage가 WASHING_MACHINE_DAMAGE_MULTIPLIER를 직접 쓴다.
+  [WEAPON_IDS.WASHING_MACHINE]: {
+    name: '세탁 by 경원', category: WEAPON_CATEGORIES.MACHINE, texture: 'weapon_washing_machine_closed',
   },
 
   // ── 근접 타격 ──

@@ -20,8 +20,10 @@ import {
   DYNAMITE_CHAIN_LINK_RADIUS,
   DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA,
   DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA,
+  WASHING_MACHINE_WIDTH,
+  WASHING_MACHINE_HEIGHT,
 } from '../config/constants.js';
-import { getBaseballBatDimensions, getMagicWandDimensions } from './weaponSprites.js';
+import { getBaseballBatDimensions, getMagicWandDimensions, getWashingMachineDoorMetrics } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
 // PORTABLE 카테고리(방망이/마술봉처럼 대각선으로 들고 부딪히는 무기) 텍스처는 전부 로컬 기준 -45도로
@@ -40,6 +42,10 @@ const PORTABLE_AXIS_CONFIG = {
   [WEAPON_IDS.WAND]: { halfLen: WAND_DIMENSIONS.halfLen, radius: WAND_DIMENSIONS.shaftHalfWidth },
 };
 
+// 세탁기 문(드럼) 반지름/오프셋 — 그리기(weaponSprites.createWashingMachineCanvas)와 같은 계산을
+// 공유해서 흡입 판정 중심/반투명 원 크기가 실제 그림의 문 위치와 항상 맞도록 한다.
+const WASHING_MACHINE_DOOR = getWashingMachineDoorMetrics(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT);
+
 // 필드에 여러 개를 놓아두고 드래그/합체/버리기 하던 예전 방식 대신, 무기 패널에서 카테고리를 고른 뒤
 // 필드를 누르고 있는 동안에만 그 자리에 무기 1개(activeWeapon)가 나타나 데미지를 주고, 손을 떼면 사라진다.
 export default class WeaponManager {
@@ -52,6 +58,13 @@ export default class WeaponManager {
     this.stuckProjectiles = [];
     this.bombs = []; // 놓인 뒤 퓨즈가 타는 중인 폭탄류(armBomb) 목록 — 게임 종료 시 한꺼번에 정리하는 용도
     this.onBombDetonate = null; // GameScene이 생성 후 설정 — 폭발 이펙트를 무기별로 다르게 띄우는 용도(onOverlap과 별개)
+    this.washingMachine = null; // 설치된 세탁기(동시에 1개만) — armWashingMachine이 채우고 새로 설치하면 교체
+    // 세탁기가 도는 중(GameScene.washingMachineSpinActive)에 새 세탁기로 교체되는 드문 경우, 기존
+    // 스핀 세션(타이머/트윈/오버레이)을 GameScene이 먼저 정리할 수 있도록 알려주는 콜백 — onBombDetonate와 같은 방식.
+    this.onWashingMachineForceEject = null;
+    // 세탁기가 설치(armWashingMachine)되는 순간 알려주는 콜백 — GameScene이 무기 패널 선택을 바로
+    // 풀어서, 도는 동안 근처를 터치해도 새 세탁기가 또 설치되지 않게 한다.
+    this.onWashingMachineArmed = null;
   }
 
   // 선택된 무기(WEAPON_IDS)를 pointer 위치에 만들어 화면에 보이게 한다. 투척형은 즉시 자동 연사를 시작한다.
@@ -75,6 +88,9 @@ export default class WeaponManager {
     } else if (category === WEAPON_CATEGORIES.BOMB) {
       // 폭탄도 부메랑처럼 들고 있는 동안은 판정이 없다 — 어디든 놓을 수 있어야 하고, 데미지는
       // 오버랩이 아니라 손을 뗀 뒤(armBomb) 퓨즈가 다 탔을 때 거리로 판정한다.
+    } else if (category === WEAPON_CATEGORIES.MACHINE) {
+      // 세탁기도 폭탄처럼 들고 있는 동안은 판정이 없다 — 어디든 놓을 수 있고, 데미지는 오버랩이 아니라
+      // 놓은 뒤(armWashingMachine) 문을 열고 보스를 가까이 끌고 갔을 때 GameScene이 별도로 처리한다.
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
       if (category === WEAPON_CATEGORIES.PORTABLE) this.updatePortableRotation(weapon);
@@ -155,6 +171,11 @@ export default class WeaponManager {
 
     if (weapon.category === WEAPON_CATEGORIES.BOMB) {
       this.armBomb(weapon);
+      return;
+    }
+
+    if (weapon.category === WEAPON_CATEGORIES.MACHINE) {
+      this.armWashingMachine(weapon);
       return;
     }
 
@@ -312,6 +333,57 @@ export default class WeaponManager {
     }
 
     return chained;
+  }
+
+  // 세탁기를 놓은 자리에 설치한다 — 동시에 1개만 존재할 수 있어서 이미 설치된 게 있으면 먼저 치운다
+  // (교체). 그 순간 마침 보스가 안에서 돌고 있었다면(Boss.isInWashingMachine) onWashingMachineForceEject로
+  // 미리 알려 그쪽 타이머/마스크부터 정리하게 한다 — 그 콜백(GameScene.endWashingMachineSpin)이 다 돌고
+  // 나면 destroyWashingMachine으로 이미 이 자리를 비워놨을 수 있어서, 그 경우엔 다시 destroy하지 않는다
+  // (안 그러면 이미 파괴된 오브젝트를 또 destroy하려다 에러가 난다).
+  // 클릭으로 문을 여닫는 상호작용은 이 오브젝트 자체에 pointerdown을 걸어 처리한다(전역 pointerdown과
+  // 별개 — GameScene은 이 사각형 위 클릭이 무기 배치로 새지 않도록 자기 쪽에서 한 번 더 걸러준다).
+  armWashingMachine(weapon) {
+    if (this.washingMachine) {
+      if (this.boss.isInWashingMachine) this.onWashingMachineForceEject?.();
+      if (this.washingMachine) this.washingMachine.destroy();
+    }
+
+    weapon.doorOpen = false;
+    // 보스보다 한 단계 아래 depth — 캐릭터가 문 앞을 지나가거나 안에 들어가 있을 때 세탁기 몸통에
+    // 가려지지 않고 항상 그 위에 보이게 한다(GameScene.startWashingMachineSpin이 여기에 반투명
+    // 검은 원만 한 단계 더 위에 얹어서 도는 실루엣을 흐릿하게 만든다).
+    weapon.setDepth(this.boss.sprite.depth - 1);
+    weapon.setInteractive({ useHandCursor: true });
+    weapon.on('pointerdown', () => this.toggleWashingMachineDoor());
+    this.washingMachine = weapon;
+    this.onWashingMachineArmed?.();
+  }
+
+  // 한 번 다 돌고 나면(GameScene.endWashingMachineSpin) 문을 닫아두는 대신 세탁기 자체를 지운다 —
+  // "한 번 쓰면 없어지는" 소모품처럼 만들어서, 다시 쓰려면 무기 패널에서 새로 설치해야 한다.
+  destroyWashingMachine() {
+    if (!this.washingMachine) return;
+    this.washingMachine.destroy();
+    this.washingMachine = null;
+  }
+
+  // 세탁기를 클릭하면 문을 열고 닫는다. 보스가 이미 안에서 도는 중에는(GameScene이 관리) 문 상태를
+  // 못 건드리게 막는다 — 그동안 문을 닫아도 안에서 도는 연출/데미지에는 영향이 없어야 자연스럽다.
+  toggleWashingMachineDoor() {
+    if (this.scene.isEnded || !this.washingMachine || this.boss.isInWashingMachine) return;
+    this.washingMachine.doorOpen = !this.washingMachine.doorOpen;
+    this.washingMachine.setTexture(this.washingMachine.doorOpen ? 'weapon_washing_machine_open' : 'weapon_washing_machine_closed');
+  }
+
+  // 세탁기 텍스처 중심(weapon.x/y)이 아니라 실제 문(드럼) 중심 world 좌표 — 흡입 반경 판정, 반투명
+  // 오버레이 위치, 다 돌고 튀어나올 때의 좌표 계산까지 전부 이 점을 기준으로 삼는다.
+  getWashingMachineDoorPoint() {
+    if (!this.washingMachine) return null;
+    return {
+      x: this.washingMachine.x,
+      y: this.washingMachine.y + WASHING_MACHINE_DOOR.doorCenterOffsetY,
+      radius: WASHING_MACHINE_DOOR.doorRadius,
+    };
   }
 
   // 방망이 위치에서 보스를 바라보는 각도. 투사체 발사 각도 계산과 같은 패턴.

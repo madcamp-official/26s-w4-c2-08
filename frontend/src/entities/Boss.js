@@ -71,6 +71,9 @@ export default class Boss {
     this.lipsHitStreak = 0; // 입술 무기로 다른 무기가 안 끼고 연속으로 맞은 횟수 — registerLipsHit/resetLipsStreak가 관리
     this.vomitEvent = null;
     this.onVomit = null; // GameScene이 생성 후 설정 (onPet과 같은 방식) — 구토 데미지/팝업 처리용 콜백
+    // 세탁기 안에 들어가 도는 중인지 — GameScene.startWashingMachineSpin/endWashingMachineSpin이 관리하며,
+    // 켜져 있는 동안은 드래그로 못 꺼낸다(디버거의 isFrozen과 같은 방식으로 GameScene의 'drag' 리스너가 가드).
+    this.isInWashingMachine = false;
     this.resetShakeTracking();
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
@@ -202,6 +205,9 @@ export default class Boss {
     this.shieldBreachCount = 0;
     this.lastShieldEndTime = -Infinity;
     this.isSleeping = false;
+    // 세탁기 안에서 죽었다면(applyWashingMachineDamage) 다른 자리로 옮겨졌으니 스핀 세션 자체도 끝난 것 —
+    // GameScene.applyWashingMachineDamageTick이 이 값을 보고 다시 위치를 옮기지 않도록 여기서 끈다.
+    this.isInWashingMachine = false;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 

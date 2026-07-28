@@ -34,6 +34,13 @@ const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
 const TAB_ORDER = ['weapon', 'boss', 'background'];
 const TAB_LABELS = { weapon: 'WEAPON', boss: 'AGENT', background: 'MAP' };
 
+// 체력바/점수/설정·종료 버튼처럼 화면에 고정된 HUD 요소가 항상 보스보다 위에 그려지도록 명시적으로
+// 주는 depth. sidePanel(패널) depth(1000)와 같은 층으로 맞춘다. 이 값을 명시하지 않으면 Phaser가
+// 같은 depth(기본 0)일 때 "가장 최근에 depth가 바뀐 순서"로 다시 정렬해버려서, 세탁기 무기가
+// 스핀 도중 보스 depth를 잠깐 올렸다가 되돌리는 것만으로도 그 정렬이 흐트러져 보스가 버튼/체력바보다
+// 위로 올라와 버리는 문제가 있었다 — HUD 쪽에 항상 더 높은 고정 depth를 줘서 그런 흔들림 자체를 없앤다.
+const HUD_DEPTH = 1000;
+
 // 패널 안 선택/활성 상태를 나타내는 액센트 색. 라임 계열 형광 그린(기존보다 밝게).
 const PANEL_ACCENT = 0x99ff33;
 const PANEL_ACCENT_CSS = '#99ff33';
@@ -67,9 +74,9 @@ export default class Hud {
       color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
-    this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00);
-    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
+    }).setOrigin(0.5).setDepth(HUD_DEPTH);
+    this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00).setDepth(HUD_DEPTH);
+    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33).setDepth(HUD_DEPTH);
 
     this.panelOpen = false;
     this.activeTab = 'weapon';
@@ -131,7 +138,7 @@ export default class Hud {
     // 톱니바퀴 버튼(위쪽, PANEL_ACCENT처럼 채도 높은 색)과 나란히 있을 때 칙칙해 보이지 않도록
     // 어두운 톤(0x883333) 대신 채도를 끌어올린 선명한 빨강을 쓴다.
     const bg = this.createPillBackground(x, y, size, 0xff3b3b, onClick);
-    const icon = this.scene.add.image(x, y, 'icon_logout').setDisplaySize(20, 20).setTint(0xffffff);
+    const icon = this.scene.add.image(x, y, 'icon_logout').setDisplaySize(20, 20).setTint(0xffffff).setDepth(HUD_DEPTH);
 
     // GameScene의 방치(idle) 드리프트가 보스를 이 버튼 쪽으로 끌고 가는 목표 좌표로 쓴다.
     this.endButtonPosition = { x, y };
@@ -143,7 +150,7 @@ export default class Hud {
   createPillBackground(x, y, size, bgColor, onClick) {
     const radius = size / 2;
 
-    const bg = this.scene.add.graphics();
+    const bg = this.scene.add.graphics().setDepth(HUD_DEPTH);
     bg.fillStyle(bgColor, 1);
     bg.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
 
@@ -164,7 +171,7 @@ export default class Hud {
     const y = TOP_HUD_Y;
 
     const bg = this.createPillBackground(x, y, size, PANEL_ACCENT, onClick);
-    const icon = this.scene.add.image(x, y, 'icon_gear').setDisplaySize(22, 22);
+    const icon = this.scene.add.image(x, y, 'icon_gear').setDisplaySize(22, 22).setDepth(HUD_DEPTH);
 
     return { bg, icon };
   }

@@ -33,6 +33,16 @@ import {
   BOSS_IDLE_ARRIVAL_DISTANCE,
   BOSS_IDLE_PANEL_PUSH_HOLD_MS,
   BOSS_IDLE_PANEL_APPROACH_MARGIN,
+  WASHING_MACHINE_SUCK_RADIUS,
+  WASHING_MACHINE_SPIN_DURATION,
+  WASHING_MACHINE_SPIN_ROTATION_MS,
+  WASHING_MACHINE_DAMAGE_TICK_INTERVAL,
+  WASHING_MACHINE_JITTER_RANGE,
+  WASHING_MACHINE_JITTER_INTERVAL_MS,
+  WASHING_MACHINE_OVERLAY_ALPHA,
+  WASHING_MACHINE_POPUP_COLOR,
+  WASHING_MACHINE_EJECT_MARGIN,
+  HP_BAR_Y,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
@@ -76,9 +86,24 @@ export default class GameScene extends Phaser.Scene {
     this.sleepBubbleTween = null;
     // 보스를 드래그 중인 포인터 — 구토 트리거 시 releaseBossDrag()가 이 포인터의 드래그를 강제로 끝낸다.
     this.activeDragPointer = null;
+    // 세탁기 스핀 세션 상태 — Boss.isInWashingMachine(드래그 잠금용 플래그)과 별개로, 여기서는 실제
+    // 정리해야 할 타이머/트윈/마스크가 "지금 떠 있는지"를 추적한다(보스가 respawn으로 이미 다른 곳으로
+    // 옮겨진 경우에도 이 리소스들은 endWashingMachineSpin이 반드시 정리해야 하므로 별도로 관리).
+    this.washingMachineSpinActive = false;
+    this.washingMachineSpinEvent = null;
+    this.washingMachineJitterEvent = null;
+    this.washingMachineSpinEndEvent = null;
+    this.washingMachineSpinMaskShape = null;
+    this.washingMachineBackdrop = null;
+    this.washingMachineSpinSound = null;
 
     this.currentBackgroundStyle = BACKGROUND_STYLE;
-    this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
+    // 명시적으로 아주 낮은 depth를 줘서 항상 맨 뒤에 깔리게 고정한다 — 보스/무기는 전부 기본 depth(0)라
+    // 배경이 같이 0이면 "먼저 추가된 순서" 하나로만 뒤에 있는 셈인데, 세탁기 무기처럼 보스보다 낮은
+    // depth(-1)를 명시적으로 주는 오브젝트가 생기면 그 값이 배경(암묵적 0)보다도 낮아져서 배경에
+    // 완전히 가려져 안 보이는 문제가 있었다. 배경을 확실히 더 낮은 값으로 고정해두면 이후 어떤
+    // 오브젝트가 얼마나 낮은 depth를 쓰든 배경보다는 항상 위에 있는다고 보장할 수 있다.
+    this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0).setDepth(-100);
 
     this.currentBossType = BOSS_TYPES[0].id;
     this.boss = new Boss(this, this.currentBossType);
@@ -108,6 +133,16 @@ export default class GameScene extends Phaser.Scene {
     // 폭탄류(수류탄/다이너마이트)는 손을 뗀 뒤 한참 지나 혼자 터진다 — 그 순간 무기별 폭발 이펙트를
     // 고르고, 실제로 보스를 맞혔을 때만 카메라를 흔든다(onOverlap 경로와 별개 훅).
     this.weaponManager.onBombDetonate = (weaponId, x, y, hitBoss, chainCount) => this.onBombDetonate(weaponId, x, y, hitBoss, chainCount);
+    // 세탁기가 도는 중에 새 세탁기로 교체되는 드문 경우, WeaponManager가 기존 것을 destroy하기 전에
+    // 먼저 스핀 세션(타이머/트윈/오버레이)부터 정리하도록 알려준다.
+    this.weaponManager.onWashingMachineForceEject = () => this.endWashingMachineSpin();
+    // 세탁기는 설치되는 순간 바로 무기 패널 선택을 풀어서, 돌아가는 동안 근처를 터치해도 새 세탁기가
+    // 또 설치되지 않게 한다 — 다시 쓰려면 패널에서 새로 선택해야 한다(한 번 쓰면 없어지는 소모품).
+    this.weaponManager.onWashingMachineArmed = () => {
+      if (this.selectedWeaponId !== WEAPON_IDS.WASHING_MACHINE) return;
+      this.selectedWeaponId = null;
+      this.hud.setActiveWeaponOption(null);
+    };
 
     this.sniperScope = this.createSniperScope();
 
@@ -125,13 +160,14 @@ export default class GameScene extends Phaser.Scene {
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
       this.markInteraction();
       if (this.isEnded) return;
-      if (this.boss.isFrozen) return; // 디버거(브레이크포인트)에 맞은 동안은 드래그로 못 옮긴다.
+      if (this.boss.isFrozen || this.boss.isInWashingMachine) return; // 디버거(브레이크포인트)/세탁기 안에서 도는 동안은 드래그로 못 옮긴다.
       const prevX = this.boss.sprite.x;
       const prevY = this.boss.sprite.y;
       const x = Phaser.Math.Clamp(dragX, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(dragY, 40, this.scale.height - 40);
       this.boss.setPosition(x, y);
       this.boss.registerDragMovement(x - prevX, y - prevY);
+      this.checkWashingMachineSuckIn();
     });
 
     // 무기를 고른 뒤 필드(UI도, 보스 위도 아님)를 누르고 있는 동안에만 그 자리에 무기가 나타나 보스를 때리고,
@@ -160,6 +196,10 @@ export default class GameScene extends Phaser.Scene {
       if (!this.selectedWeaponId) return;
       if (this.hud.isPointerOnUI(currentlyOver)) return;
       if (Phaser.Geom.Rectangle.Contains(this.boss.sprite.getBounds(), pointer.x, pointer.y)) return;
+      // 이미 설치된 세탁기 위를 클릭한 거라면(문 여닫기는 WeaponManager가 그 오브젝트 자체의
+      // pointerdown으로 따로 처리) 여기서 무기를 새로 놓지 않고 건너뛴다.
+      const washingMachine = this.weaponManager.washingMachine;
+      if (washingMachine && Phaser.Geom.Rectangle.Contains(washingMachine.getBounds(), pointer.x, pointer.y)) return;
 
       const x = Phaser.Math.Clamp(pointer.x, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(pointer.y, 40, this.scale.height - 40);
@@ -522,6 +562,9 @@ export default class GameScene extends Phaser.Scene {
     this.physics.world.pause();
     this.weaponManager.stopAllFiring();
     this.setSniperScopeVisible(false);
+    // 세탁기 데미지 틱/스핀 종료 타이머(scene.time)는 물리 pause와 무관하게 계속 돌아서, 정리하지
+    // 않으면 결과 화면 위에서도 데미지가 계속 들어간다(bomb 퓨즈와 같은 이유, stopAllFiring 주석 참고).
+    this.endWashingMachineSpin({ eject: false });
 
     this.onGameEnd(overlay, this.combat.score);
   }
@@ -720,6 +763,136 @@ export default class GameScene extends Phaser.Scene {
 
     if (defeated) {
       this.spawnDefeatPopup(deathPosition);
+    }
+  }
+
+  // 문이 열린 세탁기가 설치돼 있고 아직 아무도 안에서 돌고 있지 않을 때, 보스 몸통 중심이 문(드럼)
+  // 중심으로부터 WASHING_MACHINE_SUCK_RADIUS 안으로 들어오면 자동으로 빨려들어간다.
+  // GameScene의 'drag' 리스너가 보스를 옮길 때마다(매 프레임) 호출한다.
+  checkWashingMachineSuckIn() {
+    const doorPoint = this.weaponManager.getWashingMachineDoorPoint();
+    if (!doorPoint || !this.weaponManager.washingMachine.doorOpen || this.washingMachineSpinActive) return;
+    const distance = Phaser.Math.Distance.Between(this.boss.bodyCenterX, this.boss.bodyCenterY, doorPoint.x, doorPoint.y);
+    if (distance <= WASHING_MACHINE_SUCK_RADIUS) this.startWashingMachineSpin(doorPoint);
+  }
+
+  // 세탁기 안으로 빨려들어가는 순간 — 손을 놓친 것처럼 드래그를 강제로 풀고, 문 중심에 위치를 고정한
+  // 채 빙글빙글 도는 트윈을 건다. 세탁기 자체는 항상 보스보다 한 단계 아래 depth라(WeaponManager.
+  // armWashingMachine) 별도 조작 없이도 캐릭터가 세탁기 몸통 위에 그대로 보인다 — 원형 마스크로
+  // 드럼 밖(하얀 몸통 쪽)으로 삐져나온 부분만 가리고, 그 위에 반투명 검은 원을 한 단계 더 얹어
+  // 도는 실루엣이 흐릿하게만 비치게 한다. 이후 WASHING_MACHINE_DAMAGE_TICK_INTERVAL마다 데미지를
+  // 주다가 WASHING_MACHINE_SPIN_DURATION이 지나면 endWashingMachineSpin이 자동으로 꺼내준다.
+  startWashingMachineSpin(doorPoint) {
+    if (this.washingMachineSpinActive) return;
+    this.washingMachineSpinActive = true;
+    this.releaseBossDrag();
+    this.boss.isInWashingMachine = true;
+    this.boss.setPosition(doorPoint.x, doorPoint.y);
+
+    this.tweens.add({
+      targets: this.boss.sprite,
+      angle: 360,
+      duration: WASHING_MACHINE_SPIN_ROTATION_MS,
+      repeat: -1,
+      ease: 'Linear',
+    });
+
+    const maskRadius = doorPoint.radius * 0.95;
+    this.washingMachineSpinMaskShape = this.add.circle(doorPoint.x, doorPoint.y, maskRadius).setVisible(false);
+    this.boss.sprite.setMask(this.washingMachineSpinMaskShape.createGeometryMask());
+
+    // 보스보다 위 depth — 도는 실루엣이 이 반투명 검은 원 아래로 흐릿하게만 비치게 한다.
+    this.washingMachineBackdrop = this.add.circle(doorPoint.x, doorPoint.y, maskRadius, 0x000000, WASHING_MACHINE_OVERLAY_ALPHA).setDepth(this.boss.sprite.depth + 1);
+
+    this.washingMachineSpinEvent = this.time.addEvent({
+      delay: WASHING_MACHINE_DAMAGE_TICK_INTERVAL,
+      loop: true,
+      callback: () => this.applyWashingMachineDamageTick(),
+    });
+    // 도는 동안 문 중심 기준 상하좌우로 짧게 흔들린다 — Boss.setPosition은 회전 트윈까지 죽여버려서
+    // 못 쓰고, sprite.setPosition으로 위치만 직접 바꾼다.
+    this.washingMachineJitterEvent = this.time.addEvent({
+      delay: WASHING_MACHINE_JITTER_INTERVAL_MS,
+      loop: true,
+      callback: () => this.applyWashingMachineJitter(doorPoint),
+    });
+    this.washingMachineSpinEndEvent = this.time.delayedCall(WASHING_MACHINE_SPIN_DURATION, () => this.endWashingMachineSpin());
+
+    this.washingMachineSpinSound = this.sound.add('washing_machine_spin', { loop: true });
+    this.washingMachineSpinSound.play();
+  }
+
+  // 문 중심(doorPoint) 기준 상하좌우로 ±WASHING_MACHINE_JITTER_RANGE만큼 위치를 다시 뽑는다.
+  // boss.setPosition()을 쓰면 안 된다 — 회전 트윈(killTweensOf)과 각도(setAngle(0))까지 같이
+  // 초기화해버려서 도는 애니메이션이 멈춰버린다. 그래서 sprite.setPosition으로 위치만 직접 바꾼다.
+  applyWashingMachineJitter(doorPoint) {
+    if (this.isEnded || !this.washingMachineSpinActive) return;
+    const offsetX = Phaser.Math.Between(-WASHING_MACHINE_JITTER_RANGE, WASHING_MACHINE_JITTER_RANGE);
+    const offsetY = Phaser.Math.Between(-WASHING_MACHINE_JITTER_RANGE, WASHING_MACHINE_JITTER_RANGE);
+    this.boss.sprite.setPosition(doorPoint.x + offsetX, doorPoint.y + offsetY);
+  }
+
+  // 도는 동안 주기적으로 들어가는 데미지. applyVomitDamage/applyPanelPushDamage와 같은 1회성 이벤트
+  // 데미지 취급이라 HIT_COOLDOWN과 무관하다 — 도중에 처치되면(defeated) Boss.respawn이 이미 다른
+  // 자리로 옮겨놓은 뒤라, endWashingMachineSpin에 다시 위치를 옮기지 말라고 알려준다(eject: false).
+  applyWashingMachineDamageTick() {
+    if (this.isEnded || !this.washingMachineSpinActive) return;
+    const doorPoint = this.weaponManager.getWashingMachineDoorPoint();
+    const { amount, defeated, deathPosition } = this.combat.applyWashingMachineDamage();
+    this.hud.updateHpBar(this.boss);
+    this.hud.updateScoreText(this.combat.score);
+    if (doorPoint) this.spawnDamagePopup({ amount, x: doorPoint.x, y: doorPoint.y, color: WASHING_MACHINE_POPUP_COLOR });
+
+    if (defeated) {
+      this.spawnDefeatPopup(deathPosition);
+      this.endWashingMachineSpin({ eject: false });
+    }
+  }
+
+  // 스핀 세션을 정리한다 — 시간이 다 되어 자동으로 끝나든, 도중에 처치되든, 세탁기가 교체되며 강제로
+  // 끝나든 전부 이 함수를 거친다. eject(기본 true)가 false면 위치는 안 건드린다(이미 respawn 등으로
+  // 다른 곳에 있는 경우). 문을 다시 닫는 대신 세탁기 자체를 지운다 — 한 번 쓰면 없어지는 소모품이라
+  // 다시 쓰려면 무기 패널에서 새로 설치해야 한다(WeaponManager.destroyWashingMachine).
+  endWashingMachineSpin({ eject = true } = {}) {
+    if (!this.washingMachineSpinActive) return;
+    this.washingMachineSpinActive = false;
+    this.boss.isInWashingMachine = false;
+    this.tweens.killTweensOf(this.boss.sprite);
+    this.boss.sprite.setAngle(0);
+    this.washingMachineSpinEvent?.remove();
+    this.washingMachineSpinEvent = null;
+    this.washingMachineJitterEvent?.remove();
+    this.washingMachineJitterEvent = null;
+    this.washingMachineSpinEndEvent?.remove();
+    this.washingMachineSpinEndEvent = null;
+    this.boss.sprite.clearMask();
+    this.washingMachineSpinMaskShape?.destroy();
+    this.washingMachineSpinMaskShape = null;
+    this.washingMachineBackdrop?.destroy();
+    this.washingMachineBackdrop = null;
+    this.washingMachineSpinSound?.stop();
+    this.washingMachineSpinSound?.destroy();
+    this.washingMachineSpinSound = null;
+
+    // destroyWashingMachine이 참조를 지우기 전에 탈출 좌표부터 먼저 구해둬야 한다.
+    const doorPoint = this.weaponManager.getWashingMachineDoorPoint();
+    this.weaponManager.destroyWashingMachine();
+
+    if (eject && doorPoint) {
+      const halfW = this.boss.displayWidth / 2;
+      const halfH = this.boss.displayHeight / 2;
+      const targetX = Phaser.Math.Clamp(doorPoint.x, halfW, this.scale.width - halfW);
+      // 화면 맨 아래(this.scale.height - halfH)까지 그대로 클램프하면 세탁기를 화면 아래쪽에 설치했을
+      // 때 HP바/체력바/종료·설정 버튼이 모여있는 하단 HUD 줄(HP_BAR_Y 부근)까지 밀려나 캐릭터가 그
+      // 버튼들 위에 겹쳐 튀어나오는 문제가 있었다 — 위쪽 한계를 HP바 앞에서 끊어서 그 줄과 절대
+      // 안 겹치게 한다.
+      const maxY = Math.min(this.scale.height - halfH, HP_BAR_Y - halfH - WASHING_MACHINE_EJECT_MARGIN);
+      const targetY = Phaser.Math.Clamp(
+        doorPoint.y + doorPoint.radius + this.boss.bodyHeight / 2 + WASHING_MACHINE_EJECT_MARGIN,
+        halfH,
+        maxY,
+      );
+      this.boss.setPosition(targetX, targetY);
     }
   }
 

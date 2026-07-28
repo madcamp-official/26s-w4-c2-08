@@ -1817,3 +1817,103 @@ export function createLipsCanvas(size) {
 
   return canvas;
 }
+
+// 세탁기 문(드럼)의 반지름/중심 y오프셋(텍스처 세로 중심 기준) — 그리기(createWashingMachineCanvas)와
+// 실제 판정(WeaponManager의 흡입 반경 계산용 문 좌표, GameScene의 반투명 원 크기)이 항상 같은 값을
+// 쓰도록 이 함수 하나로 통일한다 (getBaseballBatDimensions와 같은 이유).
+export function getWashingMachineDoorMetrics(width, height) {
+  const doorRadius = Math.min(width, height) * 0.34;
+  const doorCenterOffsetY = height * 0.1; // 문이 몸통 세로 중심보다 이만큼 아래에 있다
+  return { doorRadius, doorCenterOffsetY };
+}
+
+// 세탁기 — 흰 몸통 + 위쪽 얇은 조작판 + 가운데 큰 원형 드럼 문. 실제 사진처럼 정교하게는 안 그리고
+// 실루엣만 단순하게 잡는다. doorOpen이 false면 드럼 안을 검게 채우고(닫힘), true면 은색 금속 통
+// 느낌의 방사형 그라데이션으로 채운다(열림) — 캐릭터가 들어가 도는 동안에는 GameScene이 보스를 이
+// 텍스처보다 위 depth로 올리고 원형 마스크를 씌워서, 그 은색 배경 위로 실제로 도는 모습이 보이게 한다.
+export function createWashingMachineCanvas(width, height, { doorOpen = false } = {}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const cx = width / 2;
+
+  const bodyColor = '#f2f2ef';
+  const bodyStroke = '#c4c4c0';
+  const panelColor = '#bcd8e3';
+  const bezelColor = '#d8d8d4';
+  const bezelStroke = '#9a9a95';
+  const knobColor = '#e8e8e4';
+
+  const { doorRadius, doorCenterOffsetY } = getWashingMachineDoorMetrics(width, height);
+  const doorCy = height / 2 + doorCenterOffsetY;
+  const cornerRadius = width * 0.06;
+
+  // 몸통 — 위쪽 모서리만 둥근 사각형
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(2, width * 0.012);
+  ctx.beginPath();
+  ctx.moveTo(cornerRadius, 0);
+  ctx.lineTo(width - cornerRadius, 0);
+  ctx.quadraticCurveTo(width, 0, width, cornerRadius);
+  ctx.lineTo(width, height);
+  ctx.lineTo(0, height);
+  ctx.lineTo(0, cornerRadius);
+  ctx.quadraticCurveTo(0, 0, cornerRadius, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 상단 조작판(옅은 하늘색 띠) + 다이얼 하나
+  const panelY = height * 0.03;
+  const panelHeight = height * 0.12;
+  ctx.fillStyle = panelColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1.5, width * 0.008);
+  ctx.fillRect(width * 0.04, panelY, width * 0.92, panelHeight);
+  ctx.strokeRect(width * 0.04, panelY, width * 0.92, panelHeight);
+
+  ctx.fillStyle = knobColor;
+  ctx.strokeStyle = bezelStroke;
+  ctx.lineWidth = Math.max(1.5, width * 0.008);
+  ctx.beginPath();
+  ctx.arc(width * 0.22, panelY + panelHeight / 2, panelHeight * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 도어 베젤(테두리 링)
+  ctx.fillStyle = bezelColor;
+  ctx.strokeStyle = bezelStroke;
+  ctx.lineWidth = Math.max(3, width * 0.02);
+  ctx.beginPath();
+  ctx.arc(cx, doorCy, doorRadius + width * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 드럼(문 안쪽) — 닫힘: 꽉 찬 검은 원. 열림: 채우지 않고 테두리만 살짝 그늘지게.
+  if (!doorOpen) {
+    ctx.fillStyle = '#141414';
+    ctx.beginPath();
+    ctx.arc(cx, doorCy, doorRadius, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // 열린 문 안쪽 — 은색 금속 통 느낌이 나도록 중심은 밝고 가장자리는 그늘지는 방사형 그라데이션.
+    const drumGradient = ctx.createRadialGradient(cx, doorCy, doorRadius * 0.1, cx, doorCy, doorRadius);
+    drumGradient.addColorStop(0, '#e8eaec');
+    drumGradient.addColorStop(0.6, '#aeb2b6');
+    drumGradient.addColorStop(1, '#6f7377');
+    ctx.fillStyle = drumGradient;
+    ctx.beginPath();
+    ctx.arc(cx, doorCy, doorRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.lineWidth = width * 0.012;
+    ctx.beginPath();
+    ctx.arc(cx, doorCy, doorRadius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  return canvas;
+}

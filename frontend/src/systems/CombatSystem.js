@@ -10,6 +10,7 @@ import {
   HEAL_MAX,
   BOSS_SHIELD_BLOCK_CHANCE,
   VOMIT_DAMAGE_MULTIPLIER,
+  WASHING_MACHINE_DAMAGE_MULTIPLIER,
 } from '../config/constants.js';
 
 export default class CombatSystem {
@@ -131,6 +132,22 @@ export default class CombatSystem {
   // 무관한 1회성 이벤트 데미지로 취급한다 — 무기로 때린 게 아니라 흔들기 자체가 유발한 반응이라서.
   applyVomitDamage() {
     const amount = this.rollDamage(VOMIT_DAMAGE_MULTIPLIER);
+    this.boss.takeDamage(amount);
+    this.score += amount;
+
+    const defeated = this.boss.isDead();
+    const deathPosition = defeated ? { x: this.boss.sprite.x, y: this.boss.sprite.y } : null;
+    if (defeated) {
+      this.boss.respawn();
+    }
+
+    return { amount, defeated, deathPosition };
+  }
+
+  // 세탁기 안에서 도는 동안 일정 간격(GameScene.applyWashingMachineDamageTick)으로 주는 데미지 —
+  // 무기 오버랩이 아니라 흔들기/패널충돌과 같은 1회성 이벤트 데미지로 취급한다.
+  applyWashingMachineDamage() {
+    const amount = this.rollDamage(WASHING_MACHINE_DAMAGE_MULTIPLIER);
     this.boss.takeDamage(amount);
     this.score += amount;
 

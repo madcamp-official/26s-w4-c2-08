@@ -9,6 +9,7 @@ import {
   RUBBER_DUCK_WEAPON_SIZE, TEDDY_BEAR_WEAPON_SIZE, CHEESE_SQUISHY_WEAPON_SIZE, FRYING_PAN_WEAPON_SIZE,
   SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BEACH_BALL_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
   GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
+  WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT,
   BOSS_SHIELD_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
@@ -26,7 +27,7 @@ import {
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
   createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
-  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas,
+  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createWashingMachineCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -52,6 +53,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('exit_button', assetUrl('audio/exit_button.mp3'));
     this.load.audio('boss_vomit', assetUrl('audio/obite.mp3'));
     this.load.audio('duck_quack', assetUrl('audio/duck_quack.mp3'));
+    this.load.audio('washing_machine_spin', assetUrl('audio/washing.mp3'));
     this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
@@ -113,6 +115,10 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_boomerang', createBoomerangCanvas(BOOMERANG_WEAPON_SIZE));
     this.textures.addCanvas('weapon_grenade', createGrenadeCanvas(GRENADE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_dynamite', createDynamiteCanvas(DYNAMITE_WEAPON_SIZE));
+    // 문 닫힘/열림 두 상태를 미리 각각 텍스처로 만들어두고, 실제로는 WeaponManager.toggleWashingMachineDoor가
+    // setTexture로 갈아끼우기만 한다(재렌더링 없음).
+    this.textures.addCanvas('weapon_washing_machine_closed', createWashingMachineCanvas(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT, { doorOpen: false }));
+    this.textures.addCanvas('weapon_washing_machine_open', createWashingMachineCanvas(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT, { doorOpen: true }));
 
     this.createThrowWeaponTexture();
   }

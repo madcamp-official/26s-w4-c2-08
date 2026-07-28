@@ -16,6 +16,13 @@ import {
   BOSS_FIRE_BREATH_COOLDOWN_MS,
   FIRE_BREATH_MIN_DAMAGE_STAGE,
   DEBUGGER_FREEZE_DURATION,
+  SHAKE_VOMIT_TRIGGER_MS,
+  SHAKE_MIN_MOVE_PX,
+  SHAKE_REVERSAL_WINDOW_MS,
+  SHAKE_MIN_REVERSALS_IN_WINDOW,
+  BOSS_VOMIT_DURATION,
+  WAND_TELEPORT_OUT_DURATION,
+  WAND_TELEPORT_IN_DURATION,
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -44,6 +51,9 @@ export default class Boss {
     this.isFrozen = false;
     this.freezeEvent = null;
     this.isPushingPanel = false;
+    this.vomitEvent = null;
+    this.onVomit = null; // GameScene이 생성 후 설정 (onPet과 같은 방식) — 구토 데미지/팝업 처리용 콜백
+    this.resetShakeTracking();
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
     // 그 여백까지 "몸통"으로 잡는다 — 방망이/투사체가 실제 그림에 닿기도 전에 먼저 겹침이 발생해서,
@@ -92,7 +102,7 @@ export default class Boss {
     return this.sprite.y + BOSS_MARGIN_TOP / 2;
   }
 
-  // 히트/오버랩 판정 전용 몸통 사각형 (world 좌표). 방망이 캡슐(batOverlapsBoss)과 투사체 원
+  // 히트/오버랩 판정 전용 몸통 사각형 (world 좌표). PORTABLE 무기 캡슐(portableOverlapsBoss)과 투사체 원
   // (projectileOverlapsBoss) 판정에 쓴다 — 자세한 이유는 위 getter들 주석 참고.
   getHitRect() {
     return new Phaser.Geom.Rectangle(
@@ -151,6 +161,9 @@ export default class Boss {
     this.blinkEvent = null;
     this.freezeEvent?.remove();
     this.freezeEvent = null;
+    this.vomitEvent?.remove();
+    this.vomitEvent = null;
+    this.resetShakeTracking();
     this.isFrozen = false;
     this.isPushingPanel = false;
     this.recentHitTimestamps = [];
@@ -169,6 +182,9 @@ export default class Boss {
     this.happyFaceEvent = null;
     this.blinkEvent?.remove();
     this.blinkEvent = null;
+    this.vomitEvent?.remove();
+    this.vomitEvent = null;
+    this.resetShakeTracking();
     this.isPushingPanel = false;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
@@ -196,6 +212,42 @@ export default class Boss {
       y: targetY,
       duration: BOSS_KNOCKBACK_OUT_DURATION,
       ease: 'Quad.easeOut',
+    });
+  }
+
+  // 마술봉(WAND)에 맞으면 넉백 대신 호출된다(GameScene.onHit) — 데미지는 이미 CombatSystem.handleHit이
+  // 다른 PORTABLE 무기와 같은 파이프라인으로 처리했고, 여기서는 그 자리에서 작아지며 사라졌다가 화면 안
+  // 랜덤한 위치에서 다시 커지며 나타나는 순간이동 연출만 담당한다. halfW/halfH는 축소 트윈이 시작되기
+  // 전(스케일 1일 때)에 미리 구해둬야 한다 — displayWidth/Height는 현재 스케일에 비례해서, 트윈이 끝난
+  // onComplete 시점(스케일 0)에 계산하면 0이 나와버린다.
+  teleportRandom() {
+    this.scene.tweens.killTweensOf(this.sprite);
+    this.isPanelBounceActive = false;
+    this.sprite.setAngle(0);
+
+    const halfW = this.displayWidth / 2;
+    const halfH = this.displayHeight / 2;
+    const { width, height } = this.scene.scale;
+
+    this.scene.tweens.add({
+      targets: this.sprite,
+      scale: 0,
+      alpha: 0,
+      duration: WAND_TELEPORT_OUT_DURATION,
+      ease: 'Back.easeIn',
+      onComplete: () => {
+        const x = Phaser.Math.Between(halfW, width - halfW);
+        const y = Phaser.Math.Between(halfH, height - halfH);
+        this.sprite.setPosition(x, y);
+
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scale: 1,
+          alpha: 1,
+          duration: WAND_TELEPORT_IN_DURATION,
+          ease: 'Back.easeOut',
+        });
+      },
     });
   }
 
@@ -264,10 +316,82 @@ export default class Boss {
     });
   }
 
+  // 드래그(잡기)를 새로 시작할 때 흔들기 판정 상태를 초기화한다. GameScene의 'dragstart'에서 호출.
+  resetShakeTracking() {
+    this.shakeRefDx = null;
+    this.shakeRefDy = null;
+    this.shakeReversalTimestamps = [];
+    this.shakeActiveSince = null;
+    this.shakeTriggered = false;
+  }
+
+  // 드래그 중 매 이동(dx,dy)을 받아 "흔들기"인지 판정한다.
+  // 기준 방향(shakeRefDx/Dy)은 매 이동마다 갱신하지 않고 실제로 방향이 뒤집힐 때만 갱신한다 — 한
+  // 스윙(예: 왼쪽 끝까지 갔다가 되돌아오는 한쪽 이동) 안에는 같은 방향 샘플이 여러 번 들어오는데,
+  // 기준을 매번 최신 샘플로 갱신해버리면 그 샘플들끼리도 "반전"처럼 보여 흔들기 판정이 거의 항상
+  // 상쇄돼 버린다(실측 버그) — 반전은 스윙이 꺾이는 순간에만 한 번 세야 한다.
+  // 최근 SHAKE_REVERSAL_WINDOW_MS 안에 반전이 SHAKE_MIN_REVERSALS_IN_WINDOW번 이상 쌓이면 "흔드는 중"으로
+  // 보고, 그 상태가 SHAKE_VOMIT_TRIGGER_MS만큼 끊기지 않고 이어지면 구토 연출을 1회 띄운다.
+  registerDragMovement(dx, dy) {
+    // 너무 작은 이동은 손떨림/드래그 잡음이라 무시하고 기준 방향도 그대로 둔다.
+    if (dx * dx + dy * dy < SHAKE_MIN_MOVE_PX * SHAKE_MIN_MOVE_PX) return;
+
+    const now = this.scene.time.now;
+    if (this.shakeRefDx == null) {
+      this.shakeRefDx = dx;
+      this.shakeRefDy = dy;
+      return;
+    }
+
+    const dot = dx * this.shakeRefDx + dy * this.shakeRefDy;
+    if (dot >= 0) return; // 기준 방향과 같은 쪽으로 계속 이어지는 중 — 아직 반전이 아니다.
+
+    // 방향이 실제로 뒤집혔다 — 반전 1회로 기록하고, 다음 반전 판정 기준을 이 방향으로 새로 잡는다.
+    this.shakeRefDx = dx;
+    this.shakeRefDy = dy;
+    this.shakeReversalTimestamps.push(now);
+    this.shakeReversalTimestamps = this.shakeReversalTimestamps.filter(
+      (t) => now - t <= SHAKE_REVERSAL_WINDOW_MS,
+    );
+
+    if (this.shakeReversalTimestamps.length < SHAKE_MIN_REVERSALS_IN_WINDOW) {
+      this.shakeActiveSince = null; // 반전 빈도가 떨어짐 — 흔드는 흐름이 끊겼다고 보고 리셋.
+      return;
+    }
+    if (this.shakeActiveSince == null) this.shakeActiveSince = now;
+    if (!this.shakeTriggered && now - this.shakeActiveSince >= SHAKE_VOMIT_TRIGGER_MS) {
+      this.shakeTriggered = true;
+      this.showVomit();
+    }
+  }
+
+  // 흔들기 트리거로 뜨는 구토 연출. 다른 표정 반응(피격/불뿜기/웃음/깜빡임)보다 우선하며,
+  // 유지 시간이 끝나면 현재 데미지 단계의 평상시 텍스처로 복귀한다.
+  showVomit() {
+    this.hurtFaceEvent?.remove();
+    this.hurtFaceEvent = null;
+    this.fireBreathEvent?.remove();
+    this.fireBreathEvent = null;
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
+    this.vomitEvent?.remove();
+    this.sprite.setTexture(`boss_vomit_${this.bossTypeId}_d${this.damageStage}`);
+    this.scene.sound.play('boss_vomit');
+    // 구토 자체가 데미지 이벤트 — GameScene이 combat.applyVomitDamage()로 실제 데미지/점수를 처리하고
+    // 여기서는 팝업/스파크가 뜰 위치(입 근처)만 알려준다.
+    this.onVomit?.(this.bodyCenterX, this.bodyCenterY);
+    this.vomitEvent = this.scene.time.delayedCall(BOSS_VOMIT_DURATION, () => {
+      this.vomitEvent = null;
+      this.sprite.setTexture(this.getBaseTextureKey());
+    });
+  }
+
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.
   // 불 뿜는 연출이 떠 있는 동안은 X_X로 덮어쓰지 않는다 (불 뿜기가 우선). 웃는 표정 중에 맞으면 그건 덮어써도 된다.
   showHurtFace() {
-    if (this.fireBreathEvent) return;
+    if (this.fireBreathEvent || this.vomitEvent) return;
     this.hurtFaceEvent?.remove();
     this.happyFaceEvent?.remove();
     this.happyFaceEvent = null;
@@ -299,7 +423,9 @@ export default class Boss {
   }
 
   // 콤보로 터지는 "불 뿜기" 표정 + 효과음. X_X 표정보다 우선하며, 끝나면 현재 데미지 단계의 평상시 텍스처로 복귀한다.
+  // 구토 연출이 떠 있는 동안은 덮어쓰지 않는다(구토가 우선).
   showFireBreath() {
+    if (this.vomitEvent) return;
     this.hurtFaceEvent?.remove();
     this.hurtFaceEvent = null;
     this.happyFaceEvent?.remove();
@@ -319,7 +445,7 @@ export default class Boss {
   // 하나라도 떠 있으면(더 급한 반응이 진행 중이면) 무시한다. HP 단계와 무관한 표정이라
   // boss_happy_${id} 텍스처엔 데미지 단계 구분이 없다(createBossHappyCanvas 참고).
   showHappyFace() {
-    if (this.fireBreathEvent || this.hurtFaceEvent) return;
+    if (this.fireBreathEvent || this.hurtFaceEvent || this.vomitEvent) return;
     this.happyFaceEvent?.remove();
     this.blinkEvent?.remove();
     this.blinkEvent = null;
@@ -339,7 +465,7 @@ export default class Boss {
   // 더 급한 표정(피격/불뿜기/웃음)이 떠 있지 않을 때만 깜빡이고, 그 여부와 상관없이 항상 다음
   // 깜빡임을 다시 예약해서 깜빡임 루프 자체는 끊기지 않게 한다.
   tryBlink() {
-    if (!this.fireBreathEvent && !this.hurtFaceEvent && !this.happyFaceEvent) {
+    if (!this.fireBreathEvent && !this.hurtFaceEvent && !this.happyFaceEvent && !this.vomitEvent) {
       this.sprite.setTexture(`boss_blink_${this.bossTypeId}_d${this.damageStage}`);
       this.blinkEvent = this.scene.time.delayedCall(BOSS_BLINK_DURATION, () => {
         this.blinkEvent = null;

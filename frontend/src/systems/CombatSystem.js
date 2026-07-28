@@ -8,6 +8,7 @@ import {
   PET_COOLDOWN,
   HEAL_MIN,
   HEAL_MAX,
+  VOMIT_DAMAGE_MULTIPLIER,
 } from '../config/constants.js';
 
 export default class CombatSystem {
@@ -95,6 +96,22 @@ export default class CombatSystem {
   // 연타 쿨다운(HIT_COOLDOWN)과 무관하게, 무기 히트와는 별개인 UI 충돌 이벤트로 취급한다.
   applyPanelPushDamage() {
     const amount = this.rollDamage() * BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER;
+    this.boss.takeDamage(amount);
+    this.score += amount;
+
+    const defeated = this.boss.isDead();
+    const deathPosition = defeated ? { x: this.boss.sprite.x, y: this.boss.sprite.y } : null;
+    if (defeated) {
+      this.boss.respawn();
+    }
+
+    return { amount, defeated, deathPosition };
+  }
+
+  // 흔들어서 구토를 유발했을 때 주는 데미지. applyPanelPushDamage와 같은 방식으로 HIT_COOLDOWN과
+  // 무관한 1회성 이벤트 데미지로 취급한다 — 무기로 때린 게 아니라 흔들기 자체가 유발한 반응이라서.
+  applyVomitDamage() {
+    const amount = this.rollDamage(VOMIT_DAMAGE_MULTIPLIER);
     this.boss.takeDamage(amount);
     this.score += amount;
 

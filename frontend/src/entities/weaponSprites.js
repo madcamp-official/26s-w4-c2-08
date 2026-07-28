@@ -379,6 +379,58 @@ export function createBaseballBatCanvas(size) {
   return canvas;
 }
 
+// 휴대형 무기 추가 디자인: 마술봉. 검은 몸통 + 양 끝의 흰 네모 캡(마술 지휘봉 실루엣) — 캡도 몸통과
+// 같은 두께의 사각형이라 방망이처럼 테이퍼나 옆으로 튀어나온 부분 없이 끝에서 끝까지 균일한 두께다.
+// 방망이와 같은 이유(45도로 눕힌 실루엣을 딱 감싸는 캔버스 크기)로 getMagicWandDimensions를 따로
+// 분리해 WeaponManager의 캡슐 히트박스 계산과 같은 치수를 공유한다.
+export function getMagicWandDimensions(size) {
+  const totalLength = size * 0.86;
+  const halfLen = totalLength / 2;
+  const shaftHalfWidth = size * 0.032; // 몸통 두께 절반 — 캡도 이와 동일한 두께로 맞춘다(캡슐 판정 반지름으로도 재사용)
+  const capLength = size * 0.12; // 양 끝 흰 네모 캡이 축 방향으로 차지하는 길이
+
+  // 45도 회전한 막대의 축정렬 경계 상자 한 변 길이 (+2px는 안티에일리어싱 여백)
+  const canvasSize = Math.ceil(Math.SQRT2 * (halfLen + shaftHalfWidth)) + 2;
+
+  return { halfLen, shaftHalfWidth, capLength, canvasSize };
+}
+
+export function createMagicWandCanvas(size) {
+  const shaftColor = '#1c1c1c';
+  const shaftStroke = '#000000';
+  const capColor = '#f5f5f5';
+  const capStroke = '#c7c7c7';
+
+  const { halfLen, shaftHalfWidth, capLength, canvasSize } = getMagicWandDimensions(size);
+
+  const canvas = createCanvas(canvasSize);
+  const ctx = canvas.getContext('2d');
+
+  ctx.save();
+  ctx.translate(canvasSize / 2, canvasSize / 2);
+  ctx.rotate(-Math.PI / 4);
+
+  // 검은 몸통 — 끝에서 끝까지 곧고 균일한 두께의 막대
+  ctx.fillStyle = shaftColor;
+  ctx.strokeStyle = shaftStroke;
+  ctx.lineWidth = Math.max(1, size * 0.008);
+  ctx.fillRect(-halfLen, -shaftHalfWidth, halfLen * 2, shaftHalfWidth * 2);
+  ctx.strokeRect(-halfLen, -shaftHalfWidth, halfLen * 2, shaftHalfWidth * 2);
+
+  // 양 끝 흰색 네모 캡 — 몸통과 같은 두께의 사각형으로, 끝부분만 색을 다르게 덮어 그린다
+  ctx.fillStyle = capColor;
+  ctx.strokeStyle = capStroke;
+  ctx.lineWidth = Math.max(1, size * 0.01);
+  [-1, 1].forEach((side) => {
+    const capX = side > 0 ? halfLen - capLength : -halfLen;
+    ctx.fillRect(capX, -shaftHalfWidth, capLength, shaftHalfWidth * 2);
+    ctx.strokeRect(capX, -shaftHalfWidth, capLength, shaftHalfWidth * 2);
+  });
+
+  ctx.restore();
+  return canvas;
+}
+
 // 투척형 무기 세 번째/네 번째 디자인: 권총/기관총. 총알(투사체)이 뾰족한 방향을 향해야 자연스러워서
 // 다트와 같은 규칙으로 각도 0(오른쪽)을 바라보게 그린다 — WeaponManager가 rotateToTravel로 그대로 회전시킨다.
 

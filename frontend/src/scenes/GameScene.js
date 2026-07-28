@@ -4,6 +4,8 @@ import {
   DEFEAT_POPUP_DURATION,
   DEFEAT_POPUP_COLOR,
   BOSS_PANEL_PUSH_POPUP_COLOR,
+  VOMIT_POPUP_COLOR,
+  WAND_TELEPORT_SPARK_COLOR,
   AGENT_TAUNT_POPUP_DURATION,
   AGENT_TAUNT_TYPING_SPEED,
   AGENT_TAUNT_INTRO_DELAY,
@@ -32,6 +34,7 @@ import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import Hud from '../ui/Hud.js';
+import { showUsernameModal } from '../ui/usernameModal.js';
 import { gameContext, postToExtension, onAgentTaunt } from '../vscodeBridge.js';
 import { submitScore, fetchLeaderboard } from '../api.js';
 
@@ -57,6 +60,8 @@ export default class GameScene extends Phaser.Scene {
     // updateIdleDrift가 이번 프레임에 실제로 걷고 있는 중인지 — pointerdown 핸들러가 클릭 순간
     // "걷다가 들켰는지" 판단하는 데 쓴다(walking 중 클릭 → AGENT_TAUNT_LINES_IDLE_CAUGHT 팝업).
     this.isIdleDrifting = false;
+    // 보스를 드래그 중인 포인터 — 구토 트리거 시 releaseBossDrag()가 이 포인터의 드래그를 강제로 끝낸다.
+    this.activeDragPointer = null;
 
     this.currentBackgroundStyle = BACKGROUND_STYLE;
     this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
@@ -73,6 +78,8 @@ export default class GameScene extends Phaser.Scene {
     });
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
     this.combat.onPet = (amount, point) => this.onPet(amount, point);
+    // 흔들려서 구토가 트리거되면(Boss.showVomit) 데미지/점수/팝업을 여기서 처리한다.
+    this.boss.onVomit = (x, y) => this.onVomit(x, y);
     // heals 무기(착한 손)는 데미지가 아니라 힐링이라 combat.handleHit이 아니라 handlePet으로 따로 보낸다.
     // weaponId를 하드코딩하지 않고 WEAPON_DEFINITIONS[id].heals로 판단해서 힐링 무기가 늘어나도 여기 안 고쳐도 되게 한다.
     this.weaponManager = new WeaponManager(this, this.boss, (weapon) => {
@@ -83,19 +90,37 @@ export default class GameScene extends Phaser.Scene {
 
     this.sniperScope = this.createSniperScope();
 
+    // 보스를 잡을 때마다(dragstart) 흔들기 누적치를 새로 시작한다 — 이전에 잡았을 때의 흔들림이 이어지지 않게.
+    this.input.on('dragstart', (pointer) => {
+      this.activeDragPointer = pointer;
+      this.boss.resetShakeTracking();
+    });
+    this.input.on('dragend', () => {
+      this.activeDragPointer = null;
+    });
+
     // 보스는 무기를 고른 뒤에도 항상 드래그로 옮길 수 있다 — 보스 위를 직접 누르면 드래그가 우선.
+    // 계속 방향을 바꾸며(=흔들며) 잡고 있으면 Boss.registerDragMovement가 누적 시간을 재서 구토 연출을 띄운다.
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
       this.markInteraction();
       if (this.isEnded) return;
       if (this.boss.isFrozen) return; // 디버거(브레이크포인트)에 맞은 동안은 드래그로 못 옮긴다.
+      const prevX = this.boss.sprite.x;
+      const prevY = this.boss.sprite.y;
       const x = Phaser.Math.Clamp(dragX, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(dragY, 40, this.scale.height - 40);
       this.boss.setPosition(x, y);
+      this.boss.registerDragMovement(x - prevX, y - prevY);
     });
 
     // 무기를 고른 뒤 필드(UI도, 보스 위도 아님)를 누르고 있는 동안에만 그 자리에 무기가 나타나 보스를 때리고,
     // 손을 떼면 사라진다. 보스 위를 직접 누르면 위 'drag' 리스너가 대신 처리하므로 여기서는 건너뛴다.
     this.input.on('pointerdown', (pointer, currentlyOver) => {
+      // 웹뷰가 캔버스(800x600)보다 넓으면 그 바깥 여백도 같은 iframe 문서라 Phaser의 MouseManager가
+      // window 레벨로 mousedown을 그대로 잡아버린다(target !== canvas). 그 결과 게임 화면 밖을
+      // 클릭해도 이 'pointerdown'이 발생해 방치 드리프트가 풀려버리므로, 실제 캔버스 범위 안의
+      // 클릭만 상호작용으로 인정한다.
+      if (!this.isPointerWithinGameBounds(pointer)) return;
       // markInteraction()이 드리프트를 즉시 멈추므로, "걷던 중이었는지"는 그 전에 먼저 봐둬야 한다.
       const wasIdleDrifting = this.isIdleDrifting;
       this.markInteraction();
@@ -140,6 +165,21 @@ export default class GameScene extends Phaser.Scene {
       this.stopActiveWeapon();
     });
 
+    // webview가 다른 에디터 탭 등으로 포커스를 잃었다 돌아오면, 실제로는 마우스 버튼이 떼어졌는데도
+    // Phaser의 activePointer.isDown이 stale하게 true로 남는 경우가 있다(mouseup이 webview 밖에서
+    // 일어나 못 받음). 그 상태로 재포커스되면 update()의 "누르는 중이면 매 프레임 상호작용"
+    // 체크(isDown 검사)가 실제 클릭 없이도 markInteraction()을 불러 방치 드리프트가 풀려버린다.
+    // blur 시점에 포인터/드래그/무기 상태를 강제로 정리해, 방치 모드는 오직 재클릭으로만 풀리게 한다.
+    this.handleWindowBlur = () => {
+      this.input.activePointer.isDown = false;
+      this.releaseBossDrag();
+      this.stopActiveWeapon();
+    };
+    window.addEventListener('blur', this.handleWindowBlur);
+    this.events.once('shutdown', () => {
+      window.removeEventListener('blur', this.handleWindowBlur);
+    });
+
     // SessionEnd 훅(토큰 임계치 초과, extension/scripts/session-end-hook.js)이 발동했을 때 게임 시작 직후 1회 전달됨
     onAgentTaunt((tokenCount) => this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(getAgentTauntLines(tokenCount))));
 
@@ -156,8 +196,11 @@ export default class GameScene extends Phaser.Scene {
     // 무기를 든 채 가만히 누르고 있거나(투척형 자동 연사), 커서를 멈춘 채 계속 때리는 중에는
     // pointerdown 이후 pointermove가 안 오거나 와도 markInteraction()을 안 불러서 idle 타이머가
     // 갱신되지 않았다 — 전투 중인데도 2초 뒤 보스가 나가기 버튼 쪽으로 걸어가버리는 원인.
-    // 포인터가 눌려있는 동안은 매 프레임 상호작용 중으로 취급해 이를 막는다.
-    if (this.input.activePointer.isDown) this.markInteraction();
+    // 포인터가 눌려있는 동안은 매 프레임 상호작용 중으로 취급해 이를 막는다. 단, 캔버스 밖에서
+    // 눌린 채 시작된 경우(게임 화면 바깥 클릭)까지 상호작용으로 치면 안 되므로 범위도 같이 본다.
+    if (this.input.activePointer.isDown && this.isPointerWithinGameBounds(this.input.activePointer)) {
+      this.markInteraction();
+    }
     // updateIdleDrift가 이번 프레임에 패널을 만났는지(isPushingPanel) 먼저 정해야, 뒤이은
     // checkBossAgainstPanel이 같은 프레임에 그 상태를 보고 flyOutToLeftWall을 건너뛸 수 있다.
     this.updateIdleDrift(time, delta);
@@ -166,6 +209,12 @@ export default class GameScene extends Phaser.Scene {
     if (this.sniperScope.camera.visible) {
       this.sniperScope.camera.centerOn(this.boss.bodyCenterX, this.boss.bodyCenterY);
     }
+  }
+
+  // pointer 좌표가 실제 캔버스(게임 화면) 범위 안인지. Phaser의 transformPointer는 canvas 바깥
+  // 클릭(webview 여백 등)도 canvas 기준 상대좌표로 변환해버려서, 값 자체는 나오지만 범위를 벗어난다.
+  isPointerWithinGameBounds(pointer) {
+    return pointer.x >= 0 && pointer.x < this.scale.width && pointer.y >= 0 && pointer.y < this.scale.height;
   }
 
   // 화면 클릭(pointerdown)/드래그가 있을 때마다 호출해 idle 타이머를 리셋한다.
@@ -370,14 +419,24 @@ export default class GameScene extends Phaser.Scene {
     this.onGameEnd(overlay, this.combat.score);
   }
 
-  // online: 서버에 점수 제출 후 리더보드 조회. 실패해도 게임이 죽으면 안 되므로 try/catch로 감싸고
-  // 콘솔 경고 후 로컬 표시로 폴백한다 (docs/API.md 클라이언트 fallback).
+  // online + 이름 있음(hasUserName): 모달 없이 바로 서버에 등록.
+  // online + 이름 없음(git remote는 있는데 globalState/git user.name 둘 다 없어 'player'로 폴백된 경우):
+  //   게임 화면 안(webview DOM 오버레이, usernameModal.js)에서 이름을 받아온 뒤에 등록 — 이후 판부터는
+  //   그 이름이 globalState에 저장되어 있으니 hasUserName이 true가 되어 모달이 다시 뜨지 않는다.
+  // 실패해도 게임이 죽으면 안 되므로 try/catch로 감싸고 콘솔 경고 후 로컬 표시로 폴백한다 (docs/API.md 클라이언트 fallback).
   // local: 서버 통신 없이 extension에 saveLocalScore만 보내고, 최고기록은 init 때 받은 값과 이번 점수 중 큰 쪽을 바로 보여준다.
   async onGameEnd(overlay, score) {
     if (gameContext.mode === 'online' && gameContext.groupId) {
+      let { userName } = gameContext;
+      if (!gameContext.hasUserName) {
+        userName = await showUsernameModal(userName);
+        gameContext.userName = userName;
+        gameContext.hasUserName = true;
+        postToExtension({ type: 'saveUserName', userName }); // 다음 판부터 모달 없이 이 이름을 쓰도록 extension globalState에 저장
+      }
       this.hud.setEndOverlayStatus(overlay, '리더보드 불러오는 중...');
       try {
-        await submitScore(gameContext.groupId, gameContext.userName, score);
+        await submitScore(gameContext.groupId, userName, score);
         const leaderboard = await fetchLeaderboard(gameContext.groupId);
         this.hud.setEndOverlayStatus(overlay, formatLeaderboard(leaderboard));
       } catch (e) {
@@ -416,8 +475,12 @@ export default class GameScene extends Phaser.Scene {
       const hitY = hits.reduce((sum, hit) => sum + hit.y, 0) / hits.length;
       // 전기충격기에 맞았으면 흰색 대신 시안색으로 살짝 다르게 번쩍여서 "감전됐다"는 느낌을 준다.
       const isTaserHit = hits.some((hit) => hit.weaponId === WEAPON_IDS.TASER);
-      this.boss.knockback(hitX, hitY);
-      this.boss.flash(isTaserHit ? 0x66e0ff : 0xffffff);
+      // 마술봉(teleportsBoss)에 맞으면 넉백 대신 화면 안 랜덤한 위치로 순간이동시킨다(Boss.teleportRandom) —
+      // 데미지는 다른 PORTABLE 무기와 동일하게 이미 CombatSystem.handleHit에서 처리됐다.
+      const isWandHit = hits.some((hit) => WEAPON_DEFINITIONS[hit.weaponId]?.teleportsBoss);
+      if (isWandHit) this.boss.teleportRandom();
+      else this.boss.knockback(hitX, hitY);
+      this.boss.flash(isTaserHit ? 0x66e0ff : (isWandHit ? WAND_TELEPORT_SPARK_COLOR : 0xffffff));
       this.boss.registerHits(hits.length);
       this.boss.showHurtFace();
       hits.forEach((hit) => {
@@ -425,10 +488,12 @@ export default class GameScene extends Phaser.Scene {
         const bigImpact = WEAPON_DEFINITIONS[hit.weaponId]?.bigImpact;
         if (hit.weaponId === WEAPON_IDS.TASER) this.spawnElectrocuteEffect();
         else if (hit.weaponId === WEAPON_IDS.MEGAPHONE) this.spawnSoundWaveEffect(hit.x, hit.y);
-        // 토마토/수박: 빨간 스플래터. 물풍선: 파란 스플래시. 전용 이펙트 함수 없이 spawnHitSpark 색만 바꿔 재사용한다.
+        // 토마토/수박: 빨간 스플래터. 물풍선: 파란 스플래시. 마술봉: 연보라 스파크. 전용 이펙트 함수 없이
+        // spawnHitSpark 색만 바꿔 재사용한다.
         else if (hit.weaponId === WEAPON_IDS.TOMATO || hit.weaponId === WEAPON_IDS.WATERMELON) {
           this.spawnHitSpark(hit.x, hit.y, 0xc0392b, bigImpact ? 1.8 : 1);
         } else if (hit.weaponId === WEAPON_IDS.WATER_BALLOON) this.spawnHitSpark(hit.x, hit.y, 0x4fc3f7, bigImpact ? 1.8 : 1);
+        else if (hit.weaponId === WEAPON_IDS.WAND) this.spawnHitSpark(hit.x, hit.y, WAND_TELEPORT_SPARK_COLOR, bigImpact ? 1.8 : 1);
         else this.spawnHitSpark(hit.x, hit.y, undefined, bigImpact ? 1.8 : 1);
       });
     }
@@ -479,6 +544,34 @@ export default class GameScene extends Phaser.Scene {
     this.spawnHitSpark(x, y, 0xff5050);
     this.boss.flash(0xff3333);
     this.cameras.main.shake(120, 0.008);
+
+    if (defeated) {
+      this.spawnDefeatPopup(deathPosition);
+    }
+  }
+
+  // Phaser는 진행 중인 드래그를 코드로 취소하는 공식 API가 없다 — 실제 pointerup 때 내부적으로 호출되는
+  // processDragUpEvent(@private로 문서화돼 있지만 실제로는 그냥 public 메서드)를 직접 호출해서 dragState를
+  // 정리하고 DRAG_END/GAMEOBJECT_DRAG_END까지 정상적으로 발생시킨다. 실제 마우스 버튼은 그대로 눌려 있어도
+  // 이 포인터는 놓았다 다시 잡기 전까지 보스를 끌고 다닐 수 없게 된다 — "손을 놓친" 것과 같은 효과.
+  releaseBossDrag() {
+    if (!this.activeDragPointer) return;
+    this.input.processDragUpEvent(this.activeDragPointer);
+    this.activeDragPointer = null;
+  }
+
+  // 흔들려서 구토가 트리거됐을 때(Boss.showVomit) 호출되는 데미지 처리. 무기 히트가 아니라 흔들기
+  // 자체가 유발한 반응이라 combat.handleHit이 아니라 applyPanelPushDamage와 같은 1회성 이벤트로 처리한다.
+  // 구토하는 순간 손을 놓친 것처럼 드래그도 강제로 풀어준다.
+  onVomit(x, y) {
+    if (this.isEnded) return;
+
+    this.releaseBossDrag();
+    const { amount, defeated, deathPosition } = this.combat.applyVomitDamage();
+    this.hud.updateHpBar(this.boss);
+    this.hud.updateScoreText(this.combat.score);
+    this.spawnDamagePopup({ amount, x, y, color: VOMIT_POPUP_COLOR });
+    this.spawnHitSpark(x, y, 0x7cb342);
 
     if (defeated) {
       this.spawnDefeatPopup(deathPosition);

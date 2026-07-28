@@ -6,11 +6,14 @@ import {
   SOUND_WAVE_PROJECTILE_SIZE, WHIP_WEAPON_SIZE, DEBUGGER_WEAPON_SIZE, DART_COLOR_VARIANTS, DART_PROJECTILE_TEXTURES,
   BAMBOO_CANE_WEAPON_SIZE, SQUISHY_WEAPON_SIZE,
   RUBBER_DUCK_WEAPON_SIZE, TEDDY_BEAR_WEAPON_SIZE, CHEESE_SQUISHY_WEAPON_SIZE, FRYING_PAN_WEAPON_SIZE,
-  SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
+  SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BEACH_BALL_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
+  GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
+  BOSS_SHIELD_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
-  createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas, MAX_DAMAGE_STAGE,
+  createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas,
+  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
   createBaseballCanvas, createBaseballBatCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
@@ -21,6 +24,7 @@ import {
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
   createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
+  createGrenadeCanvas, createDynamiteCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -73,7 +77,13 @@ export default class BootScene extends Phaser.Scene {
       }
       // 웃는 표정은 HP 단계와 무관해서(항상 같은 눈/입) 단계별로 안 만들고 보스 타입마다 하나씩만 둔다.
       this.textures.addCanvas(`boss_happy_${id}`, createBossHappyCanvas(color));
+      // 방패 들 때 짓는 썩소도 웃는 표정과 마찬가지로 HP 단계와 무관한 단일 텍스처.
+      this.textures.addCanvas(`boss_smirk_${id}`, createBossSmirkCanvas(color));
+      // 방치 중 잠깐 자는 척하는 표정도 마찬가지로 단일 텍스처.
+      this.textures.addCanvas(`boss_sleep_${id}`, createBossSleepCanvas(color));
     });
+    // 체력 최저 단계에서 가끔 뜨는 방패(Boss.activateShield) — 보스 타입/데미지 단계와 무관한 단일 텍스처.
+    this.textures.addCanvas('boss_shield', createBossShieldCanvas(BOSS_SHIELD_SIZE));
   }
 
   createPlaceholderTextures() {
@@ -93,6 +103,8 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_slipper', createSlipperCanvas(SLIPPER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_boxing_glove', createBoxingGloveCanvas(BOXING_GLOVE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_boomerang', createBoomerangCanvas(BOOMERANG_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_grenade', createGrenadeCanvas(GRENADE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_dynamite', createDynamiteCanvas(DYNAMITE_WEAPON_SIZE));
 
     this.createThrowWeaponTexture();
   }
@@ -128,7 +140,7 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('effect_watermelon_slice', createWatermelonSliceCanvas(WATERMELON_WEAPON_SIZE));
     this.textures.addCanvas('weapon_water_balloon', createWaterBalloonCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_water_balloon_projectile', createWaterBalloonCanvas(THROW_WEAPON_SIZE));
-    this.textures.addCanvas('weapon_beach_ball', createBeachBallCanvas(THROW_WEAPON_SIZE));
-    this.textures.addCanvas('weapon_beach_ball_projectile', createBeachBallCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_beach_ball', createBeachBallCanvas(BEACH_BALL_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_beach_ball_projectile', createBeachBallCanvas(BEACH_BALL_WEAPON_SIZE));
   }
 }

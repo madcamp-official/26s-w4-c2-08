@@ -338,3 +338,161 @@ export function createBossBlinkCanvas(bodyColor, eyeColor = '#000000', damageSta
 
   return canvas;
 }
+
+// 방치(idle)로 걸어가기 전 잠깐 자는 척하는 표정(Boss.startSleeping) — 두 눈 다 감은 채로
+// 고정해두고(drawBlinkEye 재사용), 입은 살짝 벌린 동그란 모양으로 그려서 GameScene이 그 위치에
+// 하품 방울을 띄울 자리를 마련한다. HP 단계와 무관한 순수 반응용 표정이라 happy/smirk와 같은 패턴.
+function drawSleepMouth(ctx) {
+  const cx = SIDE_MARGIN + (COLS * CELL) / 2;
+  const mouthY = 2 * CELL + TOP_MARGIN + CELL * 0.3;
+
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.arc(cx, mouthY, CELL * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function createBossSleepCanvas(bodyColor, eyeColor = '#000000') {
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+
+  drawBody(ctx, bodyColor);
+  EYE_CELLS.forEach(([r, c]) => {
+    const { x, y, w, h } = cellRect(r, c);
+    drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h);
+  });
+  drawSleepMouth(ctx);
+
+  return canvas;
+}
+
+// 방패를 두를 때(Boss.activateShield) 짓는 "썩소" — 왼쪽 눈은 위로 살짝 휜 웃는 눈(drawHappyEye
+// 재사용), 오른쪽 눈은 찡긋 감은 윙크(drawBlinkEye 재사용)로 비대칭을 주고, 입은 자연스러운
+// 대칭 미소(drawSmileMouth 재사용) + 양쪽 볼터치로 흡족한 표정을 만든다. 예전엔 선글라스를
+// 씌웠는데 눈 사이가 멀어 보이고 입과 겹치는 문제가 있어서, 기존 표정 그리기 함수들을 그대로
+// 재사용하는 이 조합으로 바꿨다. 방패는 항상 최저 체력 단계에서만 뜨지만 표정 자체는 HP와 무관한
+// 순수 반응용이라 happy/blink처럼 damageStage 분기가 필요 없다.
+function drawSmirkMouth(ctx) {
+  drawSmileMouth(ctx);
+}
+
+// 양쪽 볼의 발그레한 볼터치 — 눈 셀 바로 바깥쪽 아래에 작은 타원 두 개.
+function drawSmirkCheeks(ctx) {
+  const [left, right] = EYE_CELLS.map(([r, c]) => cellRect(r, c));
+  const cheekY = left.y + left.h * 1.1;
+  const cheekOffsetX = left.w * 0.9;
+
+  ctx.fillStyle = '#ffb6c1';
+  [left.x - cheekOffsetX, right.x + right.w + cheekOffsetX].forEach((cx) => {
+    ctx.beginPath();
+    ctx.ellipse(cx, cheekY, CELL * 0.32, CELL * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+export function createBossSmirkCanvas(bodyColor, eyeColor = '#000000') {
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+
+  drawBody(ctx, bodyColor);
+  EYE_CELLS.forEach(([r, c], index) => {
+    const { x, y, w, h } = cellRect(r, c);
+    if (index === 0) drawHappyEye(ctx, bodyColor, eyeColor, x, y, w, h);
+    else drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h);
+  });
+  drawSmirkMouth(ctx);
+  drawSmirkCheeks(ctx);
+
+  return canvas;
+}
+
+// 체력 최저 단계에서 가끔 뜨는 무적 방패(Boss.activateShield) 텍스처. 고전적인 방패(heater shield)
+// 실루엣 — 위는 둥근 어깨 두 개가 가운데에서 살짝 파이고, 아래로 갈수록 좁아지다 뾰족한 끝으로 모인다.
+// 은색 프레임(테두리+십자 분할선) 위에 파란 4분할 면을 얹고, 교차점/테두리에 리벳(작은 원)을 찍는다.
+function traceShieldPath(ctx, width, height, pad) {
+  const cx = width / 2;
+  const w = width / 2 - pad;
+  const topY = pad;
+  const bulgeY = height * 0.34;
+  const taperY = height * 0.72;
+  const bottomY = height - pad;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, topY + height * 0.05); // 가운데 살짝 파인 지점
+  ctx.quadraticCurveTo(cx + w * 0.2, topY, cx + w * 0.55, topY + height * 0.02); // 오른쪽 어깨 봉우리
+  ctx.quadraticCurveTo(cx + w, topY + height * 0.1, cx + w, bulgeY); // 어깨→옆구리(가장 넓은 지점)
+  ctx.quadraticCurveTo(cx + w, taperY, cx + w * 0.5, bottomY - height * 0.12); // 옆구리→아래로 좁아짐
+  ctx.quadraticCurveTo(cx + w * 0.18, bottomY - height * 0.02, cx, bottomY); // 뾰족한 끝으로 수렴
+  ctx.quadraticCurveTo(cx - w * 0.18, bottomY - height * 0.02, cx - w * 0.5, bottomY - height * 0.12);
+  ctx.quadraticCurveTo(cx - w, taperY, cx - w, bulgeY);
+  ctx.quadraticCurveTo(cx - w, topY + height * 0.1, cx - w * 0.55, topY + height * 0.02);
+  ctx.quadraticCurveTo(cx - w * 0.2, topY, cx, topY + height * 0.05);
+  ctx.closePath();
+}
+
+export function createBossShieldCanvas(size = 40) {
+  const frameColor = '#9aa4b8';
+  const outlineColor = '#20222a';
+  const faceColor = '#3f7fe0';
+  const rivetColor = '#eef1f6';
+
+  const width = size;
+  const height = Math.round(size * 1.25);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const cx = width / 2;
+
+  // 바깥 프레임(은색 테두리) — 실루엣 전체를 채워두고, 그 위에 한 단계 작은 파란 면을 덮어서
+  // 가장자리에 균일한 은색 테두리만 남긴다.
+  traceShieldPath(ctx, width, height, 0);
+  ctx.fillStyle = frameColor;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  ctx.strokeStyle = outlineColor;
+  ctx.stroke();
+
+  // 안쪽 파란 면
+  const inset = size * 0.1;
+  traceShieldPath(ctx, width, height, inset);
+  ctx.fillStyle = faceColor;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.strokeStyle = outlineColor;
+  ctx.stroke();
+
+  // 십자 분할 — 파란 면 위에 은색 십자 바를 얹어서 4분할된 것처럼 보이게 한다.
+  const crossY = height * 0.42;
+  const crossHalfW = size * 0.06;
+  ctx.fillStyle = frameColor;
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.rect(cx - crossHalfW, inset, crossHalfW * 2, height - inset * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.rect(width * 0.14, crossY - crossHalfW, width * 0.72, crossHalfW * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 리벳(작은 원) — 십자 중심 + 위/좌/우 프레임에 몇 개 찍어 금속 방패 디테일을 준다.
+  const rivetPositions = [
+    [cx, crossY],
+    [cx, inset + size * 0.03],
+    [width * 0.16, crossY],
+    [width * 0.84, crossY],
+  ];
+  rivetPositions.forEach(([rx, ry]) => {
+    ctx.beginPath();
+    ctx.arc(rx, ry, size * 0.045, 0, Math.PI * 2);
+    ctx.fillStyle = rivetColor;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, size * 0.015);
+    ctx.strokeStyle = outlineColor;
+    ctx.stroke();
+  });
+
+  return canvas;
+}

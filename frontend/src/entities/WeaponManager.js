@@ -15,6 +15,10 @@ import {
   BOOMERANG_BACK_DURATION,
   BOOMERANG_CURVE_BULGE,
   BOOMERANG_SPIN_TURNS,
+  WEAPON_IDS,
+  DYNAMITE_CHAIN_LINK_RADIUS,
+  DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA,
+  DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA,
 } from '../config/constants.js';
 import { getBaseballBatDimensions } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
@@ -37,6 +41,8 @@ export default class WeaponManager {
     this.activeWeapon = null;
     this.projectiles = [];
     this.stuckProjectiles = [];
+    this.bombs = []; // 놓인 뒤 퓨즈가 타는 중인 폭탄류(armBomb) 목록 — 게임 종료 시 한꺼번에 정리하는 용도
+    this.onBombDetonate = null; // GameScene이 생성 후 설정 — 폭발 이펙트를 무기별로 다르게 띄우는 용도(onOverlap과 별개)
   }
 
   // 선택된 무기(WEAPON_IDS)를 pointer 위치에 만들어 화면에 보이게 한다. 투척형은 즉시 자동 연사를 시작한다.
@@ -51,9 +57,15 @@ export default class WeaponManager {
 
     if (category === WEAPON_CATEGORIES.THROW) {
       this.startFiring(weapon);
+      // 저격총처럼 스코프로 보스를 조준하는 THROW 무기는 발사대(들고 있는 총) 자체도 보스 쪽을
+      // 바라봐야 자연스럽다 — rotateToTravel(발사되는 총알 회전)과는 별개로 총 자체를 도는 처리.
+      if (WEAPON_DEFINITIONS[weaponId].rotateToBoss) this.faceBoss(weapon);
     } else if (category === WEAPON_CATEGORIES.BOOMERANG) {
       // 들고 있는 동안은 보스에 갖다 댈 필요가 없는 무기라 판정(overlapCollider) 자체를 안 둔다 —
       // 놓는 순간 throwBoomerang이 날아가는 동안에만 별도로 원형 판정을 건다.
+    } else if (category === WEAPON_CATEGORIES.BOMB) {
+      // 폭탄도 부메랑처럼 들고 있는 동안은 판정이 없다 — 어디든 놓을 수 있어야 하고, 데미지는
+      // 오버랩이 아니라 손을 뗀 뒤(armBomb) 퓨즈가 다 탔을 때 거리로 판정한다.
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
       if (category === WEAPON_CATEGORIES.PORTABLE) this.updateBatRotation(weapon);
@@ -129,6 +141,11 @@ export default class WeaponManager {
 
     if (weapon.category === WEAPON_CATEGORIES.BOOMERANG) {
       this.throwBoomerang(weapon);
+      return;
+    }
+
+    if (weapon.category === WEAPON_CATEGORIES.BOMB) {
+      this.armBomb(weapon);
       return;
     }
 
@@ -208,6 +225,86 @@ export default class WeaponManager {
     });
   }
 
+  // 폭탄을 놓은 자리에 그대로 무장시킨다 — 부메랑과 달리 날아가지 않고 제자리에서 퓨즈만 타들어간다.
+  // 퓨즈가 다 타면(fuseDuration) detonateBomb으로 넘어간다. 다 타기 전까지 점점 빨라지는 깜빡임으로
+  // "곧 터진다"는 긴장감을 준다.
+  armBomb(weapon) {
+    const definition = WEAPON_DEFINITIONS[weapon.weaponId];
+    if (definition.fireSound) this.scene.sound.play(definition.fireSound);
+    this.bombs.push(weapon);
+
+    this.scene.tweens.add({
+      targets: weapon, alpha: 0.35, duration: 200, yoyo: true, repeat: -1,
+    });
+    weapon.fuseEvent = this.scene.time.delayedCall(definition.fuseDuration, () => this.detonateBomb(weapon));
+  }
+
+  // 퓨즈가 다 타서 터지는 순간 — 그 위치와 보스 사이 거리가 유효 blastRadius 안이면 실제로 데미지를
+  // 주고(onOverlap, CombatSystem.handleHit이 방패 확률 체크까지 그대로 처리), 아니면 그냥 허탕
+  // (이펙트만 재생). 다이너마이트는 근처(DYNAMITE_CHAIN_LINK_RADIUS)에 다른 다이너마이트가 있으면
+  // 전부 같이 끌어모아 한 번에 터뜨리고, 묶인 개수만큼 반경/데미지를 불려서 "여러 개 모아두면 훨씬
+  // 크게 터지는" 연쇄 폭발을 만든다. onBombDetonate로 GameScene에 알려 무기별 폭발 이펙트/카메라
+  // 흔들림을 맡긴다(연쇄 개수도 같이 넘겨서 이펙트 규모를 키울 수 있게 한다).
+  detonateBomb(weapon) {
+    this.bombs = this.bombs.filter((b) => b !== weapon);
+    this.scene.tweens.killTweensOf(weapon);
+
+    const definition = WEAPON_DEFINITIONS[weapon.weaponId];
+    let blastRadius = definition.blastRadius;
+    let damageMultiplier = definition.damageMultiplier;
+    let chainedBombs = [];
+
+    if (weapon.weaponId === WEAPON_IDS.DYNAMITE) {
+      chainedBombs = this.collectDynamiteChain(weapon);
+      chainedBombs.forEach((bomb) => {
+        this.bombs = this.bombs.filter((b) => b !== bomb);
+        bomb.fuseEvent?.remove();
+        this.scene.tweens.killTweensOf(bomb);
+      });
+      const extraCount = chainedBombs.length;
+      blastRadius *= 1 + extraCount * DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA;
+      damageMultiplier *= 1 + extraCount * DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA;
+    }
+
+    const distance = Phaser.Math.Distance.Between(weapon.x, weapon.y, this.boss.bodyCenterX, this.boss.bodyCenterY);
+    const hitBoss = distance <= blastRadius;
+    if (hitBoss) {
+      // CombatSystem.handleHit이 이 히트의 데미지를 계산할 때 WEAPON_DEFINITIONS의 고정값 대신
+      // 이 값을 우선해서 쓰도록(연쇄로 불어난 배율) 무기 인스턴스에 직접 실어 보낸다.
+      weapon.damageMultiplierOverride = damageMultiplier;
+      this.onOverlap(weapon);
+    }
+    this.onBombDetonate?.(weapon.weaponId, weapon.x, weapon.y, hitBoss, chainedBombs.length + 1);
+
+    chainedBombs.forEach((bomb) => bomb.destroy());
+    weapon.destroy();
+  }
+
+  // 폭발 중인 다이너마이트 기준으로, 서로 DYNAMITE_CHAIN_LINK_RADIUS 안에 있는 다이너마이트끼리
+  // 사슬처럼 이어붙여 전부 모은다(너비 우선 탐색) — A-B, B-C가 각각 반경 안이면 A-C가 멀어도
+  // A/B/C 전부 한 번에 연쇄 폭발한다.
+  collectDynamiteChain(startWeapon) {
+    const candidates = this.bombs.filter((b) => b.weaponId === WEAPON_IDS.DYNAMITE);
+    const visited = new Set();
+    const queue = [startWeapon];
+    const chained = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      candidates.forEach((bomb) => {
+        if (visited.has(bomb)) return;
+        const distance = Phaser.Math.Distance.Between(current.x, current.y, bomb.x, bomb.y);
+        if (distance <= DYNAMITE_CHAIN_LINK_RADIUS) {
+          visited.add(bomb);
+          chained.push(bomb);
+          queue.push(bomb);
+        }
+      });
+    }
+
+    return chained;
+  }
+
   // 방망이 위치에서 보스를 바라보는 각도. 투사체 발사 각도 계산과 같은 패턴.
   getAngleToBoss(x, y) {
     return Phaser.Math.Angle.Between(x, y, this.boss.sprite.x, this.boss.sprite.y);
@@ -215,8 +312,12 @@ export default class WeaponManager {
 
   // weapon.rotation을 보스 쪽 각도로 맞춘다. bakedRotation은 텍스처가 그려진 로컬 각도(그림상 헤드가
   // 향한 방향)의 보정값 — 그만큼 상쇄해야 실제로 그려지는 헤드가 목표 각도를 향한다.
+  // baseAngle: recoilKick이 반동 후 되돌아갈 기준 각도로 쓴다 — 저격총처럼 rotateToBoss인 THROW 무기는
+  // 발사할 때마다 반동이 걸리는데, 이 값이 없으면 recoilKick이 매번 각도를 0(수평)으로 리셋해버려서
+  // 보스를 향해 돌아간 총이 쐈다 하면 다시 수평으로 튕겨 보이는 문제가 있었다.
   faceBoss(weapon, bakedRotation = 0) {
     weapon.rotation = this.getAngleToBoss(weapon.x, weapon.y) - bakedRotation;
+    weapon.baseAngle = weapon.angle;
   }
 
   // 화면에 보이는 방망이가 항상 이 각도를 바라보도록 회전시킨다. 텍스처가 로컬 -45도로 baked되어 있어
@@ -347,12 +448,16 @@ export default class WeaponManager {
   // 발사할 때마다 총 자체가 살짝 뒤로 젖혀졌다가 돌아오는 반동. position이 아니라 angle만 건드려서
   // moveActiveWeapon(드래그 중 매 프레임 setPosition)과 부딪히지 않게 한다. 연사 중 다음 발사가
   // 이전 반동이 끝나기 전에 겹치면 이전 트윈을 끊고 새로 시작해서 각도가 꼬이지 않게 한다.
+  // baseAngle(faceBoss가 저장해둔 기준 각도, 없으면 0) 기준으로 반동을 주고 그 각도로 되돌아온다 —
+  // rotateToBoss가 없는 총들은 항상 0이라 기존과 동일하게 동작하고, 저격총처럼 rotateToBoss로 보스를
+  // 향해 돌아가 있는 총은 그 각도를 유지한 채 반동만 얹는다(안 그러면 쏠 때마다 수평으로 리셋돼 버림).
   recoilKick(launcher, angleDeg) {
     this.scene.tweens.killTweensOf(launcher);
-    launcher.angle = 0;
+    const baseAngle = launcher.baseAngle ?? 0;
+    launcher.angle = baseAngle;
     this.scene.tweens.add({
       targets: launcher,
-      angle: -angleDeg,
+      angle: baseAngle - angleDeg,
       duration: 45,
       yoyo: true,
       ease: 'Sine.easeOut',
@@ -474,6 +579,14 @@ export default class WeaponManager {
   // 게임 종료 시 자동 연사를 멈추고 들고 있던 무기도 정리한다.
   stopAllFiring() {
     this.releaseActiveWeapon();
+    // 게임이 끝난 뒤에도 퓨즈 타이머(scene.time)는 물리 pause와 무관하게 계속 돌아서, 이미 놓인 폭탄이
+    // 결과 화면 위에서 뒤늦게 터지는 걸 막기 위해 대기 중인 폭탄을 전부 정리한다.
+    this.bombs.forEach((bomb) => {
+      bomb.fuseEvent?.remove();
+      this.scene.tweens.killTweensOf(bomb);
+      bomb.destroy();
+    });
+    this.bombs = [];
   }
 
   // 데미지 판정 대상: 지금 들고 있는 무기(투척형 발사대 자체는 제외) + 날아가는 투사체들 중 보스와 겹쳐 있는 것만.

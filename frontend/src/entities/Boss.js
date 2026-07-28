@@ -16,6 +16,10 @@ import {
   BOSS_FIRE_BREATH_COOLDOWN_MS,
   FIRE_BREATH_MIN_DAMAGE_STAGE,
   DEBUGGER_FREEZE_DURATION,
+  BOSS_SHIELD_CHECK_MIN_INTERVAL,
+  BOSS_SHIELD_CHECK_MAX_INTERVAL,
+  BOSS_SHIELD_BREACH_LIMIT,
+  BOSS_SHIELD_REARM_COOLDOWN_MS,
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -44,6 +48,15 @@ export default class Boss {
     this.isFrozen = false;
     this.freezeEvent = null;
     this.isPushingPanel = false;
+    this.isShielded = false;
+    this.shieldSprite = null;
+    this.shieldCheckEvent = null;
+    this.shieldAngle = Math.PI; // 기본은 왼쪽 — 공격 방향(aimPoint)이 들어오기 전까지의 초기값
+    this.lastShieldAimPoint = null;
+    this.shieldBreachCount = 0; // 막기 확률에 실패해 실제로 맞은 횟수 — BOSS_SHIELD_BREACH_LIMIT번 쌓이면 방패가 사라진다
+    this.lastShieldEndTime = -Infinity; // 방패가 깨진 시각 — BOSS_SHIELD_REARM_COOLDOWN_MS 안에는 재발동 안 함
+    this.onShieldActivate = null; // GameScene이 생성 후 설정 — 방패 뜰 때 대사 팝업을 띄우는 용도(onPet과 같은 방식)
+    this.isSleeping = false; // 방치(idle) 중 걷기 전에 먼저 자는 척하는 단계 — GameScene.updateIdleDrift가 관리
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
     // 그 여백까지 "몸통"으로 잡는다 — 방망이/투사체가 실제 그림에 닿기도 전에 먼저 겹침이 발생해서,
@@ -58,6 +71,7 @@ export default class Boss {
     // 가만히 있어도 살아있는 느낌을 주는 랜덤 눈 깜빡임 — 다른 표정(피격/불뿜기/웃음)보다 우선순위가
     // 가장 낮아서 그것들이 떠 있는 동안엔 그냥 건너뛰고 다음 깜빡임을 다시 예약한다.
     this.scheduleNextBlink();
+    this.scheduleNextShieldCheck();
   }
 
   // 현재 데미지 단계에 맞는 평상시 기본 텍스처 키 (히트 시 X_X 표정에서 복귀할 때도 사용)
@@ -130,7 +144,13 @@ export default class Boss {
     if (stage === this.damageStage) return;
 
     this.damageStage = stage;
-    if (!this.hurtFaceEvent) this.sprite.setTexture(this.getBaseTextureKey());
+    // 랜덤 폴링(scheduleNextShieldCheck)만 믿으면 최저 단계에 머무는 시간이 짧을 때(공격을 계속
+    // 몰아붙여 금방 처치해버리는 경우) 다음 확인 주기(6~12초)가 오기 전에 죽어버려 방패가 한 번도
+    // 안 뜰 수 있다 — 방금 막 최저 단계에 진입한 이 순간 바로 한 번 시도해서 그 문제를 없앤다.
+    // (재발동 쿨다운은 canActivateShield 안에서 같이 체크한다.)
+    if (this.canActivateShield()) this.activateShield();
+    // 방금 activateShield()가 썩소 텍스처를 그려놨다면 아래에서 base 텍스처로 덮어쓰면 안 된다.
+    if (!this.hurtFaceEvent && !this.isShielded) this.sprite.setTexture(this.getBaseTextureKey());
   }
 
   isDead() {
@@ -155,10 +175,21 @@ export default class Boss {
     this.isPushingPanel = false;
     this.recentHitTimestamps = [];
     this.lastFireBreathTime = -Infinity;
+    // 전신 회복이라 최저 체력 단계 전용 방패도 같이 정리한다 — 다음 발동 여부 확인 루프(shieldCheckEvent)는
+    // 그대로 두고 방패 자체만 끈다.
+    this.isShielded = false;
+    this.shieldSprite?.setVisible(false);
+    this.shieldAngle = Math.PI;
+    this.lastShieldAimPoint = null;
+    this.shieldBreachCount = 0;
+    this.lastShieldEndTime = -Infinity;
+    this.isSleeping = false;
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 
-  // 보스 선택 패널에서 다른 캐릭터를 고르면 호출 — HP/위치는 그대로 두고 텍스처만 교체
+  // 보스 선택 패널에서 다른 캐릭터를 고르면 호출 — HP/위치는 그대로 두고 텍스처만 교체.
+  // 방패를 두른 채(isShielded) 캐릭터를 바꾸는 드문 경우에도 썩소가 갑자기 화난 표정으로 안 바뀌게,
+  // 그 상태면 새 타입의 썩소 텍스처로 다시 그려준다.
   setBossType(bossTypeId) {
     this.bossTypeId = bossTypeId;
     this.hurtFaceEvent?.remove();
@@ -170,7 +201,7 @@ export default class Boss {
     this.blinkEvent?.remove();
     this.blinkEvent = null;
     this.isPushingPanel = false;
-    this.sprite.setTexture(this.getBaseTextureKey());
+    this.sprite.setTexture(this.isShielded ? `boss_smirk_${bossTypeId}` : this.getBaseTextureKey());
   }
 
   // 타격 지점(hitX,hitY) 반대 방향으로 보스를 실제로 밀어낸다. 원위치로 돌아오지 않고 그 자리가 새 위치가 된다.
@@ -227,11 +258,12 @@ export default class Boss {
   // 나가기 버튼으로 걸어가다(GameScene.updateIdleDrift) 열린 패널을 만나면 멈춰서, 실제 데미지 단계와
   // 무관하게 2단계(30% 이하)의 더 처진 눈/큰 입 텍스처를 "화난 표정"으로 잠깐 띄운다 — GameScene이
   // BOSS_IDLE_PANEL_PUSH_HOLD_MS 뒤에 endPanelPush()로 되돌리고 패널을 닫는다. 더 급한 반응
-  // (피격 X_X/불뿜기)이 떠 있는 동안엔 덮어쓰지 않는다.
+  // (피격 X_X/불뿜기/방패 썩소)이 떠 있는 동안엔 덮어쓰지 않는다 — 방패를 든 채 방치돼 나가기 버튼으로
+  // 걸어가도 썩소가 화난 표정으로 안 바뀌게.
   // GameScene.checkBossAgainstPanel은 isPushingPanel이 true인 동안 flyOutToLeftWall 호출을 건너뛴다.
   startPanelPush() {
     if (this.isPushingPanel) return;
-    if (this.fireBreathEvent || this.hurtFaceEvent) return;
+    if (this.fireBreathEvent || this.hurtFaceEvent || this.isShielded) return;
     this.isPushingPanel = true;
     this.happyFaceEvent?.remove();
     this.happyFaceEvent = null;
@@ -245,6 +277,27 @@ export default class Boss {
     if (!this.isPushingPanel) return;
     this.isPushingPanel = false;
     if (!this.hurtFaceEvent && !this.fireBreathEvent) this.sprite.setTexture(this.getBaseTextureKey());
+  }
+
+  // 방치(idle)로 나가기 버튼 쪽으로 걷기 시작하기 전, GameScene.updateIdleDrift가 잠깐 자는 척하는
+  // 단계에서 호출한다. Zzz 텍스트/하품 방울 같은 부가 연출은 GameScene이 맡고, 여기서는 표정(감은
+  // 눈)만 담당한다. 더 급한 반응(피격/불뿜기/방패)이 떠 있으면 잠들지 않는다.
+  startSleeping() {
+    if (this.isSleeping) return;
+    if (this.fireBreathEvent || this.hurtFaceEvent || this.isShielded) return;
+    this.isSleeping = true;
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
+    this.sprite.setTexture(`boss_sleep_${this.bossTypeId}`);
+  }
+
+  // 상호작용이 돌아오거나(GameScene.markInteraction) 실제로 걷기 시작할 때 호출해 깨운다.
+  endSleeping() {
+    if (!this.isSleeping) return;
+    this.isSleeping = false;
+    if (!this.hurtFaceEvent && !this.fireBreathEvent && !this.isShielded) this.sprite.setTexture(this.getBaseTextureKey());
   }
 
   flash(color) {
@@ -264,10 +317,99 @@ export default class Boss {
     });
   }
 
+  // 체력 최저 단계(damageStage === MAX_DAMAGE_STAGE)에서만 가끔 한 번씩 발동하는 무적 방패 — 정확한
+  // 확률 대신 랜덤 간격마다 그 순간 조건을 만족하는지만 확인하는 방식으로 "가끔"을 구현한다.
+  // 조건을 못 만족해도(체력을 회복했거나 이미 방패 중이거나) 다음 확인은 항상 다시 예약해서 루프가 안 끊기게 한다.
+  scheduleNextShieldCheck() {
+    const delay = Phaser.Math.Between(BOSS_SHIELD_CHECK_MIN_INTERVAL, BOSS_SHIELD_CHECK_MAX_INTERVAL);
+    this.shieldCheckEvent = this.scene.time.delayedCall(delay, () => this.tryActivateShield());
+  }
+
+  tryActivateShield() {
+    if (this.canActivateShield()) this.activateShield();
+    this.scheduleNextShieldCheck();
+  }
+
+  // 방패를 다시 띄워도 되는지 — 최저 체력 단계 + 이미 방패 중이 아님 + 살아있음 + 마지막으로 깨진 뒤
+  // BOSS_SHIELD_REARM_COOLDOWN_MS가 지났는지까지 본다. 이 쿨다운이 없으면 최저 체력에서 계속
+  // 공격을 몰아붙일 때 방패가 깨졌다 금방 다시 뜨기를 반복해서 "막기!" 대사가 너무 자주 떴다.
+  canActivateShield() {
+    return this.damageStage >= MAX_DAMAGE_STAGE
+      && !this.isShielded
+      && !this.isDead()
+      && (this.scene.time.now - this.lastShieldEndTime) >= BOSS_SHIELD_REARM_COOLDOWN_MS;
+  }
+
+  // 방패를 두르는 동안 CombatSystem.handleHit이 막기 확률(BOSS_SHIELD_BLOCK_CHANCE)을 굴려 대부분의
+  // 데미지를 무효 처리한다 (boss.isShielded 참고). 지속시간 타이머가 따로 없고, 확률에 실패해 실제로
+  // 맞은 횟수(shieldBreachCount)가 BOSS_SHIELD_BREACH_LIMIT에 도달할 때까지(registerShieldBreach)
+  // 그대로 유지된다. 텍스처는 보스 타입/데미지 단계와 무관한 단일 이미지라 한 번만 생성해두고 재사용한다.
+  activateShield() {
+    this.isShielded = true;
+    this.shieldBreachCount = 0;
+    if (!this.shieldSprite) {
+      this.shieldSprite = this.scene.add.image(0, 0, 'boss_shield').setDepth(this.sprite.depth + 1);
+    }
+    this.shieldSprite.setVisible(true);
+    this.updateShieldPosition(this.lastShieldAimPoint);
+    this.showSmirkFace();
+    this.onShieldActivate?.();
+  }
+
+  // 막기 확률에 실패해 실제로 몸통을 맞을 때마다(CombatSystem.handleHit) 호출 — 그 히트 자체는
+  // 그대로 데미지 처리되고, 이 카운트가 BOSS_SHIELD_BREACH_LIMIT에 도달해야 방패가 완전히 사라진다.
+  // 그 전까지는 방패가 계속 남아 있어서 이후 히트도 다시 확률대로 막을 수 있다.
+  registerShieldBreach() {
+    this.shieldBreachCount += 1;
+    if (this.shieldBreachCount >= BOSS_SHIELD_BREACH_LIMIT) this.deactivateShield();
+  }
+
+  // 방패를 완전히 정리한다 — 확률 실패가 임계치까지 쌓였을 때(registerShieldBreach)만 호출된다.
+  // isShielded를 직접 보고 가드하는 tryBlink/showHappyFace/startPanelPush가 이 시점부터 다시 정상 동작한다.
+  deactivateShield() {
+    if (!this.isShielded) return;
+    this.isShielded = false;
+    this.shieldBreachCount = 0;
+    this.lastShieldEndTime = this.scene.time.now;
+    this.shieldSprite?.setVisible(false);
+    this.sprite.setTexture(this.getBaseTextureKey());
+  }
+
+  // 방패를 두르는 동안 짓는 "썩소". 자체 타이머 없이 isShielded가 살아있는 동안 계속 유지되다가
+  // deactivateShield()가 텍스처를 되돌린다 — tryBlink/showHappyFace/startPanelPush는 isShielded를
+  // 직접 보고 이 표정을 덮어쓰지 않게 가드한다.
+  showSmirkFace() {
+    this.happyFaceEvent?.remove();
+    this.happyFaceEvent = null;
+    this.blinkEvent?.remove();
+    this.blinkEvent = null;
+    this.sprite.setTexture(`boss_smirk_${this.bossTypeId}`);
+  }
+
+  // 방패가 떠 있는 동안 지금 공격이 들어오는 방향(플레이어가 들고 있는 무기의 실제 타격 지점,
+  // GameScene.update이 weaponManager.getHitPoint(activeWeapon)를 넘겨준다)을 바라보며 그쪽 옆구리에
+  // 붙어 막는다. 무기를 놓아서 aimPoint가 없는 프레임에는 방향을 그대로 유지해서(shieldAngle), 방패가
+  // 갑자기 원위치로 튀지 않게 한다.
+  // 보스는 사각형(폭≠높이)이라 반지름 하나로는 몸통 실루엣에 안 맞아서, 폭/높이를 각각 축으로 쓰는
+  // 타원 경로로 근사해 몸통 겉을 두른다 — margin을 작게 잡아 몸통에 바짝 붙여서 무기와 몸통 사이를
+  // 실제로 가로막는 것처럼 보이게 한다.
+  updateShieldPosition(aimPoint) {
+    if (!this.shieldSprite?.visible) return;
+    if (aimPoint) {
+      this.lastShieldAimPoint = aimPoint;
+      this.shieldAngle = Phaser.Math.Angle.Between(this.bodyCenterX, this.bodyCenterY, aimPoint.x, aimPoint.y);
+    }
+    const angle = this.shieldAngle ?? Math.PI;
+    const margin = 2;
+    const x = this.bodyCenterX + Math.cos(angle) * (this.bodyWidth / 2 + margin);
+    const y = this.bodyCenterY + Math.sin(angle) * (this.bodyHeight / 2 + margin);
+    this.shieldSprite.setPosition(x, y);
+  }
+
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.
   // 불 뿜는 연출이 떠 있는 동안은 X_X로 덮어쓰지 않는다 (불 뿜기가 우선). 웃는 표정 중에 맞으면 그건 덮어써도 된다.
   showHurtFace() {
-    if (this.fireBreathEvent) return;
+    if (this.fireBreathEvent || this.isShielded) return;
     this.hurtFaceEvent?.remove();
     this.happyFaceEvent?.remove();
     this.happyFaceEvent = null;
@@ -319,7 +461,7 @@ export default class Boss {
   // 하나라도 떠 있으면(더 급한 반응이 진행 중이면) 무시한다. HP 단계와 무관한 표정이라
   // boss_happy_${id} 텍스처엔 데미지 단계 구분이 없다(createBossHappyCanvas 참고).
   showHappyFace() {
-    if (this.fireBreathEvent || this.hurtFaceEvent) return;
+    if (this.fireBreathEvent || this.hurtFaceEvent || this.isShielded || this.isSleeping) return;
     this.happyFaceEvent?.remove();
     this.blinkEvent?.remove();
     this.blinkEvent = null;
@@ -336,10 +478,10 @@ export default class Boss {
     this.scene.time.delayedCall(delay, () => this.tryBlink());
   }
 
-  // 더 급한 표정(피격/불뿜기/웃음)이 떠 있지 않을 때만 깜빡이고, 그 여부와 상관없이 항상 다음
+  // 더 급한 표정(피격/불뿜기/웃음/썩소)이 떠 있지 않을 때만 깜빡이고, 그 여부와 상관없이 항상 다음
   // 깜빡임을 다시 예약해서 깜빡임 루프 자체는 끊기지 않게 한다.
   tryBlink() {
-    if (!this.fireBreathEvent && !this.hurtFaceEvent && !this.happyFaceEvent) {
+    if (!this.fireBreathEvent && !this.hurtFaceEvent && !this.happyFaceEvent && !this.isShielded && !this.isSleeping) {
       this.sprite.setTexture(`boss_blink_${this.bossTypeId}_d${this.damageStage}`);
       this.blinkEvent = this.scene.time.delayedCall(BOSS_BLINK_DURATION, () => {
         this.blinkEvent = null;

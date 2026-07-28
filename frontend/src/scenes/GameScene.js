@@ -9,6 +9,8 @@ import {
   AGENT_TAUNT_INTRO_DELAY,
   AGENT_TAUNT_LINES_INTRO,
   AGENT_TAUNT_LINES_IDLE_CAUGHT,
+  AGENT_TAUNT_IDLE_CAUGHT_COOLDOWN_MS,
+  SHIELD_TAUNT_LINES,
   getAgentTauntLines,
   UI_FONT_FAMILY,
   BACKGROUND_STYLE,
@@ -21,6 +23,7 @@ import {
   SNIPER_SCOPE_ZOOM,
   SNIPER_SCOPE_MARGIN,
   BOSS_IDLE_TIMEOUT_MS,
+  BOSS_IDLE_ZZZ_INTERVAL,
   BOSS_IDLE_DRIFT_SPEED,
   BOSS_IDLE_WALK_TILT_DEG,
   BOSS_IDLE_WALK_CYCLE_MS,
@@ -57,6 +60,13 @@ export default class GameScene extends Phaser.Scene {
     // updateIdleDrift가 이번 프레임에 실제로 걷고 있는 중인지 — pointerdown 핸들러가 클릭 순간
     // "걷다가 들켰는지" 판단하는 데 쓴다(walking 중 클릭 → AGENT_TAUNT_LINES_IDLE_CAUGHT 팝업).
     this.isIdleDrifting = false;
+    // "걷다가 들켰다" 대사가 마지막으로 뜬 시각 — 거의 항상 걷는 중인 상태라 매 클릭마다 뜨지
+    // 않도록 AGENT_TAUNT_IDLE_CAUGHT_COOLDOWN_MS 안에는 다시 안 띄운다.
+    this.lastIdleCaughtTauntTime = -Infinity;
+    // 걷기 전 잠깐 자는 척(Boss.isSleeping)하는 동안 Zzz 텍스트를 반복 생성하는 타이머 + 입가 하품 방울.
+    this.sleepZzzEvent = null;
+    this.sleepBubble = null;
+    this.sleepBubbleTween = null;
 
     this.currentBackgroundStyle = BACKGROUND_STYLE;
     this.backgroundImage = this.add.image(0, 0, `battleBackground_${this.currentBackgroundStyle}`).setOrigin(0, 0);
@@ -73,6 +83,9 @@ export default class GameScene extends Phaser.Scene {
     });
     this.combat = new CombatSystem(this, this.boss, (hits, defeated, deathPosition) => this.onHit(hits, defeated, deathPosition));
     this.combat.onPet = (amount, point) => this.onPet(amount, point);
+    this.combat.onBlocked = (point) => this.onBlocked(point);
+    // 방패가 뜨는 순간(Boss.activateShield) 썩소 표정과 같이 "막기!" 계열 대사를 띄운다.
+    this.boss.onShieldActivate = () => this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(SHIELD_TAUNT_LINES));
     // heals 무기(착한 손)는 데미지가 아니라 힐링이라 combat.handleHit이 아니라 handlePet으로 따로 보낸다.
     // weaponId를 하드코딩하지 않고 WEAPON_DEFINITIONS[id].heals로 판단해서 힐링 무기가 늘어나도 여기 안 고쳐도 되게 한다.
     this.weaponManager = new WeaponManager(this, this.boss, (weapon) => {
@@ -80,6 +93,9 @@ export default class GameScene extends Phaser.Scene {
       else this.combat.handleHit(weapon);
     });
     this.combat.weaponManager = this.weaponManager;
+    // 폭탄류(수류탄/다이너마이트)는 손을 뗀 뒤 한참 지나 혼자 터진다 — 그 순간 무기별 폭발 이펙트를
+    // 고르고, 실제로 보스를 맞혔을 때만 카메라를 흔든다(onOverlap 경로와 별개 훅).
+    this.weaponManager.onBombDetonate = (weaponId, x, y, hitBoss, chainCount) => this.onBombDetonate(weaponId, x, y, hitBoss, chainCount);
 
     this.sniperScope = this.createSniperScope();
 
@@ -100,8 +116,10 @@ export default class GameScene extends Phaser.Scene {
       const wasIdleDrifting = this.isIdleDrifting;
       this.markInteraction();
       if (this.isEnded) return;
-      // 나가기 버튼 쪽으로 몰래 걸어가던 도중 클릭에 걸리면 들킨 반응 대사를 띄운다.
-      if (wasIdleDrifting) {
+      // 나가기 버튼 쪽으로 몰래 걸어가던 도중 클릭에 걸리면 들킨 반응 대사를 띄운다 — 거의 항상
+      // 걷는 중인 상태라 쿨다운 안에는 다시 띄우지 않는다.
+      if (wasIdleDrifting && this.time.now - this.lastIdleCaughtTauntTime >= AGENT_TAUNT_IDLE_CAUGHT_COOLDOWN_MS) {
+        this.lastIdleCaughtTauntTime = this.time.now;
         this.spawnTauntPopup(Phaser.Utils.Array.GetRandom(AGENT_TAUNT_LINES_IDLE_CAUGHT));
       }
       // 패널이 열려 있을 때 패널 바깥(게임 화면)을 클릭하면 패널을 닫고, 그 클릭 자체도
@@ -162,10 +180,19 @@ export default class GameScene extends Phaser.Scene {
     // checkBossAgainstPanel이 같은 프레임에 그 상태를 보고 flyOutToLeftWall을 건너뛸 수 있다.
     this.updateIdleDrift(time, delta);
     this.checkBossAgainstPanel();
+    // 방패가 떠 있는 동안 지금 들고 있는 무기(=공격이 들어오는 쪽) 방향을 막도록 위치 갱신.
+    // 무기를 안 들고 있는 프레임엔 aimPoint가 없어 Boss 내부에서 마지막 방향을 그대로 유지한다.
+    // weapon.x/y 자체가 아니라 실제 타격 지점(getHitPoint)을 써야 한다 — 방망이(PORTABLE)는 회전
+    // 중심(weapon.x/y)과 실제로 맞닿는 배럴 끝이 멀리 떨어져 있어서, 그냥 x/y를 쓰면 방패가 엉뚱한
+    // 방향을 보고 있어 막는 것처럼 안 보이는 문제가 있었다.
+    const activeWeapon = this.weaponManager.activeWeapon;
+    this.boss.updateShieldPosition(activeWeapon ? this.weaponManager.getHitPoint(activeWeapon) : null);
     // 보스가 넉백/패널 충돌 등으로 계속 움직이는 동안에도 스코프가 계속 보스를 따라가게 매 프레임 갱신.
     if (this.sniperScope.camera.visible) {
       this.sniperScope.camera.centerOn(this.boss.bodyCenterX, this.boss.bodyCenterY);
     }
+    // 자는 동안 입가 하품 방울도 보스 위치를 따라가게 갱신 (보통은 안 움직이지만 방어적으로).
+    if (this.sleepBubble) this.sleepBubble.setPosition(this.boss.bodyCenterX, this.boss.sprite.y);
   }
 
   // 화면 클릭(pointerdown)/드래그가 있을 때마다 호출해 idle 타이머를 리셋한다.
@@ -176,17 +203,30 @@ export default class GameScene extends Phaser.Scene {
     this.cancelPanelPush(); // 미는 도중 상호작용이 들어오면 어정쩡하게 화난 표정으로 멈춰 있지 않게 취소한다.
   }
 
-  // BOSS_IDLE_TIMEOUT_MS 동안 클릭이 없으면 보스가 종료 버튼 쪽으로 조금씩 끌려간다.
+  // 보스는 "돌아다니거나(종료 버튼 쪽으로 끌려감) 자거나(Boss.isSleeping)" 둘 중 하나의 단순한
+  // 이진 상태만 가진다 — 실제로 포인터를 누르고 있는 동안(조작 중)만 예외로 그 자리에 멈춘다.
+  // 손을 뗀 뒤 BOSS_IDLE_TIMEOUT_MS(1분) 동안 클릭이 한 번도 없으면 잠들고, 그 뒤로는 고정
+  // 지속시간 없이 클릭이 들어올 때까지 계속 잔다 — 클릭 즉시 깨서 다시 돌아다니기 시작한다.
   // 넉백/패널 충돌 트윈이 진행 중일 때 끼어들면 그 트윈과 위치를 두고 다투게 되므로 그동안은 쉰다.
   // 밋밋하게 미끄러지면 부자연스러워서, 이동 방향과 무관하게 좌우로 갸우뚱거리는 걸음 흔들림을 각도에 더한다.
   updateIdleDrift(time, delta) {
-    // 아래에서 실제로 걷는 프레임에만 true로 다시 켠다 — 이 함수를 벗어나는 모든 경로(타임아웃 전,
-    // 얼음/패널 충돌/미는 중, 목표 도착)는 "걷는 중"이 아니므로 기본값 false로 시작한다.
+    // 아래에서 실제로 걷는 프레임에만 true로 다시 켠다 — 이 함수를 벗어나는 모든 경로(조작 중,
+    // 얼음/패널 충돌/미는 중, 자는 중, 목표 도착)는 "걷는 중"이 아니므로 기본값 false로 시작한다.
     this.isIdleDrifting = false;
-    if (this.isEnded) return;
-    if (this.boss.isFrozen) return;
-    if (this.boss.isPanelBounceActive) return;
-    if (time - this.lastInteractionTime < BOSS_IDLE_TIMEOUT_MS) return;
+    if (this.isEnded) { this.exitSleep(); return; }
+    if (this.boss.isFrozen) { this.exitSleep(); return; }
+    if (this.boss.isPanelBounceActive) { this.exitSleep(); return; }
+    // 실제로 포인터를 누르고 있는 동안엔 자지도 돌아다니지도 않는다 — 안 그러면 플레이어가 무기를
+    // 들고 있는 자리로 매 프레임 setPosition하는 것과 자동 이동이 서로 위치를 두고 다투게 된다.
+    if (this.input.activePointer.isDown) { this.exitSleep(); return; }
+
+    const idleFor = time - this.lastInteractionTime;
+    if (idleFor >= BOSS_IDLE_TIMEOUT_MS) {
+      this.enterSleep();
+      return;
+    }
+    this.exitSleep();
+
     // 패널을 미는 중(화난 표정 유지, startPanelPush의 대기 타이머가 도는 동안)에는 제자리에 멈춰
     // 있는다 — 타이머가 끝나면 panelPushEvent가 패널을 닫고, 다음 프레임부터 이 함수가 이어서 걷는다.
     if (this.panelPushEvent) return;
@@ -266,6 +306,66 @@ export default class GameScene extends Phaser.Scene {
     this.panelPushEvent.remove();
     this.panelPushEvent = null;
     this.boss.endPanelPush();
+  }
+
+  // 걷기 전 잠깐 자는 척하는 단계(updateIdleDrift) 진입 — 표정은 Boss.startSleeping이 맡고,
+  // 여기서는 Zzz 텍스트 반복 타이머 + 입가 하품 방울을 띄운다. 이미 자는 중이면 아무것도 다시 안 만든다.
+  enterSleep() {
+    if (this.boss.isSleeping) return;
+    this.boss.startSleeping();
+    if (!this.boss.isSleeping) return; // 더 급한 반응(피격/방패 등)이 떠 있어 잠들지 못한 경우
+    this.spawnZzzText();
+    this.sleepZzzEvent = this.time.addEvent({ delay: BOSS_IDLE_ZZZ_INTERVAL, loop: true, callback: () => this.spawnZzzText() });
+
+    // 얼굴 폭의 대략 절반 지름이 되도록 반지름을 얼굴 폭에 비례해서 잡는다 — 고정 픽셀 값은
+    // 보스 타입/크기가 달라져도 항상 같은 크기라 어색해서, boss.bodyWidth 기준으로 계산한다.
+    const bubbleRadius = this.boss.bodyWidth * 0.25;
+    this.sleepBubble = this.add.circle(this.boss.bodyCenterX, this.boss.sprite.y, bubbleRadius, 0xd8ecff, 0.55)
+      .setStrokeStyle(Math.max(1.5, bubbleRadius * 0.06), 0xffffff, 0.8)
+      .setDepth(1500)
+      .setScale(0.2);
+    this.sleepBubbleTween = this.tweens.add({
+      targets: this.sleepBubble,
+      scale: 1,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  // 상호작용이 돌아오거나 실제로 걷기 시작하면 호출해 잠자는 연출을 전부 정리한다.
+  exitSleep() {
+    if (!this.boss.isSleeping) return;
+    this.boss.endSleeping();
+    this.sleepZzzEvent?.remove();
+    this.sleepZzzEvent = null;
+    this.sleepBubbleTween?.remove();
+    this.sleepBubbleTween = null;
+    this.sleepBubble?.destroy();
+    this.sleepBubble = null;
+  }
+
+  // 자는 동안 위로 둥실 떠오르며 사라지는 "Z" 하나. spawnHeartBurst와 같은 방식.
+  spawnZzzText() {
+    const x = this.boss.bodyCenterX + this.boss.bodyWidth * 0.3;
+    const y = this.boss.sprite.y - this.boss.displayHeight / 2;
+    const text = this.add.text(x, y, 'Z', {
+      fontSize: `${Phaser.Math.Between(14, 20)}px`,
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5).setDepth(1500);
+
+    this.tweens.add({
+      targets: text,
+      x: text.x + 18,
+      y: text.y - 34,
+      alpha: 0,
+      duration: 1400,
+      ease: 'Sine.easeOut',
+      onComplete: () => text.destroy(),
+    });
   }
 
   // 들고 있던 무기를 손을 뗀 것처럼 치운다 — releaseActiveWeapon()이 activeWeapon을 지우기 전에
@@ -431,6 +531,8 @@ export default class GameScene extends Phaser.Scene {
         else if (hit.weaponId === WEAPON_IDS.BEACH_BALL) this.spawnBeachBallBounceEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.FRYING_PAN) this.spawnMetalClangEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.SLIPPER) this.spawnSlipperSmackEffect(hit.x, hit.y);
+        // 폭탄류는 스파크 대신 터지는 순간(onBombDetonate)에 이미 폭발 이펙트를 띄웠으니 여기서는 생략한다.
+        else if (hit.weaponId === WEAPON_IDS.GRENADE || hit.weaponId === WEAPON_IDS.DYNAMITE) { /* no-op */ }
         else this.spawnHitSpark(hit.x, hit.y, undefined, bigImpact ? 1.8 : 1);
 
         // 말랑이 계열 3종 — 기존 찌부 모션(WeaponManager.playSquish)은 그대로 두고, 그 위에 얹는
@@ -447,6 +549,13 @@ export default class GameScene extends Phaser.Scene {
     if (defeated) {
       this.spawnDefeatPopup(deathPosition);
     }
+  }
+
+  // 방패(Boss.isShielded)에 막힌 반응. 데미지가 안 들어갔으니 넉백/피격 표정/점수는 전혀 안 건드리고,
+  // 옅은 보라색 스파크 + "BLOCKED!" 팝업만 띄워서 맞긴 맞았지만 안 통했다는 걸 보여준다.
+  onBlocked({ x, y }) {
+    this.spawnHitSpark(x, y, 0xaeb6ff, 0.7);
+    this.spawnDamagePopup({ amount: 'BLOCKED!', x, y, color: '#aeb6ff' });
   }
 
   // 쓰다듬기(힐링) 반응. 공격 반응(넉백/피격 표정/스파크)은 전혀 안 건드리고, 부드러운 분홍 틴트 +
@@ -932,6 +1041,118 @@ export default class GameScene extends Phaser.Scene {
         duration: 380,
         ease: 'Cubic.easeOut',
         onComplete: () => star.destroy(),
+      });
+    }
+  }
+
+  // 폭탄류(WeaponManager.detonateBomb)가 실제로 터지는 순간 호출된다. hitBoss가 false면 보스가
+  // 폭발 반경 밖에 있었다는 뜻 — 데미지/카메라 흔들림 없이 폭발 이펙트만 보여줘 "허탕"임을 알려준다.
+  // 다이너마이트가 수류탄보다 훨씬 큰 폭발이라 카메라 흔들림도 그만큼 세게 준다. chainCount(다이너마이트
+  // 여러 개를 붙여놔서 한 번에 연쇄 폭발한 개수, 기본 1)만큼 이펙트/흔들림 규모를 더 키운다.
+  onBombDetonate(weaponId, x, y, hitBoss, chainCount = 1) {
+    if (weaponId === WEAPON_IDS.GRENADE) this.spawnGrenadeExplosionEffect(x, y);
+    else if (weaponId === WEAPON_IDS.DYNAMITE) this.spawnDynamiteExplosionEffect(x, y, chainCount);
+    if (!hitBoss) return;
+    if (weaponId === WEAPON_IDS.DYNAMITE) this.cameras.main.shake(240 + (chainCount - 1) * 60, Math.min(0.02 + (chainCount - 1) * 0.008, 0.05));
+    else this.cameras.main.shake(120, 0.008);
+  }
+
+  // 수류탄 전용 폭발 이펙트 — 뾰족한 버스트 코어(spawnBurstShape) + 회색 금속 파편(별 모양) +
+  // 잿빛 연기 뭉게구름. 다이너마이트보다 규모를 작게 잡아 "한 손에 들고 던지는" 무기다운 폭발로 그린다.
+  spawnGrenadeExplosionEffect(x, y) {
+    this.spawnBurstShape(x, y, 0xffb347, { radius: 40, spikeCount: 12, alpha: 0.9 });
+
+    const shardCount = 10;
+    for (let i = 0; i < shardCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / shardCount + Phaser.Math.FloatBetween(-0.3, 0.3);
+      const distance = Phaser.Math.Between(50, 90);
+      const size = Phaser.Math.Between(6, 11);
+      const shard = this.add.star(x, y, 4, size * 0.3, size, 0x6b6f75)
+        .setStrokeStyle(1.5, 0x2b2d30)
+        .setDepth(1000)
+        .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+      this.tweens.add({
+        targets: shard,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance + 20,
+        angle: shard.angle + Phaser.Math.Between(-180, 180),
+        alpha: 0,
+        duration: 460,
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy(),
+      });
+    }
+
+    const smokeCount = 4;
+    for (let i = 0; i < smokeCount; i += 1) {
+      const offsetAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const offsetDist = Phaser.Math.Between(0, 16);
+      const smoke = this.add.circle(x + Math.cos(offsetAngle) * offsetDist, y + Math.sin(offsetAngle) * offsetDist, 12, 0x888888, 0.45)
+        .setDepth(998)
+        .setScale(0.3);
+      this.tweens.add({
+        targets: smoke,
+        scale: 2.2,
+        y: smoke.y - 20,
+        alpha: 0,
+        duration: 600,
+        delay: i * 40,
+        ease: 'Cubic.easeOut',
+        onComplete: () => smoke.destroy(),
+      });
+    }
+  }
+
+  // 다이너마이트 전용 폭발 이펙트 — 수류탄(빠르고 뾰족한 파편 위주)과 확실히 다른 "느긋하지만 훨씬
+  // 크게 터지는" 느낌을 준다: 1) 하얀 섬광이 먼저 확 터지고 2) 살짝 늦게(delay) 훨씬 큰 주황 버스트가
+  // 뒤따라와 2단계로 부풀어 오르는 것처럼 보이게 하고 3) 충격파 링을 3겹, 훨씬 넓게 퍼뜨리고
+  // 4) 짙고 큼직한 연기 기둥을 더 오래 피어오르게 한다. 파편(별 조각)은 안 쓴다 — 금속 파편이 튀는
+  // 수류탄과 달리 다이너마이트는 화약 폭발 자체의 규모로 승부한다.
+  // chainCount: 여러 다이너마이트를 붙여놔서 한 번에 연쇄 폭발한 개수(WeaponManager.detonateBomb,
+  // 기본 1). 개당 규모를 키워서 여러 개를 모아두면 확실히 "개크게" 터지는 걸 보여준다 — 다만
+  // 무한정 커지면 화면을 가득 채워버리니 최대 3배로 캡을 둔다.
+  spawnDynamiteExplosionEffect(x, y, chainCount = 1) {
+    const scale = Math.min(1 + (chainCount - 1) * 0.5, 3);
+
+    // 1단계 — 하얀 섬광 (즉시)
+    this.spawnBurstShape(x, y, 0xffffff, { radius: 30 * scale, spikeCount: 10, alpha: 0.95 });
+
+    // 2단계 — 살짝 늦게 뒤따라오는 훨씬 큰 주황/노랑 버스트 (섬광 → 본폭발의 2단 타이밍)
+    this.time.delayedCall(90, () => {
+      this.spawnBurstShape(x, y, 0xff9a3c, { radius: 78 * scale, spikeCount: 16, alpha: 0.95 });
+      this.spawnBurstShape(x, y, 0xffe066, { radius: 46 * scale, spikeCount: 12, alpha: 0.85 });
+    });
+
+    const ringCount = Math.min(3 + (chainCount - 1), 6);
+    for (let i = 0; i < ringCount; i += 1) {
+      const ring = this.add.circle(x, y, 12, undefined, 0).setStrokeStyle(4, 0xffb347, 0.85).setDepth(998);
+      this.tweens.add({
+        targets: ring,
+        radius: 110 * scale,
+        alpha: 0,
+        delay: 100 + i * 110,
+        duration: 480,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+    }
+
+    const smokeCount = Math.min(8 + (chainCount - 1) * 3, 20);
+    for (let i = 0; i < smokeCount; i += 1) {
+      const offsetAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const offsetDist = Phaser.Math.Between(0, 30 * scale);
+      const smoke = this.add.circle(x + Math.cos(offsetAngle) * offsetDist, y + Math.sin(offsetAngle) * offsetDist, 20 * scale, 0x3a3d42, 0.55)
+        .setDepth(998)
+        .setScale(0.3);
+      this.tweens.add({
+        targets: smoke,
+        scale: 3.2,
+        y: smoke.y - Phaser.Math.Between(60, 90) * scale,
+        alpha: 0,
+        duration: 950,
+        delay: 120 + i * 45,
+        ease: 'Cubic.easeOut',
+        onComplete: () => smoke.destroy(),
       });
     }
   }

@@ -1574,3 +1574,135 @@ export function createBoomerangCanvas(size) {
 
   return canvas;
 }
+
+// 수류탄: 올리브색 타원 몸통 + 파인애플 특유의 격자 무늬(가로/세로 선을 몸통 안쪽에만 클립해서 그린다) +
+// 위쪽 금속 캡 + 안전 손잡이(스푼) + 안전핀 고리. BOMB 카테고리 — 들고 있는 동안은 판정이 없고
+// 놓으면 그 자리에서 퓨즈가 타들어가다 터진다(WeaponManager.armBomb/detonateBomb).
+export function createGrenadeCanvas(size) {
+  const bodyColor = '#4a5d3a';
+  const bodyStroke = '#28331e';
+  const gridColor = 'rgba(0, 0, 0, 0.25)';
+  const metalColor = '#8f97a0';
+  const metalStroke = '#4a4d52';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size * 0.58;
+  const radiusX = size * 0.3;
+  const radiusY = size * 0.34;
+
+  // 몸통
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 파인애플 격자 — 몸통 안쪽으로 클립하고 가로 3줄 + 세로 3줄만 그린다
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  [-0.5, 0, 0.5].forEach((t) => {
+    ctx.beginPath();
+    ctx.moveTo(cx - radiusX, cy + t * radiusY);
+    ctx.lineTo(cx + radiusX, cy + t * radiusY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + t * radiusX, cy - radiusY);
+    ctx.lineTo(cx + t * radiusX, cy + radiusY);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // 위쪽 금속 캡
+  const capWidth = size * 0.2;
+  const capHeight = size * 0.12;
+  const capTop = cy - radiusY - capHeight * 0.6;
+  ctx.fillStyle = metalColor;
+  ctx.strokeStyle = metalStroke;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.fillRect(cx - capWidth / 2, capTop, capWidth, capHeight);
+  ctx.strokeRect(cx - capWidth / 2, capTop, capWidth, capHeight);
+
+  // 안전 손잡이(스푼) — 캡 옆에서 몸통 옆면을 따라 내려오는 막대
+  ctx.strokeStyle = metalColor;
+  ctx.lineWidth = Math.max(1, size * 0.05);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx + capWidth * 0.4, capTop + capHeight * 0.3);
+  ctx.lineTo(cx + radiusX * 0.75, cy);
+  ctx.stroke();
+
+  // 안전핀 고리
+  ctx.strokeStyle = metalStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.arc(cx - capWidth * 0.15, capTop - size * 0.03, size * 0.045, 0, Math.PI * 2);
+  ctx.stroke();
+
+  return canvas;
+}
+
+// 다이너마이트: 빨간 원통 막대 2~3개를 나란히 묶고 가로 밴드(밧줄)로 두 군데 감아 고정한 실루엣 +
+// 위로 삐져나온 심지(퓨즈) 끝에 작은 불꽃 점. BOMB 카테고리 전용 — 수류탄보다 퓨즈가 길고 반경/데미지가
+// 큰 "느긋한 한 방" 무기라 실루엣도 더 크게 그린다.
+export function createDynamiteCanvas(size) {
+  const stickColor = '#c0392b';
+  const stickStroke = '#7a2018';
+  const bandColor = '#5a3a22';
+  const fuseColor = '#3a2414';
+  const sparkColor = '#ffe066';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const stickWidth = size * 0.18;
+  const stickHeight = size * 0.62;
+  const stickTop = size * 0.28;
+  const gap = size * 0.03;
+
+  // 막대 3개 — 가운데가 더 위로 튀어나오게(가운데 스틱이 짧은 심지를 다는 자리라 자연스럽게 도드라져 보임)
+  const offsets = [-(stickWidth + gap), 0, stickWidth + gap];
+  offsets.forEach((offsetX) => {
+    const topY = offsetX === 0 ? stickTop - size * 0.03 : stickTop;
+    ctx.fillStyle = stickColor;
+    ctx.strokeStyle = stickStroke;
+    ctx.lineWidth = Math.max(1, size * 0.015);
+    ctx.beginPath();
+    ctx.roundRect(cx + offsetX - stickWidth / 2, topY, stickWidth, stickHeight, stickWidth * 0.3);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // 밧줄 밴드 2줄 — 막대 전체를 가로지르는 어두운 띠
+  const bandHeight = size * 0.06;
+  [0.32, 0.68].forEach((t) => {
+    const bandY = stickTop + stickHeight * t;
+    ctx.fillStyle = bandColor;
+    ctx.fillRect(cx - (stickWidth * 1.5 + gap * 2), bandY, stickWidth * 3 + gap * 4, bandHeight);
+  });
+
+  // 가운데 막대 위로 삐져나온 심지 — 살짝 구불거리는 곡선
+  ctx.strokeStyle = fuseColor;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.lineCap = 'round';
+  const fuseTopY = stickTop - size * 0.03;
+  ctx.beginPath();
+  ctx.moveTo(cx, fuseTopY);
+  ctx.quadraticCurveTo(cx + size * 0.06, fuseTopY - size * 0.08, cx - size * 0.02, fuseTopY - size * 0.16);
+  ctx.stroke();
+
+  // 심지 끝 불꽃
+  ctx.fillStyle = sparkColor;
+  ctx.beginPath();
+  ctx.arc(cx - size * 0.02, fuseTopY - size * 0.18, size * 0.045, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}

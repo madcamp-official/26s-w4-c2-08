@@ -8,6 +8,7 @@ import {
   PET_COOLDOWN,
   HEAL_MIN,
   HEAL_MAX,
+  BOSS_SHIELD_BLOCK_CHANCE,
 } from '../config/constants.js';
 
 export default class CombatSystem {
@@ -16,6 +17,7 @@ export default class CombatSystem {
     this.boss = boss;
     this.onHit = onHit;
     this.onPet = null; // GameScene이 생성 후 설정 (weaponManager와 같은 방식)
+    this.onBlocked = null; // 방패(Boss.isShielded)에 막혔을 때 GameScene이 설정 (onPet과 같은 방식)
     this.weaponManager = null;
     this.score = 0;
     this.lastHitTime = 0;
@@ -35,22 +37,39 @@ export default class CombatSystem {
     // 무기별 타격음은 WEAPON_DEFINITIONS[id].hitSound로 정의 (야구공은 방망이와 같은 소리를 재사용).
     // hitVolume(기본 1)으로 권총처럼 센 무기만 더 크게 재생할 수 있다.
     const definition = WEAPON_DEFINITIONS[triggerWeapon.weaponId];
-    if (definition?.hitSound) this.scene.sound.play(definition.hitSound, { volume: definition.hitVolume ?? 1 });
     // 채찍/노트북 스윙 모션도 실제 히트 시점에만 — handleOverlap은 매 프레임 불려서 여기서 해야 한다.
     if (definition?.meleeSwing) this.weaponManager.playMeleeSwing(triggerWeapon);
     // 말랑이 찌부 모션도 같은 이유로 여기서만 트리거한다.
     if (definition?.squishHit) this.weaponManager.playSquish(triggerWeapon);
 
+    // 방패(Boss.isShielded)가 떠 있는 동안은 히트마다 BOSS_SHIELD_BLOCK_CHANCE 확률로 막아낸다 —
+    // 막히면 무기 모션(스윙/찌부)만 재생하고 데미지 없이 GameScene.onBlocked로 "막힘" 반응만 보여주며
+    // 방패는 그대로 유지된다. 막기에 실패하면(확률 밖) registerShieldBreach로 실패 횟수만 쌓고(방패는
+    // BOSS_SHIELD_BREACH_LIMIT번 뚫려야 완전히 사라짐), 이번 히트는 return 없이 아래로 흘려보내
+    // 진짜 몸통을 맞은 것처럼 정상 데미지 처리를 계속한다.
+    if (this.boss.isShielded) {
+      const blocked = Phaser.Math.FloatBetween(0, 1) < BOSS_SHIELD_BLOCK_CHANCE;
+      if (blocked) {
+        this.onBlocked?.(this.weaponManager.getHitPoint(triggerWeapon));
+        return;
+      }
+      this.boss.registerShieldBreach();
+    }
+
+    if (definition?.hitSound) this.scene.sound.play(definition.hitSound, { volume: definition.hitVolume ?? 1 });
+
     // weaponId를 같이 넘겨서 GameScene.onHit이 무기별로 다른 이펙트(전기충격기 감전 등)를 고를 수 있게 한다.
+    // damageMultiplierOverride: WEAPON_DEFINITIONS의 고정 배율 대신 이 히트만 특별히 쓸 배율 —
+    // 다이너마이트 연쇄 폭발(WeaponManager.detonateBomb)이 묶인 개수만큼 불어난 배율을 여기 실어 보낸다.
     const overlappingWeapons = this.weaponManager.getOverlappingDamageDealers();
     const hits = overlappingWeapons.length > 0
       ? overlappingWeapons.map((weapon) => ({
-        amount: this.rollDamage(WEAPON_DEFINITIONS[weapon.weaponId]?.damageMultiplier),
+        amount: this.rollDamage(weapon.damageMultiplierOverride ?? WEAPON_DEFINITIONS[weapon.weaponId]?.damageMultiplier),
         weaponId: weapon.weaponId,
         ...this.weaponManager.getHitPoint(weapon),
       }))
       : [{
-        amount: this.rollDamage(definition?.damageMultiplier),
+        amount: this.rollDamage(triggerWeapon.damageMultiplierOverride ?? definition?.damageMultiplier),
         weaponId: triggerWeapon.weaponId,
         ...this.weaponManager.getHitPoint(triggerWeapon),
       }];

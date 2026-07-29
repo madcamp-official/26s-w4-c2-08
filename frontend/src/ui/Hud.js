@@ -169,8 +169,8 @@ export default class Hud {
     return bg;
   }
 
-  // 무기/보스/배경 패널을 여는 유일한 진입점. 화면 오른쪽 가장자리에 붙는 톱니바퀴(설정) 버튼.
-  // 아이콘은 public/icons/settings.svg(검은색 선 아이콘)를 BootScene에서 'icon_gear' 텍스처로 미리 로드해 둔 것.
+  // 무기/보스/배경 패널을 여는 유일한 진입점. 화면 오른쪽 가장자리에 붙는 메뉴(햄버거) 버튼.
+  // 아이콘은 public/icons/menu.svg(검은색 선 아이콘)를 BootScene에서 'icon_menu' 텍스처로 미리 로드해 둔 것.
   // 배경은 패널이 열렸을 때(활성 탭) 쓰는 액센트 색과 동일하게 맞춘다 — 밝은 색이라 검은 아이콘도 잘 보인다.
   createSettingsButton(onClick) {
     const size = 40;
@@ -178,7 +178,7 @@ export default class Hud {
     const y = TOP_HUD_Y;
 
     const bg = this.createPillBackground(x, y, size, PANEL_ACCENT, onClick);
-    const icon = this.scene.add.image(x, y, 'icon_gear').setDisplaySize(22, 22).setDepth(HUD_DEPTH);
+    const icon = this.scene.add.image(x, y, 'icon_menu').setDisplaySize(22, 22).setDepth(HUD_DEPTH);
 
     return { bg, icon };
   }

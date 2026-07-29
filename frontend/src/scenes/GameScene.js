@@ -539,6 +539,10 @@ export default class GameScene extends Phaser.Scene {
     // 나가기 버튼으로 걸어가다 패널을 만난 경우(updateIdleDrift)는 튕겨나가지 않고 밀고 들어가야 하므로
     // 여기서는 건너뛴다 — 드래그/넉백으로 패널 안까지 밀려 들어간 경우에만 왼쪽 벽으로 날려보낸다.
     if (this.boss.isPushingPanel) return;
+    // 세탁기 안에서 도는 중에는 스핀 애니메이션이 보스를 door 위치에 붙잡아두는데, 그 자리가 마침 패널
+    // 슬라이드 범위와 겹치면 flyOutToLeftWall이 매 프레임 끼어들어 스핀 위치와 충돌한다 — 세탁기가
+    // endWashingMachineSpin으로 꺼내줄 때까지는 패널 넉백을 완전히 건너뛴다.
+    if (this.boss.isInWashingMachine) return;
 
     const panelBoundaryX = this.hud.getOpenPanelBoundaryX();
     if (panelBoundaryX == null) return;

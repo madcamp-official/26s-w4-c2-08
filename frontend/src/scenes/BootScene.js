@@ -55,7 +55,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('duck_quack', assetUrl('audio/duck_quack.mp3'));
     this.load.audio('washing_machine_spin', assetUrl('audio/washing.mp3'));
     this.load.audio('washing_machine_sparkle', assetUrl('audio/sparkle.mp3'));
-    this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
+    this.load.svg('icon_menu', assetUrl('icons/menu.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
 

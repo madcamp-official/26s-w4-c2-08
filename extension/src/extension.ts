@@ -120,8 +120,9 @@ export function activate(context: vscode.ExtensionContext) {
       /* 파일이 없으면 그냥 넘어간다 */
     }
 
-    // vite build 산출물 위치. frontend/vite.config.js에서 entry 파일명을 bundle.js로 고정해뒀다.
-    const distUri = vscode.Uri.file(path.join(context.extensionPath, '..', 'frontend', 'dist'));
+    // vite build 산출물 위치. extension/scripts/copy-webview.mjs가 frontend/dist를 여기로 복사해둔다
+    // (vsix로 패키징하면 extension이 frontend와 다른 폴더에 설치되므로 '../frontend/dist'는 못 찾는다).
+    const distUri = vscode.Uri.file(path.join(context.extensionPath, 'media'));
 
     currentPanel = vscode.window.createWebviewPanel(
       'HitTheAgent',

@@ -192,6 +192,10 @@ export const WASHING_MACHINE_DAMAGE_MULTIPLIER = 1.1;
 // 매 프레임 다시 뽑으면 너무 정신없어 보여서, 짧은 간격으로 스텝처럼 움직이게 한다.
 export const WASHING_MACHINE_JITTER_RANGE = 10;
 export const WASHING_MACHINE_JITTER_INTERVAL_MS = 70;
+// 세탁기 몸체 자체도 같은 간격(WASHING_MACHINE_JITTER_INTERVAL_MS)마다 상하좌우로 짧게 흔들려 역동성을
+// 준다 — 안에서 도는 캐릭터(WASHING_MACHINE_JITTER_RANGE, 10px)보다 절반 정도(5px)로 작게 흔들어
+// 몸체가 캐릭터보다 무겁게 흔들리는 느낌을 준다.
+export const WASHING_MACHINE_BODY_JITTER_RANGE = 5;
 // 도는 동안 보스 위(depth 기준 더 높은 자리)를 덮는 검은 원의 불투명도 — 완전히 안 보이게 가리지는
 // 않고, 도는 실루엣이 흐릿하게 비치는 정도로만 어둡게 한다.
 export const WASHING_MACHINE_OVERLAY_ALPHA = 0.8;

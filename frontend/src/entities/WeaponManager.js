@@ -348,6 +348,15 @@ export default class WeaponManager {
       if (this.washingMachine) this.washingMachine.destroy();
     }
 
+    // 세탁기는 다른 무기보다 훨씬 커서(WASHING_MACHINE_WIDTH/HEIGHT) GameScene의 pointerdown/pointermove가
+    // 모든 무기에 공통으로 쓰는 40px 여백 클램프로는 화면 가장자리에서 몸체가 잘려 보인다 — 실제로
+    // 설치되는 이 시점에 자기 크기의 절반만큼 안쪽으로 당겨와 항상 화면 안에 온전히 보이게 한다.
+    const halfW = WASHING_MACHINE_WIDTH / 2;
+    const halfH = WASHING_MACHINE_HEIGHT / 2;
+    const { width, height } = this.scene.scale;
+    weapon.x = Phaser.Math.Clamp(weapon.x, halfW, width - halfW);
+    weapon.y = Phaser.Math.Clamp(weapon.y, halfH, height - halfH);
+
     weapon.doorOpen = false;
     // 보스보다 한 단계 아래 depth — 캐릭터가 문 앞을 지나가거나 안에 들어가 있을 때 세탁기 몸통에
     // 가려지지 않고 항상 그 위에 보이게 한다(GameScene.startWashingMachineSpin이 여기에 반투명

@@ -39,6 +39,7 @@ import {
   WASHING_MACHINE_DAMAGE_TICK_INTERVAL,
   WASHING_MACHINE_JITTER_RANGE,
   WASHING_MACHINE_JITTER_INTERVAL_MS,
+  WASHING_MACHINE_BODY_JITTER_RANGE,
   WASHING_MACHINE_OVERLAY_ALPHA,
   WASHING_MACHINE_POPUP_COLOR,
   WASHING_MACHINE_EJECT_MARGIN,
@@ -788,6 +789,11 @@ export default class GameScene extends Phaser.Scene {
     this.releaseBossDrag();
     this.boss.isInWashingMachine = true;
     this.boss.setPosition(doorPoint.x, doorPoint.y);
+    // 몸체 흔들림(applyWashingMachineJitter)이 매번 새로 뽑는 오프셋을 이 설치 자리 기준으로 더하므로,
+    // 흔들리기 전 원래 자리를 따로 저장해둔다 — 안 그러면 washingMachine.x/y에 계속 offset을 누적
+    // 대입하게 돼 매 틱마다 자리가 점점 밀려난다.
+    this.washingMachineInstallX = this.weaponManager.washingMachine.x;
+    this.washingMachineInstallY = this.weaponManager.washingMachine.y;
 
     this.tweens.add({
       targets: this.boss.sprite,
@@ -827,9 +833,20 @@ export default class GameScene extends Phaser.Scene {
   // 초기화해버려서 도는 애니메이션이 멈춰버린다. 그래서 sprite.setPosition으로 위치만 직접 바꾼다.
   applyWashingMachineJitter(doorPoint) {
     if (this.isEnded || !this.washingMachineSpinActive) return;
+
+    // 세탁기 몸체(설치 자리 기준 ±WASHING_MACHINE_BODY_JITTER_RANGE)도 같이 흔들되, 문(드럼) 구멍처럼
+    // 보이는 마스크/반투명 backdrop은 몸체와 항상 같은 자리에 그려져야 하는 그림이라 같은 오프셋을
+    // 그대로 따라가게 한다 — 안 그러면 몸체 그림만 흔들리고 구멍은 제자리라 서로 어긋나 보인다.
+    const bodyOffsetX = Phaser.Math.Between(-WASHING_MACHINE_BODY_JITTER_RANGE, WASHING_MACHINE_BODY_JITTER_RANGE);
+    const bodyOffsetY = Phaser.Math.Between(-WASHING_MACHINE_BODY_JITTER_RANGE, WASHING_MACHINE_BODY_JITTER_RANGE);
+    this.weaponManager.washingMachine?.setPosition(this.washingMachineInstallX + bodyOffsetX, this.washingMachineInstallY + bodyOffsetY);
+    this.washingMachineSpinMaskShape?.setPosition(doorPoint.x + bodyOffsetX, doorPoint.y + bodyOffsetY);
+    this.washingMachineBackdrop?.setPosition(doorPoint.x + bodyOffsetX, doorPoint.y + bodyOffsetY);
+
+    // 안에서 도는 캐릭터는 몸체 흔들림 위에 자기 몫(±WASHING_MACHINE_JITTER_RANGE)을 더 얹어 흔들린다.
     const offsetX = Phaser.Math.Between(-WASHING_MACHINE_JITTER_RANGE, WASHING_MACHINE_JITTER_RANGE);
     const offsetY = Phaser.Math.Between(-WASHING_MACHINE_JITTER_RANGE, WASHING_MACHINE_JITTER_RANGE);
-    this.boss.sprite.setPosition(doorPoint.x + offsetX, doorPoint.y + offsetY);
+    this.boss.sprite.setPosition(doorPoint.x + bodyOffsetX + offsetX, doorPoint.y + bodyOffsetY + offsetY);
   }
 
   // 도는 동안 주기적으로 들어가는 데미지. applyVomitDamage/applyPanelPushDamage와 같은 1회성 이벤트

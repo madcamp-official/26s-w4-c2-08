@@ -357,25 +357,31 @@ export default class Hud {
     });
   }
 
-  // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃을 쓴다: 2열, 아이콘 바로 밑에 이름,
+  // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃 함수를 쓴다. 기본은 2열 + 아이콘 바로 밑에 이름,
   // 칸 사이 여백으로 분리감을 준다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
+  // columns/iconWidth/iconHeight/colGap/rowGap/top은 탭마다 다른 격자를 짜기 위한 오버라이드 —
+  // MAP 탭은 텍스처가 4:3 배경 스냅샷이라 정사각 2열 대신 1열 + 큰 썸네일로 따로 호출한다(createBackgroundTabContent 참고).
   // 무기가 늘어나 패널 높이를 넘어가면 createSidePanel이 이 contentHeight로 스크롤 가능 범위를 계산한다.
   // showLabel: false면 아이콘 밑 이름 텍스트를 안 그린다(AGENT/MAP 탭 — 아이콘만으로 구분 가능해서 글자 없이 간결하게).
   // iconOffsetXRatio: 아이콘 크기 대비 비율로 아이콘만 좌우로 살짝 밀어준다(테두리 박스는 그대로 중앙) —
   // 보스 텍스처처럼 이미지 자체 여백 때문에 시각적으로 안 맞는 경우 보정하는 용도(BOSS_ICON_OFFSET_X_RATIO 참고).
-  createGridTabContent(panelWidth, items, currentId, onSelect, { showLabel = true, iconOffsetXRatio = 0 } = {}) {
+  createGridTabContent(panelWidth, items, currentId, onSelect, {
+    showLabel = true,
+    iconOffsetXRatio = 0,
+    columns = 2,
+    iconWidth = 64,
+    iconHeight = iconWidth,
+    colGap = 40,
+    rowGap = 26,
+    top = 56,
+  } = {}) {
     const container = this.scene.add.container(0, 0);
 
-    const columns = 2;
-    const iconSize = 64;
-    const colGap = 40;
     const labelGap = 8; // 아이콘 바로 밑 이름 텍스트까지의 간격
-    const labelHeight = 14;
-    const rowGap = 26; // 칸(아이콘+이름)끼리 분리감을 주는 줄 간격
-    const gridWidth = columns * iconSize + (columns - 1) * colGap;
+    const labelHeight = showLabel ? 14 : 0;
+    const gridWidth = columns * iconWidth + (columns - 1) * colGap;
     const gridStartX = (panelWidth - gridWidth) / 2;
-    const rowStep = iconSize + labelGap + labelHeight + rowGap;
-    const top = 56;
+    const rowStep = iconHeight + labelGap + labelHeight + rowGap;
     const rows = Math.ceil(items.length / columns);
     const contentHeight = top + rows * rowStep;
 
@@ -384,20 +390,20 @@ export default class Hud {
     items.forEach(({ id, name, texture }, index) => {
       const col = index % columns;
       const row = Math.floor(index / columns);
-      const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
-      const cy = top + row * rowStep + iconSize / 2;
+      const cx = gridStartX + col * (iconWidth + colGap) + iconWidth / 2;
+      const cy = top + row * rowStep + iconHeight / 2;
 
-      const icon = this.scene.add.image(cx + iconOffsetXRatio * iconSize, cy, texture)
-        .setDisplaySize(iconSize, iconSize)
+      const icon = this.scene.add.image(cx + iconOffsetXRatio * iconWidth, cy, texture)
+        .setDisplaySize(iconWidth, iconHeight)
         .setInteractive({ useHandCursor: true });
-      const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
+      const border = this.scene.add.rectangle(cx, cy, iconWidth + 8, iconHeight + 8)
         .setStrokeStyle(3, PANEL_ACCENT, id === currentId ? 1 : 0);
 
       icon.on('pointerdown', () => onSelect(id));
       this.uiElements.add(icon);
       const elements = [icon, border];
       if (showLabel) {
-        const label = this.scene.add.text(cx, cy + iconSize / 2 + labelGap, name, {
+        const label = this.scene.add.text(cx, cy + iconHeight / 2 + labelGap, name, {
           fontSize: '11px',
           color: '#ffffff',
           fontFamily: UI_FONT_FAMILY,
@@ -440,8 +446,16 @@ export default class Hud {
   }
 
   createBackgroundTabContent(panelWidth, currentStyle, onSelect) {
+    // MAP 텍스처(battleBackground_<style>)는 4:3(800x600) 실제 배경 스냅샷이라 WEAPON/AGENT처럼
+    // 정사각 아이콘으로 찍으면 이미지가 찌그러지고 너무 작아 보인다. 항목이 4개뿐이라 2열 격자
+    // 대신 1열로 세로 4칸을 잡고, contentAreaHeight(패널 높이-헤더)를 정확히 채우는 크기로 키운다.
     const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect, {
       showLabel: false,
+      columns: 1,
+      iconWidth: 160,
+      iconHeight: 120,
+      rowGap: 8,
+      top: 48,
     });
     this.backgroundOptionEls = optionEls;
     return { container, contentHeight };

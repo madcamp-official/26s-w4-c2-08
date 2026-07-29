@@ -81,6 +81,10 @@ Express + `better-sqlite3`(WAL 모드), KCLOUD VM에 systemd로 상시 구동. �
 | `POST /api/scores` | `{ groupId, userName, score }` 점수 1건 저장 |
 | `GET /api/leaderboard?groupId=...` | groupId 기준 유저별 최고점수 상위 20명, 내림차순 |
 
+### 화면 크기 대응
+
+웹뷰 패널 크기가 바뀌어도 스크롤 없이 Phaser `Scale.FIT`으로 800×600 비율을 유지한 채 캔버스가 확대/축소된다(게임 좌표계 자체는 그대로 800×600 기준). 자세한 내용은 [FRONTEND.md](./docs/FRONTEND.md#화면-크기-대응) 참고.
+
 ### Stop 훅 — 토큰 사용량 기반 실시간 캐릭터 대사 (선택 기능, 기본 off)
 
 `hitTheAgent.enableTokenWatchHook` 설정을 켜면, Claude Code가 매 턴 응답을 마칠 때마다 세션 누적 토큰 사용량이 임계치(`hitTheAgent.tokenThreshold`)를 넘길 때 확률적으로 게임 캐릭터가 대사를 띄운다. 워크스페이스의 `.claude/settings.local.json`(로컬 전용)에 마커 기반으로 Stop 훅을 등록/해제하며, 항상 exit 0으로 종료해 사용자의 실제 코딩 세션을 절대 막지 않는다. 자세한 동작은 [ARCHITECTURE.md](./docs/ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고.

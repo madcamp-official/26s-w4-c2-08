@@ -226,9 +226,9 @@ function getWebviewHtml(webview: vscode.Webview, distUri: vscode.Uri): string {
         font-display: swap;
         src: url('${fontBoldUri}') format('woff2');
       }
-      html, body { margin: 0; padding: 0; background: #111; }
-      #game-container { display: flex; justify-content: center; }
-      #game-stage { position: relative; }
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #111; overflow: hidden; }
+      #game-container { display: flex; justify-content: center; align-items: center; width: 100%; height: 100vh; overflow: hidden; }
+      #game-stage { position: relative; width: 100%; height: 100%; }
     </style>
   </head>
   <body data-asset-base="${assetBaseUri}">

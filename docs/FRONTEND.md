@@ -30,6 +30,10 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 
 `GameScene`은 `preload` 없이 `BootScene`이 로드해둔 에셋만 사용한다 (씬 전환 시 재로딩 방지). 렌더러는 VSCode webview(Electron)에서의 GPU 가속 이슈를 피하려고 `Phaser.CANVAS`로 고정한다.
 
+### 화면 크기 대응
+
+게임 내부 좌표계(HP바/보스 스폰 위치 등 `constants.js`의 절대값)는 항상 800×600 기준이고 바뀌지 않는다. 대신 `main.js`의 Phaser `scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }` 설정이 웹뷰 패널 크기에 맞춰 800×600 비율을 유지한 채 캔버스 표시 크기만 확대/축소한다. `#game-container`/`#game-stage`(`frontend/index.html`, `extension.ts`의 webview HTML 둘 다 동일하게)는 뷰포트를 꽉 채우도록 `width/height: 100%`, `overflow: hidden`으로 되어 있어 패널이 좁아져도 스크롤이 생기지 않고, 비율이 안 맞는 방향엔 배경색(`#111`)의 레터박스가 생긴다. 무기/보스 판정 좌표는 이 스케일과 무관하게 800×600 기준 그대로 계산되므로 별도 보정이 필요 없다.
+
 ## 무기 시스템
 
 **필드에 무기를 드래그로 놓고 부딪히는 방식이 아니다.** 실제 동작:

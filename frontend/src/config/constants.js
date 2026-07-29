@@ -631,7 +631,7 @@ export const BOSS_BUMP_MAX_COUNT = 3;
 export const BOSS_BUMP_DECAY_MS = 3000;
 // 지금 자라는 중인 혹이 다음 단계로 넘어가는 데 필요한 누적 히트 수 — index는 혹의 "현재" 레벨
 // (0=아직 안 생김, 1, 2)에 대응한다. 즉 0→1단계는 5대, 1→2단계는 15대, 2→3단계는 25대를 맞아야 한다.
-export const BOSS_BUMP_LEVEL_HIT_THRESHOLDS = [1, 1, 1];
+export const BOSS_BUMP_LEVEL_HIT_THRESHOLDS = [3, 7, 15];
 
 // 연타 콤보: 최근 COMBO_WINDOW_MS 안에 히트가 COMBO_HIT_THRESHOLD번 이상 쌓이면 불 뿜는 연출.
 // 체력 단계(damageStage)와는 무관하게 얼마나 빠르게 연타하느냐만 본다 — 비주얼 전용, 데미지/판정에는 영향 없음.

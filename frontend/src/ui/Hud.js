@@ -74,7 +74,7 @@ export default class Hud {
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
     // 배경(hpBarBg)에만 테두리를 둬서 안의 초록 fill(hpBar)이 줄어들어도 프레임은 고정된 채 유지된다.
     // 체력바 위 라벨 자리에 "BOSS" 대신 점수를 표시한다.
-    this.scoreText = scene.add.text(HP_BAR_X, HP_BAR_Y - 22, '0', {
+    this.scoreText = scene.add.text(HP_BAR_X, HP_BAR_Y - 22, 'Score: 0', {
       fontSize: '16px',
       color: '#ffffff',
       fontStyle: 'bold',
@@ -83,7 +83,7 @@ export default class Hud {
       strokeThickness: 1,
     }).setOrigin(0.5).setDepth(HUD_DEPTH);
     this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00).setDepth(HUD_DEPTH);
-    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33).setDepth(HUD_DEPTH);
+    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0xff0000).setDepth(HUD_DEPTH);
 
     this.panelOpen = false;
     this.activeTab = 'weapon';
@@ -614,6 +614,6 @@ export default class Hud {
   }
 
   updateScoreText(score) {
-    this.scoreText.setText(`${score}`);
+    this.scoreText.setText(`Score: ${score}`);
   }
 }

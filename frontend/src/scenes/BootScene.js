@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
+  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, GOLF_CLUB_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
   LIPS_WEAPON_SIZE,
   KEYBOARD_WEAPON_SIZE, MEGAPHONE_WEAPON_SIZE, PISTOL_WEAPON_SIZE, MACHINE_GUN_WEAPON_SIZE, BULLET_SIZE,
   SHOTGUN_WEAPON_SIZE, SNIPER_WEAPON_SIZE, REVOLVER_WEAPON_SIZE, PELLET_SIZE,
@@ -9,7 +9,7 @@ import {
   RUBBER_DUCK_WEAPON_SIZE, TEDDY_BEAR_WEAPON_SIZE, CHEESE_SQUISHY_WEAPON_SIZE, FRYING_PAN_WEAPON_SIZE,
   SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BEACH_BALL_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
   GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
-  BOSS_SHIELD_SIZE,
+  BOSS_SHIELD_SIZE, BORED_BUBBLE_WEAPON_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
@@ -18,15 +18,15 @@ import {
   createBossVomitCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
-  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createGolfClubCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
   createKeyboardCanvas, createMegaphoneCanvas, createPistolCanvas, createMachineGunCanvas, createBulletCanvas,
   createShotgunCanvas, createSniperCanvas, createRevolverCanvas, createPelletCanvas,
   createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
   createBambooCaneCanvas, createSquishyToyCanvas,
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
-  createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createFryingPanCanvas, createSlipperCanvas,
+  createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createUreaSolutionCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
-  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas,
+  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createBoredGirlCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -48,10 +48,20 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('hit_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
     this.load.audio('keyboard_smash', assetUrl('audio/keyboard_smash.mp3'));
     this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
+    this.load.audio('pistol_shot', assetUrl('audio/pistol_shot.mp3'));
+    this.load.audio('machine_gun_shot', assetUrl('audio/machinegun.mp3'));
+    this.load.audio('shotgun_blast', assetUrl('audio/universfield-shotgun-blast-352038.mp3'));
+    this.load.audio('sniper_shot', assetUrl('audio/freesound_community-sniper-rifle-5989.mp3'));
+    this.load.audio('revolver_shot', assetUrl('audio/freesound_community-gun-shots-from-a-distance-7-96391.mp3'));
+    this.load.audio('megaphone_feedback', assetUrl('audio/freesound_community-microphone-feedback-100786.mp3'));
+    this.load.audio('tomato_squish', assetUrl('audio/freesound_community-tomato-squishwet-103934.mp3'));
+    this.load.audio('watermelon_splat', assetUrl('audio/universfield-cartoon-splat-310479.mp3'));
+    this.load.audio('water_balloon_pop', assetUrl('audio/freesound_community-balloon-pop-48030.mp3'));
     this.load.audio('panel_open', assetUrl('audio/pannel_open.mp3'));
     this.load.audio('exit_button', assetUrl('audio/exit_button.mp3'));
     this.load.audio('boss_vomit', assetUrl('audio/obite.mp3'));
     this.load.audio('duck_quack', assetUrl('audio/duck_quack.mp3'));
+    this.load.audio('seoyoon_bored', assetUrl('audio/seoyoon.wav'));
     this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
@@ -95,10 +105,12 @@ export default class BootScene extends Phaser.Scene {
   createPlaceholderTextures() {
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_wand', createMagicWandCanvas(WAND_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_golf_club', createGolfClubCanvas(GOLF_CLUB_WEAPON_SIZE));
     this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_hand', createHandCanvas(HAND_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bad_hand', createHandCanvas(BAD_HAND_WEAPON_SIZE, { skinColor: '#e0574a', skinStroke: '#8f2e24' }));
     this.textures.addCanvas('weapon_lips', createLipsCanvas(LIPS_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_bored_bubble', createBoredGirlCanvas(BORED_BUBBLE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_keyboard', createKeyboardCanvas(KEYBOARD_WEAPON_SIZE));
     this.textures.addCanvas('weapon_whip', createWhipCanvas(WHIP_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bamboo_cane', createBambooCaneCanvas(BAMBOO_CANE_WEAPON_SIZE));
@@ -148,6 +160,8 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('effect_watermelon_slice', createWatermelonSliceCanvas(WATERMELON_WEAPON_SIZE));
     this.textures.addCanvas('weapon_water_balloon', createWaterBalloonCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_water_balloon_projectile', createWaterBalloonCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_urea_solution', createUreaSolutionCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_urea_solution_projectile', createUreaSolutionCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_beach_ball', createBeachBallCanvas(BEACH_BALL_WEAPON_SIZE));
     this.textures.addCanvas('weapon_beach_ball_projectile', createBeachBallCanvas(BEACH_BALL_WEAPON_SIZE));
   }

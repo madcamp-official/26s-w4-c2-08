@@ -182,6 +182,11 @@ export default class GameScene extends Phaser.Scene {
       const x = Phaser.Math.Clamp(pointer.x, 40, this.scale.width - 40);
       const y = Phaser.Math.Clamp(pointer.y, 40, this.scale.height - 40);
       this.weaponManager.moveActiveWeapon(x, y);
+      // 조준 중(스코프가 떠 있는 동안) 보스가 넉백 등으로 움직이면 스코프도 계속 반대쪽 구석을 따라간다.
+      if (this.sniperScope.camera.visible) {
+        const { cx, cy } = this.getOppositeCornerFromBoss();
+        this.repositionSniperScope(this.sniperScope, cx, cy);
+      }
     });
 
     this.input.on('pointerup', () => {
@@ -440,14 +445,14 @@ export default class GameScene extends Phaser.Scene {
   // camera.ignore()로 빼서 스코프 안에 이중으로 확대되어 보이지 않게 한다.
   createSniperScope() {
     const radius = SNIPER_SCOPE_DIAMETER / 2;
-    const cx = SNIPER_SCOPE_MARGIN;
-    const cy = SNIPER_SCOPE_MARGIN;
 
+    // 로컬 원점(0,0)을 스코프 중심으로 그려두고, 실제 화면 위치는 오브젝트 자체의 x/y(setPosition)로
+    // 옮긴다 — repositionSniperScope가 매번 다시 그리지 않고 위치만 옮길 수 있게 하기 위함.
     const reticle = this.add.graphics().setDepth(2500).setVisible(false);
     reticle.lineStyle(4, 0x000000, 0.85);
-    reticle.strokeCircle(cx, cy, radius + 2);
+    reticle.strokeCircle(0, 0, radius + 2);
     reticle.lineStyle(2, 0xff3b3b, 1);
-    reticle.strokeCircle(cx, cy, radius);
+    reticle.strokeCircle(0, 0, radius);
 
     // 십자선 — 중앙에 공백을 두고 네 방향 짧은 선만 그려서 완전히 이어진 십자가보다 스코프 레티클답게 보이게 한다.
     const gap = 14;
@@ -460,18 +465,18 @@ export default class GameScene extends Phaser.Scene {
       [gap, 0, gap + armLen, 0],
     ].forEach(([x1, y1, x2, y2]) => {
       reticle.beginPath();
-      reticle.moveTo(cx + x1, cy + y1);
-      reticle.lineTo(cx + x2, cy + y2);
+      reticle.moveTo(x1, y1);
+      reticle.lineTo(x2, y2);
       reticle.strokePath();
     });
 
-    const camera = this.cameras.add(cx - radius, cy - radius, radius * 2, radius * 2)
+    const camera = this.cameras.add(0, 0, radius * 2, radius * 2)
       .setZoom(SNIPER_SCOPE_ZOOM)
       .setBackgroundColor(0x000000)
       .setVisible(false);
 
     // Hud.createSidePanel의 maskShape와 같은 패턴 — 마스크 소스는 항상 숨겨두고 모양만 빌려 쓴다.
-    const maskShape = this.add.graphics().fillStyle(0xffffff).fillCircle(cx, cy, radius).setVisible(false);
+    const maskShape = this.add.graphics().fillStyle(0xffffff).fillCircle(0, 0, radius).setVisible(false);
     camera.setMask(maskShape.createGeometryMask());
 
     camera.ignore([
@@ -482,10 +487,37 @@ export default class GameScene extends Phaser.Scene {
       this.hud.endButton.bg, this.hud.endButton.icon,
     ]);
 
-    return { camera, reticle };
+    const scope = {
+      camera, reticle, maskShape, radius,
+    };
+    this.repositionSniperScope(scope, SNIPER_SCOPE_MARGIN, SNIPER_SCOPE_MARGIN);
+    return scope;
+  }
+
+  // 보스가 지금 화면 어느 쪽에 있는지 봐서, 그 대각선 반대쪽 구석에 스코프를 띄운다 — 스코프가 항상
+  // 보스를 가리지 않게 하려는 목적. 조준 중(pointerdown~pointerup) 보스가 넉백/드래그로 옮겨갈 수도
+  // 있으니 pointerdown 시점뿐 아니라 pointermove로 조준하는 동안에도 계속 다시 계산해서 따라가게 한다.
+  repositionSniperScope(scope, cx, cy) {
+    scope.camera.setPosition(cx - scope.radius, cy - scope.radius);
+    scope.maskShape.setPosition(cx, cy);
+    scope.reticle.setPosition(cx, cy);
+  }
+
+  // 보스 위치 기준으로 스코프가 자리잡을 대각선 반대쪽 구석 좌표를 계산한다.
+  getOppositeCornerFromBoss() {
+    const margin = SNIPER_SCOPE_MARGIN;
+    const bossInLeftHalf = this.boss.sprite.x < this.scale.width / 2;
+    const bossInTopHalf = this.boss.sprite.y < this.scale.height / 2;
+    const cx = bossInLeftHalf ? this.scale.width - margin : margin;
+    const cy = bossInTopHalf ? this.scale.height - margin : margin;
+    return { cx, cy };
   }
 
   setSniperScopeVisible(visible) {
+    if (visible) {
+      const { cx, cy } = this.getOppositeCornerFromBoss();
+      this.repositionSniperScope(this.sniperScope, cx, cy);
+    }
     this.sniperScope.camera.setVisible(visible);
     this.sniperScope.reticle.setVisible(visible);
   }
@@ -614,9 +646,22 @@ export default class GameScene extends Phaser.Scene {
         else if (hit.weaponId === WEAPON_IDS.TOMATO) this.spawnTomatoBurstEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.WATERMELON) this.spawnWatermelonSplitEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.WATER_BALLOON) this.spawnWaterSplashEffect(hit.x, hit.y);
+        // 요소수: 평소엔 물풍선과 같은 파란 스플래시, 보스가 불 뿜는 중에 맞아 인화됐으면(hit.ignited)
+        // 수류탄과 같은 폭발 이펙트 + 카메라 shake로 "터진다"는 느낌을 낸다.
+        else if (hit.weaponId === WEAPON_IDS.UREA_SOLUTION) {
+          if (hit.ignited) {
+            this.spawnGrenadeExplosionEffect(hit.x, hit.y);
+            this.cameras.main.shake(160, 0.012);
+          } else {
+            this.spawnWaterSplashEffect(hit.x, hit.y);
+          }
+        }
         else if (hit.weaponId === WEAPON_IDS.BEACH_BALL) this.spawnBeachBallBounceEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.FRYING_PAN) this.spawnMetalClangEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.SLIPPER) this.spawnSlipperSmackEffect(hit.x, hit.y);
+        // "심심해" 말풍선: 스파크 대신 귀에서 피 — hit 좌표(말풍선 위치)가 아니라 보스 몸통 기준
+        // 양쪽 귀 위치에서 그린다(spawnEarBloodEffect가 boss.getHitRect()로 계산).
+        else if (hit.weaponId === WEAPON_IDS.BORED_BUBBLE) this.spawnEarBloodEffect();
         // 폭탄류는 스파크 대신 터지는 순간(onBombDetonate)에 이미 폭발 이펙트를 띄웠으니 여기서는 생략한다.
         else if (hit.weaponId === WEAPON_IDS.GRENADE || hit.weaponId === WEAPON_IDS.DYNAMITE) { /* no-op */ }
         // 토마토/수박: 빨간 스플래터. 물풍선: 파란 스플래시. 마술봉: 연보라 스파크. 전용 이펙트 함수 없이
@@ -813,6 +858,68 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // "심심해" 말풍선 전용 — 양쪽 귀에서 피가 흐르는 코믹 이펙트. spawnElectrocuteEffect와 같은 방식으로
+  // 타격 지점(hit.x/y, 말풍선 위치)이 아니라 boss.getHitRect() 기준 귀 위치에서 그린다.
+  // 보스 실루엣(bossSprite.js BODY_CELLS)엔 실제 귀가 없어서 아무 표시 없이 피만 튀기면 "몸통 옆
+  // 허공에서 피가 남"처럼 보인다 — 눈(EYE_CELLS) 높이(row1, 전체 7행 중 위에서 약 0.21)에 맞추고,
+  // 몸통과 같은 색의 작은 귀 돌기를 먼저 그려서 "여기가 귀"라는 걸 눈에 보이게 앵커를 준다.
+  spawnEarBloodEffect() {
+    const bodyRect = this.boss.getHitRect();
+    const bossType = BOSS_TYPES.find((b) => b.id === this.boss.bossTypeId);
+    const earColor = bossType ? parseInt(bossType.color.slice(1), 16) : 0xe8631a;
+    const earY = bodyRect.y + bodyRect.height * 0.21;
+    const earPoints = [
+      { x: bodyRect.x + bodyRect.width * 0.04, y: earY },
+      { x: bodyRect.right - bodyRect.width * 0.04, y: earY },
+    ];
+
+    earPoints.forEach(({ x, y }) => {
+      // 몸통 색 귀 돌기 — 피 이펙트와 같이 튀어나왔다가 피가 다 흐른 뒤 같이 사라진다.
+      const earRadius = bodyRect.height * 0.1;
+      const ear = this.add.ellipse(x, y, earRadius * 1.5, earRadius * 2, earColor, 1)
+        .setStrokeStyle(2, 0x000000, 0.35)
+        .setDepth(997)
+        .setScale(0.3);
+      this.tweens.add({ targets: ear, scale: 1, duration: 120, ease: 'Back.easeOut' });
+      this.tweens.add({
+        targets: ear, alpha: 0, delay: 550, duration: 250, onComplete: () => ear.destroy(),
+      });
+
+      // 터지는 순간 눈에 확 띄도록 빨간 스파크 버스트(spawnBurstShape, 다른 무기 이펙트와 같은 함수) +
+      // 귀 옆에 남는 얼룩을 먼저 깔고, 그 아래로 방울이 떨어지게 한다.
+      this.spawnBurstShape(x, y, 0xd32f2f, { radius: 16, spikeCount: 8, alpha: 0.95 });
+      const stain = this.add.ellipse(x, y + 4, 16, 10, 0xb71c1c, 0.6).setDepth(998).setScale(0.4);
+      this.tweens.add({
+        targets: stain,
+        scaleX: 2.2,
+        scaleY: 1.6,
+        alpha: 0,
+        duration: 700,
+        ease: 'Cubic.easeOut',
+        onComplete: () => stain.destroy(),
+      });
+
+      const dropCount = 5;
+      for (let i = 0; i < dropCount; i += 1) {
+        const dropX = x + Phaser.Math.Between(-3, 3);
+        const drop = this.add.circle(dropX, y, Phaser.Math.Between(4, 7), 0xb71c1c, 1)
+          .setStrokeStyle(1, 0x7a0000, 0.8)
+          .setDepth(1000);
+        this.tweens.add({
+          targets: drop,
+          x: dropX + Phaser.Math.Between(-6, 6),
+          y: y + Phaser.Math.Between(38, 60),
+          scaleY: 1.8, // 떨어지면서 길게 늘어나는 핏방울 느낌
+          alpha: 0,
+          duration: 650,
+          delay: i * 60,
+          ease: 'Cubic.easeIn',
+          onComplete: () => drop.destroy(),
+        });
+      }
+    });
+  }
+
   // 확성기 전용 "소리 충격" 이펙트. 타격 지점에서 동심원 파동 3개가 시간차를 두고 부풀며 사라진다 —
   // 별 조각/번개 대신 순수하게 "소리가 퍼져나간다"는 느낌만 주는 단순한 링 형태로 구분한다.
   spawnSoundWaveEffect(x, y) {
@@ -960,21 +1067,50 @@ export default class GameScene extends Phaser.Scene {
   // 물보다는 불꽃에 가까워 보여서 전용 이펙트로 교체한다.
   spawnWaterSplashEffect(x, y) {
     // 터지는 순간 뾰족한 버스트 모양(spawnBurstShape) — 토마토와 같은 방식으로 "펑" 느낌을 준다.
-    this.spawnBurstShape(x, y, 0x4fc3f7, { radius: 26, spikeCount: 10, alpha: 0.75 });
+    this.spawnBurstShape(x, y, 0x4fc3f7, { radius: 28, spikeCount: 10, alpha: 0.8 });
 
-    const dropletCount = 10;
+    // 파문(ripple) — 바닥에 물이 퍼지는 느낌을 주는 옅은 원형 링. 채우기 없이 테두리만 커지면서 사라진다.
+    const ripple = this.add.circle(x, y + 4, 16, 0x4fc3f7, 0)
+      .setStrokeStyle(3, 0x4fc3f7, 0.65)
+      .setDepth(997)
+      .setScale(0.3);
+    this.tweens.add({
+      targets: ripple,
+      scale: 2.4,
+      alpha: 0,
+      duration: 420,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ripple.destroy(),
+    });
+
+    // 물방울 — 위로 솟구쳤다가(1단계) 중력을 받아 가속하며 떨어지는(2단계) 2단 물리로 실제 물이 튀는
+    // 느낌을 낸다. 떨어지는 동안 세로로 늘어나(scaleY) 물줄기처럼 보이게 한다(핏방울 이펙트와 같은 방식).
+    const dropletCount = 14;
     for (let i = 0; i < dropletCount; i += 1) {
-      const angle = Phaser.Math.FloatBetween(-Math.PI * 0.9, -Math.PI * 0.1); // 위쪽으로 튀었다가
-      const distance = Phaser.Math.Between(18, 40);
-      const droplet = this.add.circle(x, y, Phaser.Math.Between(3, 6), 0x4fc3f7, 0.85).setDepth(1000);
+      const angle = Phaser.Math.FloatBetween(-Math.PI * 0.95, -Math.PI * 0.05);
+      const riseDistance = Phaser.Math.Between(20, 46);
+      const peakX = x + Math.cos(angle) * riseDistance;
+      const peakY = y + Math.sin(angle) * riseDistance;
+      const droplet = this.add.circle(x, y, Phaser.Math.Between(2, 6), 0x4fc3f7, 0.9).setDepth(1000);
+
       this.tweens.add({
         targets: droplet,
-        x: x + Math.cos(angle) * distance,
-        y: y + Phaser.Math.Between(40, 60), // 중력 받아 떨어지는 낙하
-        alpha: 0,
-        duration: 480,
-        ease: 'Cubic.easeIn',
-        onComplete: () => droplet.destroy(),
+        x: peakX,
+        y: peakY,
+        duration: 150 + i * 4,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: droplet,
+            x: peakX + Phaser.Math.Between(-8, 8),
+            y: peakY + Phaser.Math.Between(50, 80),
+            scaleY: 1.7,
+            alpha: 0,
+            duration: 380,
+            ease: 'Quad.easeIn',
+            onComplete: () => droplet.destroy(),
+          });
+        },
       });
     }
   }

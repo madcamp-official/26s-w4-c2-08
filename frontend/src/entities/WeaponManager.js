@@ -6,6 +6,7 @@ import {
   THROW_PROJECTILE_HIT_RADIUS,
   PORTABLE_WEAPON_SIZE,
   WAND_WEAPON_SIZE,
+  GOLF_CLUB_WEAPON_SIZE,
   WEAPON_IDS,
   WEAPON_CATEGORIES,
   WEAPON_DEFINITIONS,
@@ -21,7 +22,7 @@ import {
   DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA,
   DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA,
 } from '../config/constants.js';
-import { getBaseballBatDimensions, getMagicWandDimensions } from './weaponSprites.js';
+import { getBaseballBatDimensions, getMagicWandDimensions, getGolfClubDimensions } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
 // PORTABLE 카테고리(방망이/마술봉처럼 대각선으로 들고 부딪히는 무기) 텍스처는 전부 로컬 기준 -45도로
@@ -35,9 +36,11 @@ const PORTABLE_BAKED_ROTATION = -Math.PI / 4;
 // 새 PORTABLE 무기를 추가할 때는 이 표에도 같이 추가해야 한다.
 const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
 const WAND_DIMENSIONS = getMagicWandDimensions(WAND_WEAPON_SIZE);
+const GOLF_CLUB_DIMENSIONS = getGolfClubDimensions(GOLF_CLUB_WEAPON_SIZE);
 const PORTABLE_AXIS_CONFIG = {
   [WEAPON_IDS.BAT]: { halfLen: BAT_DIMENSIONS.halfLen, radius: BAT_DIMENSIONS.barrelHalfWidth },
   [WEAPON_IDS.WAND]: { halfLen: WAND_DIMENSIONS.halfLen, radius: WAND_DIMENSIONS.shaftHalfWidth },
+  [WEAPON_IDS.GOLF_CLUB]: { halfLen: GOLF_CLUB_DIMENSIONS.halfLen, radius: GOLF_CLUB_DIMENSIONS.headHalfWidth },
 };
 
 // 필드에 여러 개를 놓아두고 드래그/합체/버리기 하던 예전 방식 대신, 무기 패널에서 카테고리를 고른 뒤
@@ -326,7 +329,13 @@ export default class WeaponManager {
   // 발사할 때마다 반동이 걸리는데, 이 값이 없으면 recoilKick이 매번 각도를 0(수평)으로 리셋해버려서
   // 보스를 향해 돌아간 총이 쐈다 하면 다시 수평으로 튕겨 보이는 문제가 있었다.
   faceBoss(weapon, bakedRotation = 0) {
-    weapon.rotation = this.getAngleToBoss(weapon.x, weapon.y) - bakedRotation;
+    const angle = this.getAngleToBoss(weapon.x, weapon.y) - bakedRotation;
+    // 확성기(손잡이가 몸통 아래에만 있는 비대칭 텍스처)처럼 위아래가 대칭이 아닌 무기는, 보스가 왼쪽에
+    // 있어서 각도가 90도를 넘어가면 그대로 회전만 시켰을 때 손잡이가 위로 뒤집혀 보인다. 회전각은
+    // 그대로 두고 flipY(세로 반전)만 같이 걸어주면 끝(나팔 입구) 방향은 그대로 유지되면서 손잡이는
+    // 계속 아래를 향한다 — 탑다운 슈팅 게임에서 무기 스프라이트 좌우 반전에 흔히 쓰는 방식.
+    weapon.setFlipY(Math.cos(angle) < 0);
+    weapon.rotation = angle;
     weapon.baseAngle = weapon.angle;
   }
 
@@ -407,16 +416,20 @@ export default class WeaponManager {
   }
 
   // pelletCount/spreadAngleDeg(산탄총)가 있으면 이 각도 범위 안에 고르게 퍼진 여러 발을 동시에 만든다.
+  // angleJitterDeg(기관총)가 있으면 매 발마다 그 범위 안에서 랜덤한 각도를 더해 흔들리며 나가게 한다 —
+  // 산탄총의 고정된 부채꼴 대형과 달리 한 발씩 쏘되 조준이 계속 랜덤하게 흔들리는 연사 부정확도를 표현.
   // 사운드/반동은 발사 1회당 한 번만 나야 해서(펠릿 5개라고 5번 울리면 시끄럽다) 루프 밖에서 처리한다.
   fireProjectile(launcher) {
     const definition = WEAPON_DEFINITIONS[launcher.weaponId];
     const baseAngle = Phaser.Math.Angle.Between(launcher.x, launcher.y, this.boss.sprite.x, this.boss.sprite.y);
     const pelletCount = definition.pelletCount ?? 1;
     const spreadRad = Phaser.Math.DegToRad(definition.spreadAngleDeg ?? 0);
+    const jitterDeg = definition.angleJitterDeg ?? 0;
 
     for (let i = 0; i < pelletCount; i += 1) {
       const angleOffset = pelletCount > 1 ? spreadRad * (i / (pelletCount - 1) - 0.5) : 0;
-      this.spawnProjectile(launcher, definition, baseAngle + angleOffset);
+      const jitter = jitterDeg ? Phaser.Math.DegToRad(Phaser.Math.FloatBetween(-jitterDeg, jitterDeg)) : 0;
+      this.spawnProjectile(launcher, definition, baseAngle + angleOffset + jitter);
     }
 
     if (definition.fireSound) this.scene.sound.play(definition.fireSound);

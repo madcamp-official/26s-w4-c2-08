@@ -5,11 +5,14 @@ import {
   BASE_DAMAGE_MAX,
   BOSS_PANEL_PUSH_DAMAGE_MULTIPLIER,
   WEAPON_DEFINITIONS,
+  WEAPON_IDS,
   PET_COOLDOWN,
   HEAL_MIN,
   HEAL_MAX,
   BOSS_SHIELD_BLOCK_CHANCE,
   VOMIT_DAMAGE_MULTIPLIER,
+  UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER,
+  UREA_IGNITE_STREAK_THRESHOLD,
 } from '../config/constants.js';
 
 export default class CombatSystem {
@@ -23,6 +26,11 @@ export default class CombatSystem {
     this.score = 0;
     this.lastHitTime = 0;
     this.lastPetTime = 0;
+    // 요소수를 다른 무기 안 섞고 연속으로(UREA_IGNITE_STREAK_THRESHOLD번) 맞히면 마찰로 자체 인화되는
+    // 스트릭 카운터 — 보스 불 뿜기(fireBreathEvent)에 우연히 맞아야만 터지던 것과 별개로, 플레이어가
+    // 직접 노려서 터뜨릴 수 있는 경로. LIPS_VOMIT_STREAK_THRESHOLD(Boss.registerLipsHit)와 같은 결의
+    // "연속 판정"이지만 데미지 배율 자체를 바꿔야 해서 Boss가 아니라 여기(CombatSystem)에서 관리한다.
+    this.ureaStreak = 0;
   }
 
   // triggerWeapon: 이 히트를 유발한 실제 무기/투사체. 빠르게 움직이는 투사체는 overlap 콜백이 발생한 시점과
@@ -62,16 +70,32 @@ export default class CombatSystem {
     // weaponId를 같이 넘겨서 GameScene.onHit이 무기별로 다른 이펙트(전기충격기 감전 등)를 고를 수 있게 한다.
     // damageMultiplierOverride: WEAPON_DEFINITIONS의 고정 배율 대신 이 히트만 특별히 쓸 배율 —
     // 다이너마이트 연쇄 폭발(WeaponManager.detonateBomb)이 묶인 개수만큼 불어난 배율을 여기 실어 보낸다.
+    // 요소수는 두 경로 중 하나로 인화되면 물풍선 배율 대신 UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER로
+    // 크게 터진다 — ①보스가 마침 불 뿜기 중(Boss.fireBreathEvent)일 때 맞음(우연) ②요소수로만 연속
+    // UREA_IGNITE_STREAK_THRESHOLD번 맞혀서 자체 인화(플레이어가 직접 노려서 터뜨림). ignited 플래그로
+    // GameScene에 넘겨서 스플래시 대신 폭발 이펙트(spawnGrenadeExplosionEffect)를 고르게 한다.
+    const isUreaTrigger = triggerWeapon.weaponId === WEAPON_IDS.UREA_SOLUTION;
+    this.ureaStreak = isUreaTrigger ? this.ureaStreak + 1 : 0;
+    const streakIgnited = isUreaTrigger && this.ureaStreak >= UREA_IGNITE_STREAK_THRESHOLD;
+    if (streakIgnited) this.ureaStreak = 0; // 터진 뒤엔 다시 처음부터 연타해야 재점화
+    const isIgnitedUrea = (weaponId) => weaponId === WEAPON_IDS.UREA_SOLUTION && (!!this.boss.fireBreathEvent || streakIgnited);
     const overlappingWeapons = this.weaponManager.getOverlappingDamageDealers();
     const hits = overlappingWeapons.length > 0
-      ? overlappingWeapons.map((weapon) => ({
-        amount: this.rollDamage(weapon.damageMultiplierOverride ?? WEAPON_DEFINITIONS[weapon.weaponId]?.damageMultiplier),
-        weaponId: weapon.weaponId,
-        ...this.weaponManager.getHitPoint(weapon),
-      }))
+      ? overlappingWeapons.map((weapon) => {
+        const ignited = isIgnitedUrea(weapon.weaponId);
+        return {
+          amount: this.rollDamage(weapon.damageMultiplierOverride
+            ?? (ignited ? UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER : WEAPON_DEFINITIONS[weapon.weaponId]?.damageMultiplier)),
+          weaponId: weapon.weaponId,
+          ignited,
+          ...this.weaponManager.getHitPoint(weapon),
+        };
+      })
       : [{
-        amount: this.rollDamage(triggerWeapon.damageMultiplierOverride ?? definition?.damageMultiplier),
+        amount: this.rollDamage(triggerWeapon.damageMultiplierOverride
+          ?? (isIgnitedUrea(triggerWeapon.weaponId) ? UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER : definition?.damageMultiplier)),
         weaponId: triggerWeapon.weaponId,
+        ignited: isIgnitedUrea(triggerWeapon.weaponId),
         ...this.weaponManager.getHitPoint(triggerWeapon),
       }];
 

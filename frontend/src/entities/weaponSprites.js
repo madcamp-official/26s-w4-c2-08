@@ -431,6 +431,77 @@ export function createMagicWandCanvas(size) {
   return canvas;
 }
 
+// 골프채: 방망이/마술봉과 같은 PORTABLE 캡슐 판정 — 축 방향 절반 길이(halfLen)와 두께(radius)만 쓰는
+// 단순 캡슐이라 실제로는 샤프트(얇음)/헤드(두꺼움)가 섞여 있어도 판정 반지름은 가장 두꺼운 부분인
+// 클럽헤드(headHalfWidth) 기준으로 고정한다 — 방망이가 배럴 반두께를 기준으로 삼는 것과 같은 방식.
+export function getGolfClubDimensions(size) {
+  const totalLength = size * 0.96; // 방망이(0.92)보다 살짝 긴 실루엣 — 골프채 특유의 길쭉한 비율
+  const halfLen = totalLength / 2;
+  const shaftHalfWidth = size * 0.022; // 얇은 샤프트
+  const gripHalfWidth = size * 0.04; // 손잡이 쪽만 살짝 두꺼운 그립 밴드
+  const gripLength = totalLength * 0.16;
+  const headHalfWidth = size * 0.095; // 클럽헤드 두께 절반 — 캡슐 판정 반지름으로도 그대로 쓴다
+  const headLength = size * 0.15; // 클럽헤드가 축 방향으로 차지하는 길이
+
+  const gripEndX = -halfLen + gripLength;
+  const headStartX = halfLen - headLength;
+
+  // 45도 회전한 막대의 축정렬 경계 상자 한 변 길이 (+2px는 안티에일리어싱 여백)
+  const canvasSize = Math.ceil(Math.SQRT2 * (halfLen + headHalfWidth)) + 2;
+
+  return {
+    halfLen, shaftHalfWidth, gripHalfWidth, gripLength, headHalfWidth, headLength, gripEndX, headStartX, canvasSize,
+  };
+}
+
+export function createGolfClubCanvas(size) {
+  const gripColor = '#2b2b2b';
+  const shaftColor = '#c9ced3';
+  const shaftStroke = '#8a9096';
+  const headColor = '#e6e9ec';
+  const headStroke = '#8a9096';
+
+  const {
+    halfLen, shaftHalfWidth, gripHalfWidth, gripLength, headHalfWidth, headLength, gripEndX, headStartX, canvasSize,
+  } = getGolfClubDimensions(size);
+
+  const canvas = createCanvas(canvasSize);
+  const ctx = canvas.getContext('2d');
+
+  ctx.save();
+  ctx.translate(canvasSize / 2, canvasSize / 2);
+  ctx.rotate(-Math.PI / 4);
+
+  // 그립 — 손잡이 쪽만 살짝 두꺼운 검은 고무 밴드
+  ctx.fillStyle = gripColor;
+  ctx.fillRect(-halfLen, -gripHalfWidth, gripLength, gripHalfWidth * 2);
+
+  // 샤프트 — 그립 끝부터 클럽헤드 시작 전까지 곧고 얇은 은색 막대
+  ctx.fillStyle = shaftColor;
+  ctx.strokeStyle = shaftStroke;
+  ctx.lineWidth = Math.max(1, size * 0.006);
+  ctx.fillRect(gripEndX, -shaftHalfWidth, headStartX - gripEndX, shaftHalfWidth * 2);
+  ctx.strokeRect(gripEndX, -shaftHalfWidth, headStartX - gripEndX, shaftHalfWidth * 2);
+
+  // 클럽헤드(아이언) — 샤프트에서 빠르게 넓어졌다가 끝(타격면)에서 로프트만큼 비스듬히 잘린 쐐기 실루엣
+  ctx.fillStyle = headColor;
+  ctx.strokeStyle = headStroke;
+  ctx.lineWidth = Math.max(1, size * 0.01);
+  ctx.beginPath();
+  ctx.moveTo(headStartX, -shaftHalfWidth);
+  ctx.quadraticCurveTo(headStartX + headLength * 0.35, -headHalfWidth, headStartX + headLength * 0.65, -headHalfWidth * 0.85);
+  ctx.lineTo(halfLen, -headHalfWidth * 0.35);
+  ctx.lineTo(halfLen - headLength * 0.1, headHalfWidth);
+  ctx.lineTo(headStartX + headLength * 0.3, headHalfWidth * 0.9);
+  ctx.lineTo(headStartX, shaftHalfWidth);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+  return canvas;
+}
+
 // 투척형 무기 세 번째/네 번째 디자인: 권총/기관총. 총알(투사체)이 뾰족한 방향을 향해야 자연스러워서
 // 다트와 같은 규칙으로 각도 0(오른쪽)을 바라보게 그린다 — WeaponManager가 rotateToTravel로 그대로 회전시킨다.
 
@@ -1357,6 +1428,71 @@ export function createWaterBalloonCanvas(size) {
   return canvas;
 }
 
+// 요소수: 사다리꼴 플라스틱 통 + 파란 액체(물풍선과 같은 파랑 계열로 통일 — 실제로도 던지면 물풍선처럼
+// 파란 액체가 튀는 느낌을 노림) + 목/뚜껑 + "요소수" 라벨. 크기가 THROW_WEAPON_SIZE(40)라 라벨 글자는
+// 실제로는 거의 안 읽히지만 실루엣만으로도 "파란 통" 정체성은 살아 있다.
+export function createUreaSolutionCanvas(size) {
+  const bodyColor = '#eaf6ff';
+  const bodyStroke = '#6fa8c9';
+  const liquidColor = 'rgba(79, 195, 247, 0.85)';
+  const capColor = '#2f77a8';
+  const labelColor = '#2f77a8';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+
+  const bodyTop = size * 0.28;
+  const bodyBottom = size * 0.88;
+  const bodyHalfWidth = size * 0.26;
+
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.moveTo(cx - bodyHalfWidth, bodyTop);
+  ctx.lineTo(cx + bodyHalfWidth, bodyTop);
+  ctx.lineTo(cx + bodyHalfWidth * 0.9, bodyBottom);
+  ctx.lineTo(cx - bodyHalfWidth * 0.9, bodyBottom);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 액체 — 몸통 아래 60%만 채워서 액체가 든 통처럼 보이게
+  const liquidTop = bodyTop + (bodyBottom - bodyTop) * 0.4;
+  ctx.fillStyle = liquidColor;
+  ctx.beginPath();
+  ctx.moveTo(cx - bodyHalfWidth * 0.95, liquidTop);
+  ctx.lineTo(cx + bodyHalfWidth * 0.95, liquidTop);
+  ctx.lineTo(cx + bodyHalfWidth * 0.9, bodyBottom - size * 0.02);
+  ctx.lineTo(cx - bodyHalfWidth * 0.9, bodyBottom - size * 0.02);
+  ctx.closePath();
+  ctx.fill();
+
+  // 목/뚜껑
+  const neckWidth = size * 0.14;
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.beginPath();
+  ctx.rect(cx - neckWidth / 2, bodyTop - size * 0.08, neckWidth, size * 0.08);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = capColor;
+  ctx.fillRect(cx - neckWidth * 0.6, bodyTop - size * 0.14, neckWidth * 1.2, size * 0.07);
+
+  // 라벨
+  ctx.fillStyle = labelColor;
+  ctx.fillRect(cx - bodyHalfWidth * 0.8, bodyTop + (bodyBottom - bodyTop) * 0.12, bodyHalfWidth * 1.6, size * 0.12);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(size * 0.11)}px "Galmuri11", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('요소수', cx, bodyTop + (bodyBottom - bodyTop) * 0.12 + size * 0.06);
+
+  return canvas;
+}
+
 // 프라이팬: 검은 원(팬 몸통) + 손잡이(오른쪽으로 뻗은 막대). meleeSwing(WHIP/DEBUGGER와 같은 스윙 모션)이라
 // 방향에 상관없이 항상 이 각도로 그려두고 회전은 WeaponManager.faceBoss가 담당한다.
 export function createFryingPanCanvas(size) {
@@ -1813,6 +1949,151 @@ export function createLipsCanvas(size) {
   ctx.fillStyle = highlightColor;
   ctx.beginPath();
   ctx.ellipse(cx - width * 0.12, cy + bottomHeight * 0.45, width * 0.14, bottomHeight * 0.22, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+// "심심해" 말풍선 + 그 밑에 긴 머리 여자애 반신 — 말풍선 꼬리가 여자애 머리 쪽을 향해서 여자애가
+// 말하는 것처럼 보이게 한다. GameScene.spawnEarBloodEffect가 이 무기 전용 반응(귀에서 피)을 따로
+// 그리므로, 여기 텍스처는 말풍선(위) + 캐릭터(아래) 조합만 담당한다.
+export function createBoredGirlCanvas(size, text = '심심해') {
+  const bubbleColor = '#ffffff';
+  const bubbleStroke = '#2b2b2b';
+  const textColor = '#2b2b2b';
+  const hairColor = '#3b2a20';
+  const hairStroke = '#241a12';
+  const skinColor = '#f0b892';
+  const skinStroke = '#c98a5e';
+  const shirtColor = '#7ec8e3';
+  const shirtStroke = '#4a9bc0';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+
+  // 말풍선 — 캐릭터 머리 위에 얹혀서 여자애가 하는 말처럼 보이게 배치
+  const bubbleWidth = size * 0.86;
+  const bubbleHeight = size * 0.28;
+  const bubbleLeft = cx - bubbleWidth / 2;
+  const bubbleTop = size * 0.03;
+  const radius = size * 0.09;
+
+  ctx.fillStyle = bubbleColor;
+  ctx.strokeStyle = bubbleStroke;
+  ctx.lineWidth = Math.max(1, size * 0.018);
+  ctx.beginPath();
+  ctx.roundRect(bubbleLeft, bubbleTop, bubbleWidth, bubbleHeight, radius);
+  ctx.fill();
+  ctx.stroke();
+
+  // 꼬리 — 여자애 머리 쪽(가운데 아래)을 향해 뾰족하게
+  const tailTipY = bubbleTop + bubbleHeight + size * 0.09;
+  ctx.fillStyle = bubbleColor;
+  ctx.strokeStyle = bubbleStroke;
+  ctx.beginPath();
+  ctx.moveTo(cx - size * 0.06, bubbleTop + bubbleHeight - size * 0.02);
+  ctx.lineTo(cx, tailTipY);
+  ctx.lineTo(cx + size * 0.06, bubbleTop + bubbleHeight - size * 0.02);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // 꼬리와 말풍선 몸통이 만나는 경계선을 지워서 하나로 이어진 것처럼 보이게
+  ctx.fillStyle = bubbleColor;
+  ctx.fillRect(cx - size * 0.07, bubbleTop + bubbleHeight - size * 0.03, size * 0.14, size * 0.04);
+
+  ctx.fillStyle = textColor;
+  ctx.font = `bold ${Math.round(size * 0.135)}px "Galmuri11", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, bubbleTop + bubbleHeight / 2);
+
+  // 어깨(상의) — 말풍선 밑, 머리보다 먼저 그려서 머리카락/얼굴이 그 위로 올라오게
+  const shoulderTop = size * 0.86;
+  ctx.fillStyle = shirtColor;
+  ctx.strokeStyle = shirtStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.moveTo(cx - size * 0.24, size * 1.0);
+  ctx.lineTo(cx - size * 0.16, shoulderTop);
+  ctx.lineTo(cx + size * 0.16, shoulderTop);
+  ctx.lineTo(cx + size * 0.24, size * 1.0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 머리 뒤/옆에서 어깨 아래까지 늘어지는 긴 머리 — 정수리를 덮는 크라운 + 좌우로 갈라져 따로
+  // 흘러내리는 두 갈래(locks)로 나눠서, 하나로 뭉친 헬멧처럼 안 보이고 가운데(목)가 살짝 갈라져 보이게 한다.
+  const headCx = cx;
+  const headCy = size * 0.6;
+  const headRadius = size * 0.135;
+
+  // 크라운 — 정수리~귀 위쪽만 덮는 캡. 얼굴(아래에서 덧그림)에 가려 이마 위쪽만 살짝 보인다.
+  ctx.fillStyle = hairColor;
+  ctx.strokeStyle = hairStroke;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.beginPath();
+  ctx.moveTo(headCx - headRadius * 0.95, headCy + headRadius * 0.15);
+  ctx.quadraticCurveTo(headCx - headRadius * 1.05, headCy - headRadius * 0.95, headCx, headCy - headRadius * 1.15);
+  ctx.quadraticCurveTo(headCx + headRadius * 1.05, headCy - headRadius * 0.95, headCx + headRadius * 0.95, headCy + headRadius * 0.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 좌우 갈래 — 관자놀이 근처에서 시작해 바깥으로 살짝 부풀었다가 어깨 아래로 갈수록 가늘어지는
+  // 두 갈래로 따로 그린다. 가운데(목)에 간격을 둬서 하나로 붙어 보이지 않게 한다.
+  [-1, 1].forEach((side) => {
+    ctx.fillStyle = hairColor;
+    ctx.strokeStyle = hairStroke;
+    ctx.lineWidth = Math.max(1, size * 0.015);
+    ctx.beginPath();
+    ctx.moveTo(headCx + side * headRadius * 0.85, headCy - headRadius * 0.25);
+    ctx.quadraticCurveTo(headCx + side * headRadius * 1.45, headCy + headRadius * 0.9, headCx + side * headRadius * 1.15, size * 0.78);
+    ctx.quadraticCurveTo(headCx + side * headRadius * 0.95, size * 0.9, headCx + side * headRadius * 0.35, size * 0.97);
+    ctx.quadraticCurveTo(headCx + side * headRadius * 0.55, size * 0.82, headCx + side * headRadius * 0.6, headCy + headRadius * 0.5);
+    ctx.quadraticCurveTo(headCx + side * headRadius * 0.65, headCy, headCx + side * headRadius * 0.85, headCy - headRadius * 0.25);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 갈래 위에 얇은 결 선 1~2줄 — 뭉친 덩어리가 아니라 가닥이 흐르는 느낌
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = Math.max(1, size * 0.008);
+    ctx.beginPath();
+    ctx.moveTo(headCx + side * headRadius * 1.0, headCy + headRadius * 0.1);
+    ctx.quadraticCurveTo(headCx + side * headRadius * 1.2, headCy + headRadius * 0.9, headCx + side * headRadius * 0.85, size * 0.85);
+    ctx.stroke();
+  });
+
+  // 가운데 가르마 — 크라운 위에 얇은 선으로 갈라진 자국을 표시
+  ctx.strokeStyle = hairStroke;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  ctx.beginPath();
+  ctx.moveTo(headCx, headCy - headRadius * 1.1);
+  ctx.lineTo(headCx, headCy - headRadius * 0.35);
+  ctx.stroke();
+
+  // 얼굴(피부) — 크라운/갈래 위에 덧그려서 앞머리 사이로 얼굴만 보이게
+  ctx.fillStyle = skinColor;
+  ctx.strokeStyle = skinStroke;
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  ctx.beginPath();
+  ctx.arc(headCx, headCy, headRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 눈 2개
+  ctx.fillStyle = '#2b2b2b';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.arc(headCx + side * headRadius * 0.38, headCy - headRadius * 0.05, size * 0.014, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // 말하는 입 — 작게 벌어진 타원(말풍선과 같이 "말하는 중" 느낌)
+  ctx.fillStyle = '#c0526b';
+  ctx.beginPath();
+  ctx.ellipse(headCx, headCy + headRadius * 0.4, size * 0.022, size * 0.03, 0, 0, Math.PI * 2);
   ctx.fill();
 
   return canvas;

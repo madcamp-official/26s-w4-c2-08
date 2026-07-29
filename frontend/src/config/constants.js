@@ -46,6 +46,7 @@ export const THROW_PROJECTILE_SPEED = 400; // px/s, 기본값 — 무기별로 �
 export const BALL_PROJECTILE_SPEED = 640; // px/s, 야구공은 기본보다 빠르게
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
 export const WAND_WEAPON_SIZE = 150; // 마술봉 텍스처 크기 — 방망이와 같은 캡슐 판정 파이프라인을 공유(PORTABLE)
+export const GOLF_CLUB_WEAPON_SIZE = 170; // 골프채 텍스처 크기 — 방망이(160)보다 살짝 긴 실루엣이라 더 크게. 같은 PORTABLE 캡슐 판정 파이프라인 공유
 export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 — 무기 자체와 던져지는 투사체가 같은 크기를 쓴다 (기존 50에서 20% 축소)
 // 투사체는 정사각 캔버스에 그린 둥근 이모지라, 사각 히트박스 그대로 쓰면 실제 공 그림이 없는 네 모서리까지
 // 보스와의 판정에 끼어들어 히트박스가 커 보인다. 실제 그림 크기에 맞춰 원형으로 판정한다.
@@ -90,6 +91,7 @@ export const WEAPON_IDS = {
   WATERMELON: 'watermelon',
   WATER_BALLOON: 'water_balloon',
   BEACH_BALL: 'beach_ball',
+  UREA_SOLUTION: 'urea_solution',
   // 부메랑
   BOOMERANG: 'boomerang',
   // 폭탄
@@ -98,6 +100,7 @@ export const WEAPON_IDS = {
   // 근접 타격
   BAT: 'bat',
   WAND: 'wand',
+  GOLF_CLUB: 'golf_club',
   WHIP: 'whip',
   BAMBOO_CANE: 'bamboo_cane',
   FRYING_PAN: 'frying_pan',
@@ -115,9 +118,11 @@ export const WEAPON_IDS = {
   LIPS: 'lips',
   TASER: 'taser',
   KEYBOARD: 'keyboard',
+  BORED_BUBBLE: 'bored_bubble',
 };
 
 export const TASER_WEAPON_SIZE = 70; // 전기충격기 텍스처 크기 — 방망이보다 작은 소형 휴대 도구
+export const BORED_BUBBLE_WEAPON_SIZE = 110; // "심심해" 말풍선 + 밑에 긴 머리 여자애 캐릭터 텍스처 크기 — 세로로 둘 다 들어가야 해서 다른 STATIC 무기보다 크게
 export const HAND_WEAPON_SIZE = 70; // 쓰다듬는 손(착한 손) 텍스처 크기
 export const BAD_HAND_WEAPON_SIZE = 70; // 주먹(나쁜 손) 텍스처 크기
 export const LIPS_WEAPON_SIZE = 70; // 입술 텍스처 크기
@@ -166,6 +171,12 @@ export const DYNAMITE_DAMAGE_MULTIPLIER = 3.2;
 export const DYNAMITE_CHAIN_LINK_RADIUS = 90; // px
 export const DYNAMITE_CHAIN_RADIUS_BONUS_PER_EXTRA = 0.6; // 연쇄당 반경 60%씩 추가
 export const DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA = 0.9; // 연쇄당 데미지 배율 90%씩 추가
+// 요소수가 보스 불 뿜기 중(Boss.fireBreathEvent)에 맞아 인화됐을 때 쓰는 배율 — 평소 damageMultiplier(0.5)
+// 대신 이 값으로 대체된다(CombatSystem.handleHit). 수류탄(2.2)보다 확실히 세게 잡아 "인화 폭발"다운 한 방을 준다.
+export const UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER = 3.5;
+// 요소수를 다른 무기 안 섞고 이만큼 연속으로 맞히면 CombatSystem.handleHit이 자체 인화(streakIgnited)로
+// 판정한다 — 보스 불 뿜기 타이밍을 우연히 노려야 하는 것과 별개로, 플레이어가 직접 터뜨릴 수 있는 경로.
+export const UREA_IGNITE_STREAK_THRESHOLD = 4;
 export const SOUND_WAVE_PROJECTILE_SIZE = 34; // 확성기가 쏘는 소리 파동 투사체 텍스처 크기
 // 확성기는 터치형이 아니라 원거리 투척형 — 클릭한 자리와 상관없이 보스 쪽으로 자동 발사되고,
 // 소리 파동이 눈에 잘 보이게 속도는 느긋하게 잡는다.
@@ -183,10 +194,14 @@ export const PELLET_HIT_RADIUS = PELLET_SIZE * 0.4;
 export const PISTOL_FIRE_INTERVAL = 550; // ms
 export const PISTOL_PROJECTILE_SPEED = 700; // px/s
 export const PISTOL_DAMAGE_MULTIPLIER = 1.6;
-export const MACHINE_GUN_FIRE_INTERVAL = 130; // ms
+// 실제 기관총 특성: 산탄총처럼 한 번에 여러 발이 동시에 나가는 게 아니라, 방아쇠를 당기고 있는 동안
+// 한 발씩 아주 빠른 간격(높은 분당발사속도)으로 연속 자동사격 — 조준도 매 발 완벽히 고정되지 않고
+// 계속 쏘다 보면 총구가 떨리며 탄이 살짝씩 흩어진다(angleJitterDeg, WeaponManager.fireProjectile).
+export const MACHINE_GUN_FIRE_INTERVAL = 100; // ms — 분당 약 600발(RPM)급 실제 기관총 연사 속도
 export const MACHINE_GUN_PROJECTILE_SPEED = 620; // px/s
 export const MACHINE_GUN_DAMAGE_MULTIPLIER = 0.5;
 export const MACHINE_GUN_RECOIL_ANGLE = 10; // deg, 발사할 때마다 총이 뒤로 젖혀지는 각도
+export const MACHINE_GUN_ANGLE_JITTER_DEG = 5; // 발마다 랜덤하게 흔들리는 탄퍼짐 — 산탄총의 고정 부채꼴과 다르게 매 발 랜덤
 
 // 산탄총: 한 번 당길 때 여러 발(pelletCount)이 부채꼴(spreadAngleDeg)로 동시에 나간다 — 낱개 데미지는
 // 약하지만 다 맞으면 한 방이 세다. 연사 간격은 셋 중 가장 느리다(재장전 텀 느낌).
@@ -255,7 +270,7 @@ export const WEAPON_DEFINITIONS = {
     fireInterval: PISTOL_FIRE_INTERVAL,
     damageMultiplier: PISTOL_DAMAGE_MULTIPLIER,
     rotateToTravel: true,
-    hitSound: 'pistol_impact',
+    hitSound: 'pistol_shot',
     hitVolume: 1.4, // 강한 무기라 기본 볼륨(1)보다 크게
     bigImpact: true, // 데미지가 센 무기라 히트 스파크를 더 크게 띄운다 (GameScene.spawnHitSpark scale 참고)
   },
@@ -269,8 +284,11 @@ export const WEAPON_DEFINITIONS = {
     fireInterval: MACHINE_GUN_FIRE_INTERVAL,
     damageMultiplier: MACHINE_GUN_DAMAGE_MULTIPLIER,
     recoilAngle: MACHINE_GUN_RECOIL_ANGLE,
+    // angleJitterDeg: 산탄총의 고정 부채꼴(pelletCount+spreadAngleDeg, 동시발사)과 달리, 한 발씩 빠르게
+    // 쏘면서 매 발 랜덤하게 살짝 흔들리는 실제 기관총의 연사 부정확도를 표현한다.
+    angleJitterDeg: MACHINE_GUN_ANGLE_JITTER_DEG,
     rotateToTravel: true,
-    hitSound: 'pistol_impact', // 다른 총기(PISTOL/SHOTGUN/SNIPER/REVOLVER)와 같은 탄환 충격음
+    hitSound: 'machine_gun_shot', // 전용 총성으로 교체
   },
   // pelletCount/spreadAngleDeg: WeaponManager.fireProjectile이 한 번 발사할 때 이 각도 범위 안에 고르게
   // 퍼진 pelletCount개의 투사체를 동시에 만든다 (사운드/반동은 발사 1회당 한 번만).
@@ -286,7 +304,7 @@ export const WEAPON_DEFINITIONS = {
     pelletCount: SHOTGUN_PELLET_COUNT,
     spreadAngleDeg: SHOTGUN_SPREAD_ANGLE_DEG,
     recoilAngle: SHOTGUN_RECOIL_ANGLE,
-    hitSound: 'pistol_impact',
+    hitSound: 'shotgun_blast', // 진짜 샷건 소리로 교체 — 다른 총기와 공용이던 pistol_impact 대신 전용 사운드
   },
   [WEAPON_IDS.SNIPER]: {
     name: 'SNIPER',
@@ -299,7 +317,7 @@ export const WEAPON_DEFINITIONS = {
     damageMultiplier: SNIPER_DAMAGE_MULTIPLIER,
     recoilAngle: SNIPER_RECOIL_ANGLE,
     rotateToTravel: true,
-    hitSound: 'pistol_impact',
+    hitSound: 'sniper_shot', // 전용 저격총 사운드로 교체
     hitVolume: 1.6, // 셋 중 가장 강한 한 방이라 권총보다도 크게
     bigImpact: true,
     // 들고 있는 동안(GameScene pointerdown~pointerup) 왼쪽 위에 확대 스코프 뷰가 뜬다 (createSniperScope).
@@ -320,7 +338,7 @@ export const WEAPON_DEFINITIONS = {
     damageMultiplier: REVOLVER_DAMAGE_MULTIPLIER,
     recoilAngle: REVOLVER_RECOIL_ANGLE,
     rotateToTravel: true,
-    hitSound: 'pistol_impact',
+    hitSound: 'revolver_shot', // 전용 사운드로 교체 — 이제 총기 5종(PISTOL/MACHINE_GUN/SHOTGUN/SNIPER/REVOLVER) 전부 각자 전용 사운드
   },
 
   // ── 투척형(공/과일/소리 등) ──
@@ -354,6 +372,10 @@ export const WEAPON_DEFINITIONS = {
     projectileSpeed: MEGAPHONE_PROJECTILE_SPEED,
     fireInterval: MEGAPHONE_FIRE_INTERVAL,
     damageMultiplier: 0.7, // 소리 파동은 실체가 없는 충격이라 가장 약하게
+    // 스나이퍼/전기충격기와 같은 rotateToBoss — 나팔 입구(텍스처가 각도 0=오른쪽을 보게 그려짐)가
+    // 항상 보스 쪽을 향해야 "대고 소리치는" 느낌이 자연스럽다.
+    rotateToBoss: true,
+    hitSound: 'megaphone_feedback',
   },
   // 토마토/수박은 GameScene.onHit에서 weaponId로 분기해 전용 터짐/쪼개짐 이펙트를 낸다.
   [WEAPON_IDS.TOMATO]: {
@@ -362,6 +384,7 @@ export const WEAPON_DEFINITIONS = {
     texture: 'weapon_tomato',
     projectileTexture: 'weapon_tomato_projectile',
     fireSound: 'baseball_throw',
+    hitSound: 'tomato_squish', // 터지는 순간 물컹한 소리
     damageMultiplier: 0.6, // 물러서 터지기만 할 뿐 단단하게 맞는 느낌이 아니다
   },
   [WEAPON_IDS.WATERMELON]: {
@@ -370,6 +393,7 @@ export const WEAPON_DEFINITIONS = {
     texture: 'weapon_watermelon',
     projectileTexture: 'weapon_watermelon_projectile',
     fireSound: 'baseball_throw',
+    hitSound: 'watermelon_splat',
     bigImpact: true,
     damageMultiplier: 1.5, // 크고 무거운 과일 — bigImpact 비주얼에 맞게 데미지도 확실히 무겁게
   },
@@ -379,6 +403,7 @@ export const WEAPON_DEFINITIONS = {
     texture: 'weapon_water_balloon',
     projectileTexture: 'weapon_water_balloon_projectile',
     fireSound: 'baseball_throw',
+    hitSound: 'water_balloon_pop',
     damageMultiplier: 0.5, // 거의 물 — 무기 중 가장 약하게
   },
   [WEAPON_IDS.BEACH_BALL]: {
@@ -388,6 +413,18 @@ export const WEAPON_DEFINITIONS = {
     projectileTexture: 'weapon_beach_ball_projectile',
     fireSound: 'baseball_throw',
     damageMultiplier: 0.5, // 속이 빈 공기뿐이라 튕겨나가는 느낌이 맞지 세게 때리는 무기는 아니다
+  },
+  // 요소수(AdBlue) 통 — 물풍선과 같은 파란 액체 테마라 GameScene.onHit에서도 spawnWaterSplashEffect를 그대로 재사용한다.
+  // 단, 보스가 불 뿜기 중(Boss.fireBreathEvent)일 때 맞으면 CombatSystem.handleHit에서 damageMultiplier
+  // 대신 UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER를 써서 훨씬 크게 터진다(인화).
+  [WEAPON_IDS.UREA_SOLUTION]: {
+    name: 'UREA by 시우', // 무기 패널 라벨(11px, 2컬럼 폭 ~104px)에서 'UREA SOLUTION by 시우'는 길어서 잘림 —
+    // WAND('WAND by 재준')/LIPS('LIPS by 서윤')와 같은 길이대로 줄임
+    category: WEAPON_CATEGORIES.THROW,
+    texture: 'weapon_urea_solution',
+    projectileTexture: 'weapon_urea_solution_projectile',
+    fireSound: 'baseball_throw',
+    damageMultiplier: 0.5, // 물풍선과 같은 액체류라 약하게(평소, 인화 안 됐을 때)
   },
 
   // ── 부메랑 ──
@@ -434,6 +471,10 @@ export const WEAPON_DEFINITIONS = {
   [WEAPON_IDS.WAND]: {
     name: 'WAND by 재준', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_wand', hitSound: 'wand_hit',
     teleportsBoss: true,
+  },
+  // 골프채 — 방망이와 같은 PORTABLE 캡슐 판정. 금속 클럽헤드로 때리는 무기답게 방망이(1.3)보다 살짝 더 세게.
+  [WEAPON_IDS.GOLF_CLUB]: {
+    name: 'GOLF by 시우', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_golf_club', hitSound: 'bat_hit', damageMultiplier: 1.35,
   },
   // 방망이처럼 휘두르는 느낌이지만 캡슐(BAT_DIMENSIONS)은 채찍의 지그재그 실루엣과 안 맞아서
   // STATIC(사각 판정)으로 둔다 — 다른 STATIC 무기보다 텍스처가 넓어서 판정 범위도 자연히 더 넉넉하다.
@@ -513,6 +554,11 @@ export const WEAPON_DEFINITIONS = {
   },
   [WEAPON_IDS.KEYBOARD]: {
     name: 'KEYBOARD', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_keyboard', hitSound: 'keyboard_smash',
+  },
+  // earBleed: 데미지 자체는 평범한 STATIC 무기와 같지만, 맞을 때마다 GameScene.onHit이 일반 스파크 대신
+  // spawnEarBloodEffect(귀에서 피)를 띄운다 — heals/freezesBoss처럼 무기 특성을 나타내는 플래그.
+  [WEAPON_IDS.BORED_BUBBLE]: {
+    name: '서윤 by 서윤', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bored_bubble', hitSound: 'seoyoon_bored', earBleed: true,
   },
 };
 

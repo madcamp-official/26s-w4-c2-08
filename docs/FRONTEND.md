@@ -13,7 +13,7 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 | [전투 파이프라인](#전투-파이프라인) (히트 쿨다운, 다중 겹침 합산, 방패 확률 판정, 저격 스코프) | ✅ 구현됨 |
 | [보스 메커닉](#보스-메커닉) (HP/리스폰, 유휴 3단계, 방패, 3종 넉백, CC(빙결/텔레포트), 구토·파이어브레스 반응) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
 | [UI](#ui-hud) — WEAPON/AGENT/MAP 사이드 패널, HP바, 종료/재시작(드래그 타격 미니게임) | ✅ 구현됨 |
-| [사운드](#사운드) 14개 효과음 | ✅ 구현됨 |
+| [사운드](#사운드) 16개 효과음 | ✅ 구현됨 |
 | [유저네임 모달](#유저네임-모달) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
 | [게임 종료 → onGameEnd](#게임-종료--ongameend) — online: 유저네임 확보 후 점수 제출 + 리더보드 조회(실패 시 로컬 표시로 폴백), local: `saveLocalScore`로 최고기록 저장 | ✅ 구현됨 |
 | extension ↔ webview 연동 | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
@@ -186,7 +186,7 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 | 키 | 파일 | 트리거 |
 |---|---|---|
 | `boss_fire_roar` | boss_fire_roar.mp3 | 파이어브레스 콤보 |
-| `bat_hit` | hit.mp3 | 방망이/야구공/채찍/회초리/슬리퍼/나쁜 손/디버거/부메랑 등 기본 근접·투척 타격음, 재시작 버튼 타격 |
+| `bat_hit` | hit.mp3 | 방망이/야구공/채찍/회초리/슬리퍼/디버거/부메랑 등 기본 근접·투척 타격음, 재시작 버튼 타격 |
 | `wand_hit` | wand.mp3 | 마술봉 타격 |
 | `dart_throw` | dart_throw.mp3 | 다트 발사 |
 | `taser_shock` | taser_shock.mp3 | 전기충격기 타격 |
@@ -199,6 +199,8 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 | `boss_vomit` | obite.mp3 | 구토 반응 |
 | `duck_quack` | duck_quack.mp3 | 러버덕 타격 |
 | `washing_machine_spin` | washing.mp3 | 세탁기 회전 중 반복 재생 |
+| `good_hand` | good_hand.mp3 | 착한 손 쓰다듬기(힐링, handlePet) |
+| `bad_hand_hit` | bad_hand.mp3 | 나쁜 손 타격 |
 
 다트, 확성기, 말랑이 계열(러버덕 제외)은 전용 타격음이 없다(무음).
 

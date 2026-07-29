@@ -578,11 +578,11 @@ export const WEAPON_DEFINITIONS = {
   // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — GameScene이 이 무기는
   // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다(heals 플래그로 판단, weaponId 하드코딩 아님).
   [WEAPON_IDS.HAND]: {
-    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true,
+    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true, petSound: 'good_hand',
   },
   // 나쁜 손: 착한 손이랑 짝 — 힐링 없이 그냥 주먹으로 때리는 평범한 데미지 무기.
   [WEAPON_IDS.BAD_HAND]: {
-    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bat_hit', damageMultiplier: 0.9,
+    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bad_hand_hit', damageMultiplier: 0.9,
   },
   // 입술: 뽀뽀 공격 — 말랑이(squishHit)처럼 눌렸다 돌아오는 모션 재사용. 부드러운 살이라 데미지는 낮게.
   [WEAPON_IDS.LIPS]: {

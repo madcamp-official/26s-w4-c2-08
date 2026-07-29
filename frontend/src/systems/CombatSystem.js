@@ -110,6 +110,9 @@ export default class CombatSystem {
     if (now - this.lastPetTime < PET_COOLDOWN) return;
     this.lastPetTime = now;
 
+    const definition = WEAPON_DEFINITIONS[weapon.weaponId];
+    if (definition?.petSound) this.scene.sound.play(definition.petSound, { volume: definition.petVolume ?? 1 });
+
     const amount = Phaser.Math.Between(HEAL_MIN, HEAL_MAX);
     this.boss.heal(amount);
     this.onPet?.(amount, this.weaponManager.getHitPoint(weapon));

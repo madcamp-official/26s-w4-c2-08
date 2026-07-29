@@ -825,7 +825,7 @@ export default class GameScene extends Phaser.Scene {
       loop: true,
       callback: () => this.applyWashingMachineJitter(doorPoint),
     });
-    this.washingMachineSpinEndEvent = this.time.delayedCall(WASHING_MACHINE_SPIN_DURATION, () => this.endWashingMachineSpin());
+    this.washingMachineSpinEndEvent = this.time.delayedCall(WASHING_MACHINE_SPIN_DURATION, () => this.endWashingMachineSpin({ completed: true }));
 
     this.washingMachineSpinSound = this.sound.add('washing_machine_spin', { loop: true });
     this.washingMachineSpinSound.play();
@@ -873,7 +873,7 @@ export default class GameScene extends Phaser.Scene {
   // 끝나든 전부 이 함수를 거친다. eject(기본 true)가 false면 위치는 안 건드린다(이미 respawn 등으로
   // 다른 곳에 있는 경우). 문을 다시 닫는 대신 세탁기 자체를 지운다 — 한 번 쓰면 없어지는 소모품이라
   // 다시 쓰려면 무기 패널에서 새로 설치해야 한다(WeaponManager.destroyWashingMachine).
-  endWashingMachineSpin({ eject = true } = {}) {
+  endWashingMachineSpin({ eject = true, completed = false } = {}) {
     if (!this.washingMachineSpinActive) return;
     this.washingMachineSpinActive = false;
     this.boss.isInWashingMachine = false;
@@ -893,7 +893,6 @@ export default class GameScene extends Phaser.Scene {
     this.washingMachineSpinSound?.stop();
     this.washingMachineSpinSound?.destroy();
     this.washingMachineSpinSound = null;
-
     // destroyWashingMachine이 참조를 지우기 전에 탈출 좌표부터 먼저 구해둬야 한다.
     const doorPoint = this.weaponManager.getWashingMachineDoorPoint();
     this.weaponManager.destroyWashingMachine();
@@ -913,6 +912,14 @@ export default class GameScene extends Phaser.Scene {
         maxY,
       );
       this.boss.setPosition(targetX, targetY);
+    }
+
+    // 도중에 처치되거나(defeated) 강제로 교체/종료된 게 아니라 스핀이 시간을 다 채우고 자연스럽게
+    // 끝난 경우에만 "세탁 완료" 반짝임 연출(별 파티클 + 효과음)을 재생한다 — eject로 캐릭터 위치를
+    // 옮긴 "이후"에 호출해야 세탁기 안 좌표가 아니라 실제로 튀어나온 위치에 별이 뜬다.
+    if (completed) {
+      this.sound.play('washing_machine_sparkle');
+      this.spawnWashingCleanEffect(this.boss.sprite.x + 20, this.boss.sprite.y - 30);
     }
   }
 
@@ -1023,6 +1030,49 @@ export default class GameScene extends Phaser.Scene {
         duration: 260,
         ease: 'Cubic.easeOut',
         onComplete: () => ring.destroy(),
+      });
+    }
+  }
+
+  // 세탁 완료 시 보스 주변에 별 모양 반짝임을 흩뿌린다 — 순수하게 "깨끗해졌다"는 인상만 주면 되므로
+  // 텍스트 팝업 없이 별 파티클(사운드는 endWashingMachineSpin에서 별도 재생)만 사용한다. 별마다 등장
+  // 위치/지연/크기를 랜덤하게 흩어서 한 번에 "반짝" 터지는 대신 톡톡 튀듯 순차적으로 나타나게 한다.
+  spawnWashingCleanEffect(x, y) {
+    const starCount = 6;
+    const colors = [0xfff4c2, 0xffffff, 0xa8e6ff];
+    // 보스 몸통 실루엣 위에 겹치도록 캐릭터 크기에 비례한 좁은 범위에서만 흩뿌린다(가장자리로 멀리
+    // 날아가지 않게) — 보스 크기가 배경/타입마다 달라도 항상 캐릭터에 붙어 보이도록 displayWidth/
+    // Height 기준 반경을 쓴다.
+    const halfW = this.boss.displayWidth / 2;
+    const halfH = this.boss.displayHeight / 2;
+    for (let i = 0; i < starCount; i += 1) {
+      const offsetX = Phaser.Math.Between(-halfW * 0.6, halfW * 0.6);
+      const offsetY = Phaser.Math.Between(-halfH * 0.6, halfH * 0.3);
+      const size = Phaser.Math.Between(6, 12);
+      const color = colors[i % colors.length];
+      const star = this.add.star(x + offsetX, y + offsetY, 5, size * 0.4, size, color)
+        .setDepth(1000)
+        .setAlpha(0)
+        .setScale(0.2)
+        .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+
+      this.tweens.add({
+        targets: star,
+        alpha: 1,
+        scale: 1,
+        delay: i * 70,
+        duration: 180,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: star,
+            y: star.y - 20,
+            alpha: 0,
+            duration: 320,
+            ease: 'Cubic.easeIn',
+            onComplete: () => star.destroy(),
+          });
+        },
       });
     }
   }

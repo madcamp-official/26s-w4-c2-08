@@ -41,6 +41,11 @@ const TAB_LABELS = { weapon: 'WEAPON', boss: 'AGENT', background: 'MAP' };
 // 위로 올라와 버리는 문제가 있었다 — HUD 쪽에 항상 더 높은 고정 depth를 줘서 그런 흔들림 자체를 없앤다.
 const HUD_DEPTH = 1000;
 
+// 게임 종료 오버레이(showGameEndOverlay)가 항상 체력바/설정·나가기 버튼(HUD_DEPTH)보다 위에 그려지도록
+// 하는 depth. 이 값이 HUD_DEPTH보다 낮으면 오버레이의 반투명 dim이 저 버튼들 뒤로 깔려서, 결과 화면이
+// 뜬 뒤에도 톱니바퀴/나가기 버튼과 체력바가 화면 맨 위에 또렷하게 남아있고 클릭까지 되어 버린다.
+const END_OVERLAY_DEPTH = HUD_DEPTH + 1;
+
 // 패널 안 선택/활성 상태를 나타내는 액센트 색. 라임 계열 형광 그린(기존보다 밝게).
 const PANEL_ACCENT = 0x99ff33;
 const PANEL_ACCENT_CSS = '#99ff33';
@@ -74,6 +79,8 @@ export default class Hud {
       color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: UI_FONT_FAMILY,
+      stroke: '#000000',
+      strokeThickness: 1,
     }).setOrigin(0.5).setDepth(HUD_DEPTH);
     this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00).setDepth(HUD_DEPTH);
     this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33).setDepth(HUD_DEPTH);
@@ -451,28 +458,43 @@ export default class Hud {
   showGameEndOverlay(score, onRestartClick) {
     const { width, height } = this.scene.scale;
 
-    const dim = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75);
+    // 체력바/톱니바퀴(설정)/나가기 버튼은 평소 항상 최상단(HUD_DEPTH)에 떠 있어야 하지만, 결과 화면이
+    // 뜬 동안에는 다른 게임 요소들처럼 dim 뒤로 가라앉고 클릭도 막혀야 한다.
+    this.disableGameplayControls();
+
+    const dim = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75).setDepth(END_OVERLAY_DEPTH);
     const title = this.scene.add.text(width / 2, height / 2 - 110, '게임 종료', {
       fontSize: '30px',
       color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(END_OVERLAY_DEPTH);
     const scoreText = this.scene.add.text(width / 2, height / 2 - 60, `최종 점수: ${score}`, {
       fontSize: '22px',
       color: '#ffaa00',
       fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(END_OVERLAY_DEPTH);
     const statusText = this.scene.add.text(width / 2, height / 2 - 20, '', {
       fontSize: '14px',
       color: '#dddddd',
       fontFamily: UI_FONT_FAMILY,
       align: 'center',
       lineSpacing: 6,
-    }).setOrigin(0.5, 0);
+    }).setOrigin(0.5, 0).setDepth(END_OVERLAY_DEPTH);
     const restartButton = this.createRestartButton(width / 2, height / 2 + 180, onRestartClick);
+    [restartButton.bg, restartButton.label, restartButton.agent.image].forEach((el) => el.setDepth(END_OVERLAY_DEPTH));
 
     return { dim, title, scoreText, statusText, restartButton };
+  }
+
+  // 톱니바퀴(설정)/나가기 버튼의 입력을 꺼서(disableInteractive) 결과 화면 위로 클릭이 새지 않게 하고,
+  // 패널이 열려 있었다면 닫는다. depth는 여기서 건드리지 않아도 된다 — 이 버튼들은 원래 HUD_DEPTH에
+  // 고정돼 있고, showGameEndOverlay가 만드는 오버레이 요소들을 그보다 높은 END_OVERLAY_DEPTH로 그리기
+  // 때문에 자연히 그 뒤로 가려진다.
+  disableGameplayControls() {
+    this.settingsButton.bg.disableInteractive();
+    this.endButton.bg.disableInteractive();
+    if (this.panelOpen) this.togglePanel(false);
   }
 
   // onGameEnd(리더보드 로딩/결과, 로컬 최고기록)이 결과 화면에 텍스트를 채워 넣을 때 쓴다.

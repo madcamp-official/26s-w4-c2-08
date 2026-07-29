@@ -660,10 +660,13 @@ export default class WeaponManager {
   }
 
   // 화면 밖으로 나간 투사체를 정리 (매 프레임 GameScene.update()에서 호출)
+  // 부메랑은 놓은 위치가 화면 가장자리에 가까우면 "나가는" 단계에서 정상적으로 이 경계를 넘어갔다가
+  // 스크립트된 트윈으로 반드시 되돌아오므로, 여기서 조기 파괴하면 안 되어 대상에서 제외한다.
   updateProjectiles() {
     const { width, height } = this.scene.scale;
     const margin = 20;
     for (const projectile of [...this.projectiles]) {
+      if (projectile.category === WEAPON_CATEGORIES.BOOMERANG) continue;
       if (projectile.x < -margin || projectile.x > width + margin || projectile.y < -margin || projectile.y > height + margin) {
         this.destroyProjectile(projectile);
       }

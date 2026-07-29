@@ -523,7 +523,7 @@ export const WEAPON_DEFINITIONS = {
   // (WeaponManager.playMeleeSwing) — 가만히 들고만 있는 다른 STATIC 무기와 달리 채찍답게 후려치는
   // 느낌을 준다.
   [WEAPON_IDS.WHIP]: {
-    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true, damageMultiplier: 0.9, hitSound: 'bat_hit', // 얇은 가죽끈 — 후려치지만 뭉개는 무게감은 없다
+    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true, damageMultiplier: 0.9, hitSound: 'whip_hit', // 얇은 가죽끈 — 채찍 전용 타격음(whip_hit)
   },
   // 채찍과 같은 스윙 모션(meleeSwing)을 재사용 — 회초리도 후려치는 무기라 가만히 들고만 있는 다른
   // STATIC 무기와 결이 다르다. damageMultiplier로 한 대가 조금 더 아프게만 차별화한다.
@@ -536,7 +536,7 @@ export const WEAPON_DEFINITIONS = {
     hitSound: 'bat_hit',
   },
   [WEAPON_IDS.FRYING_PAN]: {
-    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, hitSound: 'hit_wall', // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질이라 다른 근접보다 묵직한 충격음(hit_wall)을 쓴다
+    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, hitSound: 'frying_pan_hit', // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질이라 전용 타격음(frying_pan_hit)을 쓴다
   },
   [WEAPON_IDS.SLIPPER]: {
     name: 'SLIPPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_slipper', meleeSwing: true, damageMultiplier: 0.8, hitSound: 'bat_hit', // 등짝 스매싱 밈이지 실제로 단단한 물건은 아니다

@@ -59,6 +59,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('washing_machine_spin', assetUrl('audio/washing.mp3'));
     this.load.audio('good_hand', assetUrl('audio/good_hand.mp3'));
     this.load.audio('bad_hand_hit', assetUrl('audio/bad_hand.mp3'));
+    this.load.audio('frying_pan_hit', assetUrl('audio/frying_pan.mp3'));
+    this.load.audio('whip_hit', assetUrl('audio/whip.mp3'));
     this.load.audio('washing_machine_sparkle', assetUrl('audio/sparkle.mp3'));
     this.load.svg('icon_menu', assetUrl('icons/menu.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });

@@ -14,7 +14,7 @@ VSCode 확장 안에서 실행되는 보스 클리커 게임 **Hit the Agent**. 
 
 상세 문서: [ARCHITECTURE.md](./docs/ARCHITECTURE.md), [API.md](./docs/API.md), [FRONTEND.md](./docs/FRONTEND.md), [PLAN.md](./docs/PLAN.md)
 
-**현재 상태**: `server/`(백엔드) 로직 완성, 상세는 [server/CLAUDE.md](./server/CLAUDE.md) 참고. `frontend/`(Phaser 게임)와 `extension/`(VSCode 확장) 모두 존재하며 extension ↔ webview 메시지 연동(init/saveLocalScore/agentTaunt), git 기반 mode 판별, 온라인 점수 제출·리더보드 조회까지 붙어 있다. 사운드만 미구현.
+**현재 상태**: `server/`(백엔드) 로직 완성, 상세는 [server/CLAUDE.md](./server/CLAUDE.md) 참고. `frontend/`(Phaser 게임)와 `extension/`(VSCode 확장) 모두 완성 단계 — extension ↔ webview 메시지 연동(init/agentTaunt/saveLocalScore/saveUserName), git 기반 mode 판별, 온라인 점수 제출·리더보드 조회, 유저네임 모달, 사운드까지 전부 붙어 있다. 무기 시스템은 최초 설계(필드에 놓고 드래그로 충돌)에서 사이드 패널 선택 + 필드를 누르고 있는 동안 사용하는 방식으로 바뀌었고, 30여 종 무기(총기/투척/부메랑/폭탄/설치형/근접/말랑이/손)와 보스 쪽 특수 메커닉(유휴 상태, 방패, 3종 넉백, 빙결/텔레포트 CC, 구토·파이어브레스 반응)까지 확장됐다. 상세는 [FRONTEND.md](./docs/FRONTEND.md) 참고.
 
 ## 커맨드
 

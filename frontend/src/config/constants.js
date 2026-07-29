@@ -44,9 +44,16 @@ export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact s
 export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles while holding the throw weapon
 export const THROW_PROJECTILE_SPEED = 400; // px/s, 기본값 — 무기별로 다르면 WEAPON_DEFINITIONS[id].projectileSpeed로 덮어씀
 export const BALL_PROJECTILE_SPEED = 640; // px/s, 야구공은 기본보다 빠르게
+export const BASKETBALL_MAX_ACTIVE = 15; // 벽에 튕기며 화면 밖으로 안 나가고 계속 남기 때문에, 필드에 동시에 존재할 수 있는 개수를 직접 제한한다
+export const SLINGSHOT_MAX_PULL = 150; // px, 이 이상 당겨도 더 세지지 않는 최대 당김 거리(=최대 속도 지점)
+export const SLINGSHOT_MIN_PULL = 20; // px, 이보다 적게 당기고 놓으면 그냥 클릭으로 취급해 발사하지 않는다
+export const SLINGSHOT_FRAME_SIZE = 90; // 새총 프레임(Y자 몸체) 텍스처 크기 — 갈래 끝 좌표(weaponSprites.getSlingshotFrameMetrics)도 이 값을 기준으로 계산
+export const SLINGSHOT_BAND_COLOR = 0x6b4423; // 고무줄(Graphics) 색 — 프레임과 같은 나무/가죽 계열 갈색
+export const SLINGSHOT_BAND_WIDTH = 4; // px, 고무줄 두께
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
 export const WAND_WEAPON_SIZE = 150; // 마술봉 텍스처 크기 — 방망이와 같은 캡슐 판정 파이프라인을 공유(PORTABLE)
 export const GOLF_CLUB_WEAPON_SIZE = 170; // 골프채 텍스처 크기 — 방망이(160)보다 살짝 긴 실루엣이라 더 크게. 같은 PORTABLE 캡슐 판정 파이프라인 공유
+export const SPOON_WEAPON_SIZE = 105; // 숟가락 텍스처 크기 — 방망이보다 작은 소품이라 PORTABLE_WEAPON_SIZE보다 줄임
 export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 — 무기 자체와 던져지는 투사체가 같은 크기를 쓴다 (기존 50에서 20% 축소)
 // 투사체는 정사각 캔버스에 그린 둥근 이모지라, 사각 히트박스 그대로 쓰면 실제 공 그림이 없는 네 모서리까지
 // 보스와의 판정에 끼어들어 히트박스가 커 보인다. 실제 그림 크기에 맞춰 원형으로 판정한다.
@@ -64,12 +71,25 @@ export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 // 자체 퓨즈 타이머가 다 돼야 터진다. 터지는 순간 보스가 폭발 반경(blastRadius) 안에 있으면 그때만
 // 데미지가 들어간다 — BOOMERANG처럼 든 사람 손을 떠난 뒤 자기 혼자 판정을 관리하는 무기라는 점은 같지만,
 // 판정 방식이 오버랩이 아니라 "터지는 순간의 거리"라는 점이 다르다.
+// MACHINE: 세탁기 — BOMB처럼 어디든 놓을 수 있고(들고 있는 동안 판정 없음) 손을 떼면 그 자리에
+// 고정된다(WeaponManager.armWashingMachine). 퓨즈로 자동 폭발하는 BOMB과 달리 영구 설치물이라
+// 터지지 않고, 대신 직접 클릭하면 문이 열리고(WeaponManager.toggleWashingMachineDoor) 문이 열린
+// 상태에서 보스를 가까이 끌고 가면 자동으로 빨려들어가 일정 시간 돌면서 데미지를 받는다
+// (GameScene.checkWashingMachineSuckIn/startWashingMachineSpin) — 오버랩이 아니라 "문이 열린 채
+// 근접"이 트리거인 완전히 새로운 판정 방식이라 별도 카테고리로 둔다. 동시에 1개만 존재할 수 있고
+// 새로 설치하면 기존 것을 교체한다.
+// SLINGSHOT: 농구공 — 누른 자리(anchor)에서 포인터를 뒤로 당긴 채 놓으면, 당긴 방향의 반대쪽으로
+// 당긴 거리에 비례한 속도로 날아가는 새총형 무기. BOOMERANG/BOMB처럼 들고 있는 동안(조준 중)은
+// 판정이 없고, 손을 뗀 그 오브젝트 자체가 그대로 투사체가 된다(WeaponManager.throwSlingshot) —
+// 다만 놓는 방향/속도가 anchor 대비 상대 위치로 매번 달라진다는 점이 고정 궤적인 BOOMERANG과 다르다.
 export const WEAPON_CATEGORIES = {
   PORTABLE: 'portable',
   STATIC: 'static',
   THROW: 'throw',
   BOOMERANG: 'boomerang',
   BOMB: 'bomb',
+  MACHINE: 'machine',
+  SLINGSHOT: 'slingshot',
 };
 
 // 무기 패널에 실제로 보이는 개별 무기. category가 동작 방식을 정하고, 같은 category를 여러 무기가
@@ -85,6 +105,7 @@ export const WEAPON_IDS = {
   REVOLVER: 'revolver',
   // 투척형(공/과일/소리 등)
   BALL: 'ball',
+  BASKETBALL: 'basketball',
   DART: 'dart',
   MEGAPHONE: 'megaphone',
   TOMATO: 'tomato',
@@ -97,8 +118,11 @@ export const WEAPON_IDS = {
   // 폭탄
   GRENADE: 'grenade',
   DYNAMITE: 'dynamite',
+  // 설치형(맵에 고정)
+  WASHING_MACHINE: 'washing_machine',
   // 근접 타격
   BAT: 'bat',
+  SPOON: 'spoon',
   WAND: 'wand',
   GOLF_CLUB: 'golf_club',
   WHIP: 'whip',
@@ -177,6 +201,33 @@ export const UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER = 3.5;
 // 요소수를 다른 무기 안 섞고 이만큼 연속으로 맞히면 CombatSystem.handleHit이 자체 인화(streakIgnited)로
 // 판정한다 — 보스 불 뿜기 타이밍을 우연히 노려야 하는 것과 별개로, 플레이어가 직접 터뜨릴 수 있는 경로.
 export const UREA_IGNITE_STREAK_THRESHOLD = 4;
+// 세탁기 — 실물 세탁기처럼 폭보다 세로로 긴 텍스처. 문(드럼)은 몸통 중심보다 아래쪽에 있어서
+// weaponSprites.getWashingMachineDoorMetrics(width, height)가 그 반지름/오프셋을 계산해준다
+// (그리기와 판정이 항상 같은 값을 쓰도록 하나의 함수로 통일 — PORTABLE_AXIS_CONFIG와 같은 이유).
+export const WASHING_MACHINE_WIDTH = 200;
+export const WASHING_MACHINE_HEIGHT = 230;
+// 문이 열려 있을 때 보스 몸통 중심이 문 중심으로부터 이 거리 안으로 드래그되면 자동으로 빨려들어간다.
+export const WASHING_MACHINE_SUCK_RADIUS = 100;
+// 빨려들어간 뒤 자동으로 튀어나오기까지 도는 전체 시간 — 이 시간 동안은 드래그로 꺼낼 수 없다(Boss.isInWashingMachine).
+export const WASHING_MACHINE_SPIN_DURATION = 4000;
+export const WASHING_MACHINE_SPIN_ROTATION_MS = 260; // ms, 도는 동안 한 바퀴 회전에 걸리는 시간
+export const WASHING_MACHINE_DAMAGE_TICK_INTERVAL = 500; // ms, 도는 동안 데미지가 들어가는 간격
+export const WASHING_MACHINE_DAMAGE_MULTIPLIER = 1.1;
+// 도는 동안 캐릭터가 문 중심 기준 상하좌우로 흔들리는 폭(px)과 그 위치를 새로 뽑는 간격 —
+// 매 프레임 다시 뽑으면 너무 정신없어 보여서, 짧은 간격으로 스텝처럼 움직이게 한다.
+export const WASHING_MACHINE_JITTER_RANGE = 10;
+export const WASHING_MACHINE_JITTER_INTERVAL_MS = 70;
+// 세탁기 몸체 자체도 같은 간격(WASHING_MACHINE_JITTER_INTERVAL_MS)마다 상하좌우로 짧게 흔들려 역동성을
+// 준다 — 안에서 도는 캐릭터(WASHING_MACHINE_JITTER_RANGE, 10px)보다 절반 정도(5px)로 작게 흔들어
+// 몸체가 캐릭터보다 무겁게 흔들리는 느낌을 준다.
+export const WASHING_MACHINE_BODY_JITTER_RANGE = 5;
+// 도는 동안 보스 위(depth 기준 더 높은 자리)를 덮는 검은 원의 불투명도 — 완전히 안 보이게 가리지는
+// 않고, 도는 실루엣이 흐릿하게 비치는 정도로만 어둡게 한다.
+export const WASHING_MACHINE_OVERLAY_ALPHA = 0.8;
+export const WASHING_MACHINE_POPUP_COLOR = '#4aa3df'; // 물빨래를 연상시키는 파란 계열로 다른 데미지 팝업과 구분
+// 다 돌고 튀어나올 때 문 바로 밖(안 겹치는 자리)까지 밀어내는 여유 거리
+export const WASHING_MACHINE_EJECT_MARGIN = 20;
+
 export const SOUND_WAVE_PROJECTILE_SIZE = 34; // 확성기가 쏘는 소리 파동 투사체 텍스처 크기
 // 확성기는 터치형이 아니라 원거리 투척형 — 클릭한 자리와 상관없이 보스 쪽으로 자동 발사되고,
 // 소리 파동이 눈에 잘 보이게 속도는 느긋하게 잡는다.
@@ -352,6 +403,22 @@ export const WEAPON_DEFINITIONS = {
     hitSound: 'bat_hit', // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
     damageMultiplier: 0.9, // 단단하지만 배트보다 작고 가벼운 공
   },
+  // 새총형(SLINGSHOT) — 잡은 자리(anchor)에서 뒤로 당긴 채 놓으면 당긴 반대 방향으로, 당긴 거리에
+  // 비례한 속도(최대 projectileSpeed)로 날아간다(WeaponManager.throwSlingshot). 당구공처럼 벽(화면
+  // 가장자리)에서 입사각=반사각으로 튕기고(bounceOffWalls) 다른 투척형과 달리 화면 밖으로 나가서
+  // 사라지지 않으므로, 계속 쌓이지 않도록 maxActive로 필드에 동시에 존재 가능한 개수를 제한한다.
+  [WEAPON_IDS.BASKETBALL]: {
+    name: '농구공 by 건희',
+    category: WEAPON_CATEGORIES.SLINGSHOT,
+    texture: 'weapon_basketball',
+    projectileSpeed: BALL_PROJECTILE_SPEED,
+    fireSound: 'baseball_throw',
+    hitSound: 'bat_hit',
+    damageMultiplier: 0.9,
+    bounceOffWalls: true,
+    wallBounceSound: 'basketball_bounce', // 벽 튕길 때(WeaponManager의 'worldbounds' 리스너) 재생
+    maxActive: BASKETBALL_MAX_ACTIVE,
+  },
   [WEAPON_IDS.DART]: {
     name: 'DART',
     category: WEAPON_CATEGORIES.THROW,
@@ -458,10 +525,25 @@ export const WEAPON_DEFINITIONS = {
     bigImpact: true,
   },
 
+  // ── 설치형(맵에 고정) ──
+  // 폭탄류처럼 어디든 놓을 수 있지만(WeaponManager.armWashingMachine) 자동으로 터지지 않고 그 자리에
+  // 영구히 남는다 — 데미지는 오버랩이 아니라 문을 연 채 보스를 가까이 끌고 가면 자동으로 빨려들어가
+  // 도는 동안 주기적으로 들어간다(GameScene.startWashingMachineSpin). damageMultiplier 없음 —
+  // CombatSystem.applyWashingMachineDamage가 WASHING_MACHINE_DAMAGE_MULTIPLIER를 직접 쓴다.
+  [WEAPON_IDS.WASHING_MACHINE]: {
+    name: '세탁 by 경원', category: WEAPON_CATEGORIES.MACHINE, texture: 'weapon_washing_machine_closed',
+  },
+
   // ── 근접 타격 ──
   [WEAPON_IDS.BAT]: {
     // 알루미늄 배트 — 무기 패널에서 가장 단단한 재질 축에 속해서 직접 휘두르는 PORTABLE답게 세게 잡는다.
     name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable', hitSound: 'bat_hit', damageMultiplier: 1.3,
+  },
+  // 은색 숟가락 — 방망이와 같은 PORTABLE 로직(대각선 캡슐 판정, WeaponManager의 PORTABLE_AXIS_CONFIG
+  // 참고)을 그대로 쓰지만, 실제로 때리는 무기가 아니라는 컨셉이라 damageMultiplier를 0으로 둬서
+  // 데미지는 전혀 들어가지 않는다(맞아도 카메라 흔들림/스파크/사운드 같은 타격 연출만 그대로 남음).
+  [WEAPON_IDS.SPOON]: {
+    name: 'SPOON by 도현', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_spoon', hitSound: 'spoon_hit', damageMultiplier: 0,
   },
   // 방망이와 같은 PORTABLE 카테고리 — 검은 봉 + 양 끝 흰 캡 실루엣이라 방망이보다 얇은 균일한 두께의
   // 캡슐로 판정한다(WeaponManager의 PORTABLE_AXIS_CONFIG 참고). 들고 있는 동안 항상 끝(캡)이 보스 쪽을
@@ -482,7 +564,7 @@ export const WEAPON_DEFINITIONS = {
   // (WeaponManager.playMeleeSwing) — 가만히 들고만 있는 다른 STATIC 무기와 달리 채찍답게 후려치는
   // 느낌을 준다.
   [WEAPON_IDS.WHIP]: {
-    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true, damageMultiplier: 0.9, hitSound: 'bat_hit', // 얇은 가죽끈 — 후려치지만 뭉개는 무게감은 없다
+    name: 'WHIP', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_whip', meleeSwing: true, damageMultiplier: 0.9, hitSound: 'whip_hit', // 얇은 가죽끈 — 채찍 전용 타격음(whip_hit)
   },
   // 채찍과 같은 스윙 모션(meleeSwing)을 재사용 — 회초리도 후려치는 무기라 가만히 들고만 있는 다른
   // STATIC 무기와 결이 다르다. damageMultiplier로 한 대가 조금 더 아프게만 차별화한다.
@@ -495,7 +577,7 @@ export const WEAPON_DEFINITIONS = {
     hitSound: 'bat_hit',
   },
   [WEAPON_IDS.FRYING_PAN]: {
-    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, hitSound: 'hit_wall', // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질이라 다른 근접보다 묵직한 충격음(hit_wall)을 쓴다
+    name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, hitSound: 'frying_pan_hit', // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질이라 전용 타격음(frying_pan_hit)을 쓴다
   },
   [WEAPON_IDS.SLIPPER]: {
     name: 'SLIPPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_slipper', meleeSwing: true, damageMultiplier: 0.8, hitSound: 'bat_hit', // 등짝 스매싱 밈이지 실제로 단단한 물건은 아니다
@@ -537,11 +619,11 @@ export const WEAPON_DEFINITIONS = {
   // heals: 데미지 대신 보스 체력을 회복시키는 무기라는 표시 — GameScene이 이 무기는
   // handleHit(데미지) 대신 handlePet(힐링)으로 따로 처리한다(heals 플래그로 판단, weaponId 하드코딩 아님).
   [WEAPON_IDS.HAND]: {
-    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true,
+    name: 'GOOD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hand', heals: true, petSound: 'good_hand',
   },
   // 나쁜 손: 착한 손이랑 짝 — 힐링 없이 그냥 주먹으로 때리는 평범한 데미지 무기.
   [WEAPON_IDS.BAD_HAND]: {
-    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bat_hit', damageMultiplier: 0.9,
+    name: 'BAD HAND', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bad_hand', hitSound: 'bad_hand_hit', damageMultiplier: 0.9,
   },
   // 입술: 뽀뽀 공격 — 말랑이(squishHit)처럼 눌렸다 돌아오는 모션 재사용. 부드러운 살이라 데미지는 낮게.
   [WEAPON_IDS.LIPS]: {
@@ -612,6 +694,18 @@ export const BOSS_SHIELD_CHECK_MAX_INTERVAL = 12000; // ms, 다음 발동 확인
 export const BOSS_SHIELD_REARM_COOLDOWN_MS = 20000;
 export const HIT_SPARK_DURATION = 260; // ms, 타격 지점 스파크가 커지면서 사라지는 시간
 export const HIT_SPARK_COLOR = 0xffe066; // 일반 타격 스파크 색 (노랑)
+
+// 숟가락(SPOON, damageMultiplier 0 — 데미지 없이 이 반응만 있는 무기)에 맞을 때마다 자라는 "혹".
+// 맞을 때마다 지금 자라는 중인 혹 하나가 1→2→3단계로 커지고, 3단계까지 다 자란 뒤에 또 맞으면 그 옆에
+// 새 혹이 하나 더 생긴다 — BOSS_BUMP_MAX_COUNT개가 전부 3단계로 다 차면 더 이상 반응하지 않는다.
+export const BOSS_BUMP_MAX_LEVEL = 3;
+export const BOSS_BUMP_MAX_COUNT = 3;
+// 숟가락으로 안 맞은 채 이 시간이 지날 때마다 가장 최근 혹이 한 단계씩 줄어든다 — 1단계에서 또 줄면
+// 그 혹 자체가 사라진다(Boss.decayBump). 맞을 때마다(registerSpoonHit) 타이머가 다시 처음부터 시작된다.
+export const BOSS_BUMP_DECAY_MS = 3000;
+// 지금 자라는 중인 혹이 다음 단계로 넘어가는 데 필요한 누적 히트 수 — index는 혹의 "현재" 레벨
+// (0=아직 안 생김, 1, 2)에 대응한다. 즉 0→1단계는 5대, 1→2단계는 15대, 2→3단계는 25대를 맞아야 한다.
+export const BOSS_BUMP_LEVEL_HIT_THRESHOLDS = [3, 7, 15];
 
 // 연타 콤보: 최근 COMBO_WINDOW_MS 안에 히트가 COMBO_HIT_THRESHOLD번 이상 쌓이면 불 뿜는 연출.
 // 체력 단계(damageStage)와는 무관하게 얼마나 빠르게 연타하느냐만 본다 — 비주얼 전용, 데미지/판정에는 영향 없음.

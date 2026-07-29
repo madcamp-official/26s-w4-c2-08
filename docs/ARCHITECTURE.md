@@ -14,7 +14,8 @@
 │  ┌─────────────────────────────────────┐     │
 │  │ Webview (Phaser 게임, bundle.js)      │     │
 │  │  BootScene / GameScene               │     │
-│  │  message 핸들러: init / agentTaunt    │     │
+│  │  msg: init/agentTaunt ↔ saveLocalScore│     │
+│  │        /saveUserName                 │     │
 │  └───────────────────────────────────────┘     │
 └─────────────────────────────────────────────┘
 ```
@@ -35,7 +36,7 @@
   - `userName = git config user.name`
   - 점수 제출/리더보드 조회는 webview → 서버로 직접 HTTP 요청
 
-판별 결과는 webview 생성 직후 한 번, `{ type: 'init', mode, groupId, userName, bestScore }` 메시지로 전달한다. `bestScore`는 `context.globalState`에서 조회한 local 모드 최고기록으로, online 모드에서는 webview가 무시한다.
+판별 결과는 webview 생성 직후 한 번, `{ type: 'init', mode, groupId, userName, hasUserName, bestScore }` 메시지로 전달한다. `bestScore`는 `context.globalState`에서 조회한 local 모드 최고기록으로, online 모드에서는 webview가 무시한다. `hasUserName`은 `userName`이 실제로 알아낸 이름(저장된 값 또는 git `user.name`)인지, `'player'` 폴백인지를 나타낸다 — online 모드에서 게임 종료 시 이 값이 `false`이면 webview가 이름 입력 모달을 띄우고, 확정된 이름을 `saveUserName` 메시지로 돌려보낸다. 전체 메시지 프로토콜은 [FRONTEND.md](./FRONTEND.md#extension--webview-메시지-프로토콜) 참고.
 
 online 모드에서 서버 요청이 실패해도 게임이 죽지 않도록 fallback 처리(로컬 표시로 전환)가 필요하다.
 

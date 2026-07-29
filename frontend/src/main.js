@@ -22,6 +22,14 @@ const config = {
   height: 600,
   parent: 'game-stage',
   backgroundColor: '#222222',
+  // 웹뷰 패널 크기에 맞춰 800x600 비율을 유지한 채 확대/축소 — 게임 내부 좌표계(HUD/보스 스폰 위치 등
+  // constants.js의 절대값)는 그대로 두고 캔버스 표시 크기만 바뀌므로 판정/레이아웃 로직에는 영향 없다.
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 800,
+    height: 600,
+  },
   physics: {
     default: 'arcade',
     arcade: { debug: false },

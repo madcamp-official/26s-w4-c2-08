@@ -34,6 +34,18 @@ const BACKGROUND_OPTIONS = Object.values(BACKGROUND_STYLES).map((style) => ({
 const TAB_ORDER = ['weapon', 'boss', 'background'];
 const TAB_LABELS = { weapon: 'WEAPON', boss: 'AGENT', background: 'MAP' };
 
+// 체력바/점수/설정·종료 버튼처럼 화면에 고정된 HUD 요소가 항상 보스보다 위에 그려지도록 명시적으로
+// 주는 depth. sidePanel(패널) depth(1000)와 같은 층으로 맞춘다. 이 값을 명시하지 않으면 Phaser가
+// 같은 depth(기본 0)일 때 "가장 최근에 depth가 바뀐 순서"로 다시 정렬해버려서, 세탁기 무기가
+// 스핀 도중 보스 depth를 잠깐 올렸다가 되돌리는 것만으로도 그 정렬이 흐트러져 보스가 버튼/체력바보다
+// 위로 올라와 버리는 문제가 있었다 — HUD 쪽에 항상 더 높은 고정 depth를 줘서 그런 흔들림 자체를 없앤다.
+const HUD_DEPTH = 1000;
+
+// 게임 종료 오버레이(showGameEndOverlay)가 항상 체력바/설정·나가기 버튼(HUD_DEPTH)보다 위에 그려지도록
+// 하는 depth. 이 값이 HUD_DEPTH보다 낮으면 오버레이의 반투명 dim이 저 버튼들 뒤로 깔려서, 결과 화면이
+// 뜬 뒤에도 톱니바퀴/나가기 버튼과 체력바가 화면 맨 위에 또렷하게 남아있고 클릭까지 되어 버린다.
+const END_OVERLAY_DEPTH = HUD_DEPTH + 1;
+
 // 패널 안 선택/활성 상태를 나타내는 액센트 색. 라임 계열 형광 그린(기존보다 밝게).
 const PANEL_ACCENT = 0x99ff33;
 const PANEL_ACCENT_CSS = '#99ff33';
@@ -62,14 +74,16 @@ export default class Hud {
     // 보스 체력바: 화면 하단 중앙. 코드 배경 위에서도 잘 보이도록 골드 테두리로 프레임을 주고,
     // 배경(hpBarBg)에만 테두리를 둬서 안의 초록 fill(hpBar)이 줄어들어도 프레임은 고정된 채 유지된다.
     // 체력바 위 라벨 자리에 "BOSS" 대신 점수를 표시한다.
-    this.scoreText = scene.add.text(HP_BAR_X, HP_BAR_Y - 22, '0', {
+    this.scoreText = scene.add.text(HP_BAR_X, HP_BAR_Y - 22, 'Score: 0', {
       fontSize: '16px',
       color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
-    this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00);
-    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0x33cc33);
+      stroke: '#000000',
+      strokeThickness: 1,
+    }).setOrigin(0.5).setDepth(HUD_DEPTH);
+    this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00).setDepth(HUD_DEPTH);
+    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0xff073a).setDepth(HUD_DEPTH);
 
     this.panelOpen = false;
     this.activeTab = 'weapon';
@@ -131,7 +145,7 @@ export default class Hud {
     // 톱니바퀴 버튼(위쪽, PANEL_ACCENT처럼 채도 높은 색)과 나란히 있을 때 칙칙해 보이지 않도록
     // 어두운 톤(0x883333) 대신 채도를 끌어올린 선명한 빨강을 쓴다.
     const bg = this.createPillBackground(x, y, size, 0xff3b3b, onClick);
-    const icon = this.scene.add.image(x, y, 'icon_logout').setDisplaySize(20, 20).setTint(0xffffff);
+    const icon = this.scene.add.image(x, y, 'icon_logout').setDisplaySize(20, 20).setTint(0xffffff).setDepth(HUD_DEPTH);
 
     // GameScene의 방치(idle) 드리프트가 보스를 이 버튼 쪽으로 끌고 가는 목표 좌표로 쓴다.
     this.endButtonPosition = { x, y };
@@ -143,7 +157,7 @@ export default class Hud {
   createPillBackground(x, y, size, bgColor, onClick) {
     const radius = size / 2;
 
-    const bg = this.scene.add.graphics();
+    const bg = this.scene.add.graphics().setDepth(HUD_DEPTH);
     bg.fillStyle(bgColor, 1);
     bg.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
 
@@ -155,8 +169,8 @@ export default class Hud {
     return bg;
   }
 
-  // 무기/보스/배경 패널을 여는 유일한 진입점. 화면 오른쪽 가장자리에 붙는 톱니바퀴(설정) 버튼.
-  // 아이콘은 public/icons/settings.svg(검은색 선 아이콘)를 BootScene에서 'icon_gear' 텍스처로 미리 로드해 둔 것.
+  // 무기/보스/배경 패널을 여는 유일한 진입점. 화면 오른쪽 가장자리에 붙는 메뉴(햄버거) 버튼.
+  // 아이콘은 public/icons/menu.svg(검은색 선 아이콘)를 BootScene에서 'icon_menu' 텍스처로 미리 로드해 둔 것.
   // 배경은 패널이 열렸을 때(활성 탭) 쓰는 액센트 색과 동일하게 맞춘다 — 밝은 색이라 검은 아이콘도 잘 보인다.
   createSettingsButton(onClick) {
     const size = 40;
@@ -164,7 +178,7 @@ export default class Hud {
     const y = TOP_HUD_Y;
 
     const bg = this.createPillBackground(x, y, size, PANEL_ACCENT, onClick);
-    const icon = this.scene.add.image(x, y, 'icon_gear').setDisplaySize(22, 22);
+    const icon = this.scene.add.image(x, y, 'icon_menu').setDisplaySize(22, 22).setDepth(HUD_DEPTH);
 
     return { bg, icon };
   }
@@ -343,25 +357,31 @@ export default class Hud {
     });
   }
 
-  // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃을 쓴다: 2열, 아이콘 바로 밑에 이름,
+  // WEAPON/AGENT/MAP 세 탭이 전부 같은 격자 레이아웃 함수를 쓴다. 기본은 2열 + 아이콘 바로 밑에 이름,
   // 칸 사이 여백으로 분리감을 준다 (예전엔 세로로 한 줄씩 나열해 아이콘이 필요 이상으로 크게 보였다).
+  // columns/iconWidth/iconHeight/colGap/rowGap/top은 탭마다 다른 격자를 짜기 위한 오버라이드 —
+  // MAP 탭은 텍스처가 4:3 배경 스냅샷이라 정사각 2열 대신 1열 + 큰 썸네일로 따로 호출한다(createBackgroundTabContent 참고).
   // 무기가 늘어나 패널 높이를 넘어가면 createSidePanel이 이 contentHeight로 스크롤 가능 범위를 계산한다.
   // showLabel: false면 아이콘 밑 이름 텍스트를 안 그린다(AGENT/MAP 탭 — 아이콘만으로 구분 가능해서 글자 없이 간결하게).
   // iconOffsetXRatio: 아이콘 크기 대비 비율로 아이콘만 좌우로 살짝 밀어준다(테두리 박스는 그대로 중앙) —
   // 보스 텍스처처럼 이미지 자체 여백 때문에 시각적으로 안 맞는 경우 보정하는 용도(BOSS_ICON_OFFSET_X_RATIO 참고).
-  createGridTabContent(panelWidth, items, currentId, onSelect, { showLabel = true, iconOffsetXRatio = 0 } = {}) {
+  createGridTabContent(panelWidth, items, currentId, onSelect, {
+    showLabel = true,
+    iconOffsetXRatio = 0,
+    columns = 2,
+    iconWidth = 64,
+    iconHeight = iconWidth,
+    colGap = 40,
+    rowGap = 26,
+    top = 56,
+  } = {}) {
     const container = this.scene.add.container(0, 0);
 
-    const columns = 2;
-    const iconSize = 64;
-    const colGap = 40;
     const labelGap = 8; // 아이콘 바로 밑 이름 텍스트까지의 간격
-    const labelHeight = 14;
-    const rowGap = 26; // 칸(아이콘+이름)끼리 분리감을 주는 줄 간격
-    const gridWidth = columns * iconSize + (columns - 1) * colGap;
+    const labelHeight = showLabel ? 14 : 0;
+    const gridWidth = columns * iconWidth + (columns - 1) * colGap;
     const gridStartX = (panelWidth - gridWidth) / 2;
-    const rowStep = iconSize + labelGap + labelHeight + rowGap;
-    const top = 56;
+    const rowStep = iconHeight + labelGap + labelHeight + rowGap;
     const rows = Math.ceil(items.length / columns);
     const contentHeight = top + rows * rowStep;
 
@@ -370,20 +390,20 @@ export default class Hud {
     items.forEach(({ id, name, texture }, index) => {
       const col = index % columns;
       const row = Math.floor(index / columns);
-      const cx = gridStartX + col * (iconSize + colGap) + iconSize / 2;
-      const cy = top + row * rowStep + iconSize / 2;
+      const cx = gridStartX + col * (iconWidth + colGap) + iconWidth / 2;
+      const cy = top + row * rowStep + iconHeight / 2;
 
-      const icon = this.scene.add.image(cx + iconOffsetXRatio * iconSize, cy, texture)
-        .setDisplaySize(iconSize, iconSize)
+      const icon = this.scene.add.image(cx + iconOffsetXRatio * iconWidth, cy, texture)
+        .setDisplaySize(iconWidth, iconHeight)
         .setInteractive({ useHandCursor: true });
-      const border = this.scene.add.rectangle(cx, cy, iconSize + 8, iconSize + 8)
+      const border = this.scene.add.rectangle(cx, cy, iconWidth + 8, iconHeight + 8)
         .setStrokeStyle(3, PANEL_ACCENT, id === currentId ? 1 : 0);
 
       icon.on('pointerdown', () => onSelect(id));
       this.uiElements.add(icon);
       const elements = [icon, border];
       if (showLabel) {
-        const label = this.scene.add.text(cx, cy + iconSize / 2 + labelGap, name, {
+        const label = this.scene.add.text(cx, cy + iconHeight / 2 + labelGap, name, {
           fontSize: '11px',
           color: '#ffffff',
           fontFamily: UI_FONT_FAMILY,
@@ -426,8 +446,16 @@ export default class Hud {
   }
 
   createBackgroundTabContent(panelWidth, currentStyle, onSelect) {
+    // MAP 텍스처(battleBackground_<style>)는 4:3(800x600) 실제 배경 스냅샷이라 WEAPON/AGENT처럼
+    // 정사각 아이콘으로 찍으면 이미지가 찌그러지고 너무 작아 보인다. 항목이 4개뿐이라 2열 격자
+    // 대신 1열로 세로 4칸을 잡고, contentAreaHeight(패널 높이-헤더)를 정확히 채우는 크기로 키운다.
     const { container, optionEls, contentHeight } = this.createGridTabContent(panelWidth, BACKGROUND_OPTIONS, currentStyle, onSelect, {
       showLabel: false,
+      columns: 1,
+      iconWidth: 160,
+      iconHeight: 120,
+      rowGap: 8,
+      top: 48,
     });
     this.backgroundOptionEls = optionEls;
     return { container, contentHeight };
@@ -444,28 +472,43 @@ export default class Hud {
   showGameEndOverlay(score, onRestartClick) {
     const { width, height } = this.scene.scale;
 
-    const dim = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75);
+    // 체력바/톱니바퀴(설정)/나가기 버튼은 평소 항상 최상단(HUD_DEPTH)에 떠 있어야 하지만, 결과 화면이
+    // 뜬 동안에는 다른 게임 요소들처럼 dim 뒤로 가라앉고 클릭도 막혀야 한다.
+    this.disableGameplayControls();
+
+    const dim = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.75).setDepth(END_OVERLAY_DEPTH);
     const title = this.scene.add.text(width / 2, height / 2 - 110, '게임 종료', {
       fontSize: '30px',
       color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(END_OVERLAY_DEPTH);
     const scoreText = this.scene.add.text(width / 2, height / 2 - 60, `최종 점수: ${score}`, {
       fontSize: '22px',
       color: '#ffaa00',
       fontFamily: UI_FONT_FAMILY,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(END_OVERLAY_DEPTH);
     const statusText = this.scene.add.text(width / 2, height / 2 - 20, '', {
       fontSize: '14px',
       color: '#dddddd',
       fontFamily: UI_FONT_FAMILY,
       align: 'center',
       lineSpacing: 6,
-    }).setOrigin(0.5, 0);
+    }).setOrigin(0.5, 0).setDepth(END_OVERLAY_DEPTH);
     const restartButton = this.createRestartButton(width / 2, height / 2 + 180, onRestartClick);
+    [restartButton.bg, restartButton.label, restartButton.agent.image].forEach((el) => el.setDepth(END_OVERLAY_DEPTH));
 
     return { dim, title, scoreText, statusText, restartButton };
+  }
+
+  // 톱니바퀴(설정)/나가기 버튼의 입력을 꺼서(disableInteractive) 결과 화면 위로 클릭이 새지 않게 하고,
+  // 패널이 열려 있었다면 닫는다. depth는 여기서 건드리지 않아도 된다 — 이 버튼들은 원래 HUD_DEPTH에
+  // 고정돼 있고, showGameEndOverlay가 만드는 오버레이 요소들을 그보다 높은 END_OVERLAY_DEPTH로 그리기
+  // 때문에 자연히 그 뒤로 가려진다.
+  disableGameplayControls() {
+    this.settingsButton.bg.disableInteractive();
+    this.endButton.bg.disableInteractive();
+    if (this.panelOpen) this.togglePanel(false);
   }
 
   // onGameEnd(리더보드 로딩/결과, 로컬 최고기록)이 결과 화면에 텍스트를 채워 넣을 때 쓴다.
@@ -585,6 +628,6 @@ export default class Hud {
   }
 
   updateScoreText(score) {
-    this.scoreText.setText(`${score}`);
+    this.scoreText.setText(`Score: ${score}`);
   }
 }

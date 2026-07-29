@@ -413,6 +413,63 @@ export function createBossSleepCanvas(bodyColor, eyeColor = '#000000') {
   return canvas;
 }
 
+// 숟가락(SPOON)에 맞을 때마다 자라는 "혹" 오버레이 텍스처. 방패(boss_shield)와 같은 방식으로
+// 보스 몸통 텍스처와 별개인 단일 이미지를 만들어 Boss.js가 머리 위에 겹쳐 붙인다(따로 그리는 이유는
+// createBossCanvas류가 보스 타입 x 표정 x 데미지 단계 조합만으로도 이미 많아서, 혹 개수 x 단계까지
+// 곱하면 텍스처 조합이 폭발적으로 늘어나기 때문 — bossSprite.js 주석 상단 캐릭터 격자 설명 참고).
+// 만화에서 흔히 쓰는 "혹" 그림(살구색 완전한 원 + 굵은 검은 윤곽선 + 점 몇 개)을 그대로 옮겼다 —
+// level(1~3)이 올라갈수록 원이 커지고 점이 늘어난다. 좌/가운데/우 3개까지만 붙는다(Boss.js
+// BUMP_SLOT_RATIOS 참고) — Boss.js가 depth를 몸통보다 낮춰서 캐릭터 실루엣에 살짝 가려지게 배치한다.
+// 각도는 캔버스 기준(0=오른쪽, 아래로 갈수록 증가)이라 -PI/2가 원의 맨 위쪽, 양의 각도(예: 2.4)는
+// 아래쪽으로 돈다. 점 4개는 원의 아래쪽 절반(Boss.js가 depth로 캐릭터 몸통에 가려지게 둔 부분)을
+// 피한 위쪽 반원 안에 -PI/2 기준 좌우 대칭으로 두고, 나머지 1개(원래 맨 오른쪽에 있던 점)만 좌측
+// 하단으로 옮겨서 아래쪽에도 점이 있게 한다.
+const BUMP_DOT_OFFSETS = [
+  { angle: -Math.PI / 2 - 1.05, r: 0.52 },
+  { angle: -Math.PI / 2 - 0.45, r: 0.3 },
+  { angle: -Math.PI / 2, r: 0.55 },
+  { angle: -Math.PI / 2 + 0.45, r: 0.3 },
+  { angle: 2.4, r: 0.42 }, // 좌측 하단
+];
+
+export function createBumpCanvas(level) {
+  const radius = 6 + level * 4;
+  const pad = 10;
+  const size = radius * 2 + pad * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+
+  const gradient = ctx.createLinearGradient(cx, cy - radius, cx, cy + radius);
+  gradient.addColorStop(0, '#fbd9b0');
+  gradient.addColorStop(1, '#e7ac79');
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.lineWidth = Math.max(2, radius * 0.14);
+  ctx.strokeStyle = '#2b2b2b';
+  ctx.stroke();
+
+  // 표면 점(뾰루지) — 레벨이 오를수록 개수가 늘어난다(레벨당 +1, 최소 3개).
+  const dotCount = 2 + level;
+  ctx.fillStyle = '#a15c3c';
+  const dotRadius = Math.max(1, radius * 0.06);
+  BUMP_DOT_OFFSETS.slice(0, dotCount).forEach(({ angle, r }) => {
+    const dx = cx + Math.cos(angle) * radius * r;
+    const dy = cy + Math.sin(angle) * radius * r;
+    ctx.beginPath();
+    ctx.arc(dx, dy, dotRadius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  return canvas;
+}
+
 // 방패를 두를 때(Boss.activateShield) 짓는 "썩소" — 😏 이모지 참고. 눈은 양쪽 다 똑같이 살짝
 // 처진 느긋한 곡선(drawBlinkEye 재사용, 좌우 비대칭 없음)으로 두고, "썩소" 느낌은 전부 입 모양에
 // 싣는다: 왼쪽은 거의 평평하게 다물려 있다가 오른쪽 끝에서만 훅 말려 올라가는 비대칭 곡선

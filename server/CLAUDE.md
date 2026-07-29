@@ -2,7 +2,7 @@
 
 이 서버는 Express + better-sqlite3 기반 팀 랭킹 API. 전체 프로젝트 맥락(확장/webview와의 관계)은 루트 [CLAUDE.md](../CLAUDE.md), API 스펙은 [../docs/API.md](../docs/API.md) 참고.
 
-**현재 상태**: 2일차까지 완료. 라우트 실제 insert/쿼리 로직 동작(`routes/scores.js`, `routes/leaderboard.js`). groupId 해싱은 `scripts/group-id.js`(테스트 전용, 실제 계산은 extension.ts 몫).
+**현재 상태**: 완료, 안정 상태 유지 중. 라우트 실제 insert/쿼리 로직 동작(`routes/scores.js`, `routes/leaderboard.js`). groupId 해싱은 `scripts/group-id.js`(테스트 전용, 실제 계산은 extension.ts 몫). 프론트엔드/확장 쪽 기능이 최초 설계보다 크게 확장됐지만(무기 시스템 재설계, 유저네임 모달 등, [FRONTEND.md](../docs/FRONTEND.md) 참고) 이 서버 API 자체는 변경 없이 그대로 쓰이고 있다.
 
 ## 커맨드
 

@@ -1,178 +1,228 @@
 # 프론트엔드 (Phaser) 구현
 
-webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 구성, 전투 시스템, extension과의 메시지 프로토콜을 정리한다. 전체 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md), 서버 API는 [API.md](./API.md), 일정은 [PLAN.md](./PLAN.md) 참고.
+webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 구성, 무기/전투 시스템, extension과의 메시지 프로토콜을 정리한다. 전체 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md), 서버 API는 [API.md](./API.md), 일정은 [PLAN.md](./PLAN.md) 참고.
+
+> 이 문서는 최초 설계(드래그한 무기가 보스와 부딪히면 데미지) 대비 실제 구현이 크게 달라진 뒤의 현재 상태를 기준으로 작성됐다. 무기를 필드에 두고 드래그로 부딪히는 방식은 더 이상 존재하지 않는다 — 아래 [무기 시스템](#무기-시스템) 참고.
 
 ## 구현 현황
 
-사운드는 아직 코드가 없는 설계 문서이며 섹션 제목에 `(미구현)`으로 표시했다. 콤보 시스템과 크리티컬 히트는 구현하지 않기로 결정해서 스펙에서 제외했다.
-
 | 항목 | 상태 |
 |---|---|
-| 보스 드래그 이동, 충돌 시 데미지, HP바/점수 갱신, HP 0 시 즉시 리스폰 | ✅ 구현됨 |
-| [무기 시스템](#무기-시스템-설치형--투척형--휴대형) (설치형/투척형/휴대형) | ✅ 구현됨 — 최초 설계와 세부 동작이 달라짐 (아래 참고) |
-| [무기 뽑기(Draw)](#무기-뽑기-draw) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
-| [다중 무기 히트 데미지 합산](#다중-무기-히트-데미지-합산) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
-| [무기 합체(스택)](#무기-합체스택) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
-| [타격 이펙트](#타격-이펙트) (흔들림/플래시/데미지 팝업/처치 팝업) | ✅ 구현됨 |
-| 사운드 | ⬜ 미구현 |
-| 종료 버튼 / `onGameEnd` | ✅ 구현됨 — online: 점수 제출 + 리더보드 조회(실패 시 로컬 표시로 폴백), local: `saveLocalScore`로 최고기록 저장 |
-| extension ↔ webview 연동, 리더보드 UI | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
+| [무기 시스템](#무기-시스템) — 사이드 패널에서 무기를 고르고 필드를 누르고 있는 동안 사용 | ✅ 구현됨 |
+| [무기 종류](#무기-종류) 30여 종 (총기/투척/부메랑/폭탄/설치형/근접/말랑이/손 8개 카테고리) | ✅ 구현됨 |
+| [전투 파이프라인](#전투-파이프라인) (히트 쿨다운, 다중 겹침 합산, 방패 확률 판정, 저격 스코프) | ✅ 구현됨 |
+| [보스 메커닉](#보스-메커닉) (HP/리스폰, 유휴 3단계, 방패, 3종 넉백, CC(빙결/텔레포트), 구토·파이어브레스 반응) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
+| [UI](#ui-hud) — WEAPON/AGENT/MAP 사이드 패널, HP바, 종료/재시작(드래그 타격 미니게임) | ✅ 구현됨 |
+| [사운드](#사운드) 18개 효과음 | ✅ 구현됨 |
+| [유저네임 모달](#유저네임-모달) | ✅ 구현됨 — 최초 설계에는 없던 기능 |
+| [게임 종료 → onGameEnd](#게임-종료--ongameend) — online: 유저네임 확보 후 점수 제출 + 리더보드 조회(실패 시 로컬 표시로 폴백), local: `saveLocalScore`로 최고기록 저장 | ✅ 구현됨 |
+| extension ↔ webview 연동 | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
 | Stop 훅 기반 실시간 캐릭터 대사(`agentTaunt`) | ✅ 구현됨 — 기본 off, `hitTheAgent.enableTokenWatchHook` 설정으로 토글. [ARCHITECTURE.md](./ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고 |
+
+콤보 시스템/크리티컬 히트는 원래 설계에서 제외하기로 했었으나, 실제로는 [파이어브레스 콤보](#보스-메커닉)라는 형태로 유사한 개념이 다시 들어왔다(순수 비주얼, 데미지 배율에는 영향 없음).
 
 ## 씬 구성
 
 | 씬 | 역할 |
 |---|---|
-| `BootScene` | 스프라이트/사운드 등 에셋 로드 후 `GameScene`으로 전환 |
-| `GameScene` | 보스/무기 오브젝트, HP바, 드래그 입력, 충돌 판정, 전투 로직, 점수/리스폰 처리 |
+| `BootScene` | 스프라이트/사운드/배경 텍스처 등 에셋을 전부 로드한 뒤 `GameScene`으로 전환. 배경 4종([MAP 탭](#ui-hud))은 여기서 캔버스에 미리 렌더링해 텍스처로 등록해둔다 |
+| `GameScene` | 보스/무기/HUD, 입력 처리, 전투·보스 상태 머신, 점수/리스폰, 씬 종료·재시작 처리 |
 
-`GameScene`은 `preload` 없이 `BootScene`이 로드해둔 에셋만 사용한다 (씬 전환 시 재로딩 방지).
+`GameScene`은 `preload` 없이 `BootScene`이 로드해둔 에셋만 사용한다 (씬 전환 시 재로딩 방지). 렌더러는 VSCode webview(Electron)에서의 GPU 가속 이슈를 피하려고 `Phaser.CANVAS`로 고정한다.
 
-## 전투 시스템
+### 화면 크기 대응
 
-클릭으로 직접 때리는 방식이 아니라, **유저가 보스나 무기를 드래그로 옮겨서 서로 부딪히면 자동으로 데미지가 들어가는** 방식이다.
+게임 내부 좌표계(HP바/보스 스폰 위치 등 `constants.js`의 절대값)는 항상 800×600 기준이고 바뀌지 않는다. 대신 `main.js`의 Phaser `scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }` 설정이 웹뷰 패널 크기에 맞춰 800×600 비율을 유지한 채 캔버스 표시 크기만 확대/축소한다. `#game-container`/`#game-stage`(`frontend/index.html`, `extension.ts`의 webview HTML 둘 다 동일하게)는 뷰포트를 꽉 채우도록 `width/height: 100%`, `overflow: hidden`으로 되어 있어 패널이 좁아져도 스크롤이 생기지 않고, 비율이 안 맞는 방향엔 배경색(`#111`)의 레터박스가 생긴다. 무기/보스 판정 좌표는 이 스케일과 무관하게 800×600 기준 그대로 계산되므로 별도 보정이 필요 없다.
 
-```
-(boss와 겹친 무기들, 히트 쿨다운 통과) ──▶ CombatSystem.handleHit()
-                                                    │
-                        겹친 무기마다 rollDamage() × weapon.damageMultiplier 를
-                              독립적으로 굴려서 합산 (겹친 무기가 없으면 1회만 굴림)
-                                                    │
-                              boss.hp -= 합산 데미지, score += 합산 데미지
-                                                    │
-                                                    ▼
-              HP바/점수 갱신 + 보스 흔들림·플래시(Boss.shake/flash) + 무기별 데미지 팝업
-                                                    │
-                                          hp <= 0 ? ──▶ 처치 팝업 표시 + respawn()
-```
+## 무기 시스템
 
-겹침이 발생하는 경로는 [무기 시스템](#무기-시스템-설치형--투척형--휴대형)에 따라 다르지만(보스와 무기 둘 다 드래그 가능하므로 어느 쪽을 끌어도 서로 부딪힐 수 있음 / 투척형은 발사대를 누르고 있으면 투사체가 자동으로 날아감), 겹침 이후의 데미지 처리(`CombatSystem.handleHit`)는 무기 종류와 무관하게 공통 로직 하나로 처리한다. 보스가 **동시에 여러 무기와 겹쳐 있으면** 겹친 개수만큼 데미지를 각각 독립적으로 굴려 합산한다 — [상세](#다중-무기-히트-데미지-합산).
+**필드에 무기를 드래그로 놓고 부딪히는 방식이 아니다.** 실제 동작:
 
-### 보스 이동
+1. 화면 우상단 톱니바퀴 버튼으로 [사이드 패널](#ui-hud)을 열고 **WEAPON 탭**에서 무기 아이콘 하나를 고른다 (`Hud` `onWeaponSelect` → `GameScene.selectedWeaponId`, 고르면 패널이 자동으로 닫힌다).
+2. UI나 보스 스프라이트가 아닌 필드를 **누르고 있으면** 그 지점에 선택한 무기가 생기고(`WeaponManager.spawnAt`), 포인터를 움직이면 무기가 따라간다(`moveActiveWeapon`, 보스 몸통을 완전히 뚫고 지나가지는 못하게 보정).
+3. **손을 떼면**(`releaseActiveWeapon`) 카테고리에 따라 다르게 처리된다 — 사라짐(즉시 destroy), 날아감(부메랑), 그 자리에 무장(폭탄/세탁기).
+4. 보스 자체는 항상 별도로 드래그 가능하다(`sprite.setInteractive({ draggable: true })`). 보스를 빠르게 방향을 바꿔가며 흔들면(구토 반응) [보스 메커닉](#보스-메커닉) 참고.
+5. 동시에 존재하는 무기는 `activeWeapon` 1개뿐 — 다른 무기를 새로 고르면 이전 것이 자동 해제된다.
 
-- 보스는 자체 AI 이동 로직이 없다 — 스폰된 위치나 마지막으로 놓인 위치에 그대로 머무른다
-- 보스 스프라이트에도 `setInteractive({ draggable: true })`를 적용해 플레이어가 직접 끌어서 옮길 수 있다 ([설치형](#1-설치형-무기)/[휴대형](#3-휴대형-무기) 무기도 전부 드래그 가능하므로, 보스를 무기 쪽으로 끌든 무기를 보스 쪽으로 끌든 어느 방향으로든 부딪힐 수 있다)
-- `drag` 이벤트로 포인터를 따라 보스 위치를 갱신, 화면 밖으로 나가지 않도록 드래그 중 좌표를 캔버스 바운드로 clamp. 드래그 중인 대상이 보스인지 무기인지에 따라 `WeaponManager.resolveOverlapForBoss` / `resolveOverlapForDraggedWeapon`으로 서로를 완전히 통과하지는 못하게 막되, 히트 판정이 계속 되도록 약간의 겹침(`CONTACT_OVERLAP`)은 남겨둔다
+### 카테고리별 판정 방식
 
-### 무기 시스템 (설치형 / 투척형 / 휴대형)
+`WEAPON_CATEGORIES`(`constants.js`) 6종, 카테고리가 겹침 판정/해제 시 동작을 결정한다:
 
-무기는 세 종류가 있고, 한 세션에 동시에 여러 개 존재할 수 있다. **게임 시작 시점에는 필드에 무기가 하나도 없이 보스만 존재**하며, [무기 뽑기(Draw)](#무기-뽑기-draw)를 통해서만 필드에 무기가 생긴다. 세 종류 모두 보스와 겹치면 동일한 `CombatSystem.handleHit`(공통 데미지 파이프라인, [위 다이어그램](#전투-시스템) 참고)으로 이어지고, 차이는 **무기가 어떻게 보스와 겹치게 되는가**뿐이다.
+| 카테고리 | 판정 방식 | 손을 떼면 |
+|---|---|---|
+| `PORTABLE` (방망이류) | 대각선 캡슐(`getPortableAxis` + `geometry.js`의 `capsuleIntersectsRect`), 항상 헤드가 보스를 향하도록 회전 | 즉시 사라짐 |
+| `STATIC` (전기충격기류) | 단순 사각 겹침(`rectOverlapsBoss`) | 즉시 사라짐 |
+| `THROW` (총기/투척류) | 누르고 있는 동안 `fireInterval`마다 자동 발사(`startFiring`/`fireProjectile`), 투사체가 보스와 원형 겹침 판정 | 발사 중지, 발사대 자체는 사라짐 |
+| `BOOMERANG` | 들고 있는 동안 판정 없음 | 놓은 자리에서 날아갔다 곡선으로 되돌아오며 1회 판정(`throwBoomerang`) |
+| `BOMB` | 들고 있는 동안 판정 없음 | 그 자리에 무장(`armBomb`), 퓨즈가 다 타면 거리 기준으로 폭발 판정(`detonateBomb`) — 보스가 반경 밖이면 허탕 |
+| `MACHINE` (세탁기) | 들고 있는 동안 판정 없음 | 그 자리에 영구 설치(`armWashingMachine`), 클릭으로 문 여닫기, 문이 열린 채 보스를 가까이 끌고 가면 자동으로 빨려들어가 데미지 |
 
-각 무기 오브젝트는 Arcade Physics 바디를 가지며, `this.physics.add.overlap(boss.sprite, weapon, onOverlap, ...)`로 겹침을 감지한다. 겹쳐 있는 동안 매 프레임 데미지가 들어가지 않도록 **히트 쿨다운**(`HIT_COOLDOWN`, 300ms)을 두고, 쿨다운이 끝난 시점에만 실제 데미지를 적용한다. 데미지 계산(`rollDamage`)은 기본 데미지(5~15) 범위에서 굴리며, [무기 합체(스택)](#무기-합체스택)로 얻은 `damageMultiplier`가 곱해진다.
+### 무기 종류
 
-> 설치형과 휴대형은 최초 설계에서는 "필드에 고정 vs 플레이어가 드는 것"으로 구분됐지만, 구현 과정에서 **둘 다 자유롭게 드래그로 옮길 수 있게 바뀌면서 사실상 동작이 동일**해졌다. 남은 차이는 텍스처(모양)와, [무기 합체](#무기-합체스택) 시 "같은 타입"을 판정하는 소속 그룹(`weapons` / `portableWeapons` 배열)뿐이다.
+무기 패널에 뜨는 순서(총 → 투척 → 부메랑 → 폭탄 → 설치형 → 근접 → 말랑이 → 손/기타) 그대로. 전체 정의는 `frontend/src/config/constants.js`의 `WEAPON_DEFINITIONS`.
 
-#### 1. 설치형 무기
+**총기 (THROW)**
 
-- 파란 네모(`weapon` 텍스처). `physics.add.image` + `setInteractive({ draggable: true })`로 자유롭게 드래그 가능
-- 보스와 항상 `physics.add.overlap`이 걸려 있어서, 보스를 이 무기 쪽으로 끌거나 이 무기를 보스 쪽으로 끌거나 어느 방향으로 부딪혀도 데미지가 들어간다
-- 드래그 중에는 보스를 완전히 뚫고 지나가지 못하도록 `resolveOverlapForBoss`/`resolveOverlapForDraggedWeapon`이 위치를 막되, 히트 판정용으로 살짝(`CONTACT_OVERLAP`) 겹친 채로 멈춘다
+| id | 특징 |
+|---|---|
+| `pistol` | 느린 연사·강한 한 방(×1.6), 큰 타격 이펙트 |
+| `machine_gun` | 빠른 연사·약한 데미지(×0.5), 발사 시 반동 |
+| `shotgun` | 한 번에 펠릿 5발이 30° 부채꼴로 나감(×0.55/발) |
+| `sniper` | 가장 느리고 강한 한 방(×3), [저격 스코프](#전투-파이프라인) 활성화, 총구가 항상 보스를 향함 |
+| `revolver` | 셋 중 가장 무난한 중간 스펙 |
 
-#### 2. 투척형 무기
+**투척형 (THROW, 발사대=투사체 성격)**
 
-최초 설계였던 "드래그 시작 지점에서 놓는 방향/거리로 쏘는 슬링샷" 방식 대신, **누르고 있는 동안 자동으로 연사하는 방식**으로 구현했다.
+| id | 특징 |
+|---|---|
+| `ball` | 야구공, 방망이와 같은 타격음, ×0.9 |
+| `dart` | 무작위 색상, 날아가는 방향으로 회전, **맞으면 보스에 박혀 8초간 따라다님**(`stickOnHit`) |
+| `megaphone` | 클릭 위치와 무관하게 보스 쪽으로 자동 발사, 소리 파동 이펙트, 무음(타격음 없음), 가장 약함(×0.7) |
+| `tomato` | 맞으면 터지는 이펙트, ×0.6 |
+| `watermelon` | 맞으면 반으로 쪼개져 날아감 + 씨 파티클, `bigImpact`, ×1.5 |
+| `water_balloon` | 물풍선 터짐 + 물방울, 가장 약함(×0.5) |
+| `beach_ball` | 통통 튀는 이펙트, ×0.5 |
 
-- 파란 원(`weapon_throw`) 모양의 발사대(런처)를 필드에 두고, 발사대 자체도 드래그로 옮길 수 있다
-- 발사대를 `pointerdown`(누르는 순간) 즉시 1발을 발사하고, 이후 누르고 있는 동안 `THROW_FIRE_INTERVAL`(400ms)마다 계속 자동 발사한다. `pointerup`(손을 떼면) 발사가 멈춘다
-- 매 발사 시점마다 **그 순간의 보스 위치**를 향해 각도를 계산해 작은 원형 투사체(`weapon_throw_projectile`)에 Arcade velocity(`THROW_PROJECTILE_SPEED`)를 부여한다 — 발사 이후에는 유도(호밍)하지 않고 직선으로 날아간다
-- 투사체가 보스와 겹치면 `handleHit`이 호출된 뒤 스스로 파괴되고, 화면 밖으로 나가도 정리된다(`WeaponManager.updateProjectiles`, 매 프레임 체크)
-- **발사대 본체는 데미지를 주지 않는다** — 데미지를 주는 것은 오직 투사체뿐이며, [다중 히트 합산](#다중-무기-히트-데미지-합산) 대상에도 발사대는 포함되지 않는다
-- 발사대를 드래그하는 도중에도 계속 연사되며, 매 발사마다 발사대의 최신 위치를 기준으로 조준한다
+**부메랑**
 
-#### 3. 휴대형 무기
+| id | 특징 |
+|---|---|
+| `boomerang` | 놓으면 보스 반대쪽으로 나갔다가 베지어 곡선으로 되돌아와 1회 타격, 비행 중 3바퀴 회전 |
 
-- 파란 세모(`weapon_portable` 텍스처). 설치형과 동일하게 `physics.add.image` + `setInteractive({ draggable: true })`로 자유롭게 드래그 가능하고, 보스와의 겹침 판정·이동 제한도 설치형과 완전히 동일한 로직(`WeaponManager.createDraggableWeapon`)을 공유한다
-- 계속 잡고 겹쳐두면(또는 보스를 계속 겹쳐두면) 히트 쿨다운 주기로 반복 데미지가 들어간다
+**폭탄**
 
-### 무기 뽑기 (Draw)
+| id | 특징 |
+|---|---|
+| `grenade` | 퓨즈 1.8초, 폭발 반경 100px, ×2.2 |
+| `dynamite` | 퓨즈 2.6초, 반경 190px, ×3.2, **90px 안의 다른 다이너마이트와 연쇄 폭발**(`collectDynamiteChain`) — 묶인 개수당 반경 +60%/데미지 +90% |
 
-- 게임 시작 시점에는 필드에 무기가 하나도 없다. 화면 우상단의 "Weapon" 버튼을 눌러야 무기가 생긴다
-- 버튼을 누르면 설치형/휴대형/투척형 중 **무작위 타입 하나**를 화면 안 랜덤 위치에 생성한다(`WeaponManager.spawnRandomWeapon`)
-- 뽑을 수 있는 횟수 = `INITIAL_FREE_DRAWS`(시작 시 무료 1회) + `floor(score / DRAW_SCORE_STEP)`(점수 100당 1회) − 이미 사용한 횟수. 남은 횟수가 0이면 버튼이 반투명 처리되어 비활성 상태로 보인다
-- 시작 시 무료 1회를 주는 이유: 필드에 무기가 하나도 없으면 애초에 보스를 때릴 방법이 없어 점수를 얻을 수 없기 때문
+**설치형**
 
-### 다중 무기 히트 데미지 합산
+| id | 특징 |
+|---|---|
+| `washing_machine`(`세탁 by 경원`) | 어디든 설치, 클릭으로 문 개폐, 문 연 채 보스를 100px 안으로 끌고 가면 자동 흡입 → 4초간 500ms마다 데미지(×1.1) 후 자동 배출, 1회 소모품 |
 
-- 보스가 동시에 **여러 무기(설치형/휴대형/투척형 투사체)** 와 겹쳐 있으면, 히트 쿨다운이 풀리는 한 번의 타이밍에 겹친 무기 개수만큼 `rollDamage()`를 각각 독립적으로 굴려서 합산한다 — 예: 무기 2개가 동시에 겹쳐 있으면 데미지는 대략 5~15가 아니라 10~30 범위
-- 무기별 굴림에는 각 무기의 `damageMultiplier`([무기 합체](#무기-합체스택) 참고)가 곱해진다
-- 히트 쿨다운(`HIT_COOLDOWN`, 300ms) 자체는 무기 개수와 무관하게 여전히 전역으로 한 번만 걸린다 — 무기가 몇 개든 쿨다운 주기당 판정은 1회
-- 겹친 무기가 하나도 없는 상태로 `handleHit`이 호출되는 경우(이론상 발생하지 않아야 하지만 안전장치로)는 기본 굴림 1회만 적용
+**근접 (PORTABLE/STATIC, 스윙 모션)**
 
-### 무기 합체(스택)
+| id | 카테고리 | 특징 |
+|---|---|---|
+| `bat` | PORTABLE | 캡슐 판정, ×1.3 |
+| `wand`(`WAND by 재준`) | PORTABLE | 맞으면 넉백 대신 **보스를 화면 랜덤 위치로 텔레포트**(`teleportsBoss`) |
+| `whip` | STATIC | 휘두르는 스윙 애니메이션(`meleeSwing`), ×0.9 |
+| `bamboo_cane` | STATIC | 스윙, ×1.15 |
+| `frying_pan` | STATIC | 스윙, 근접 중 가장 무거움(×1.4), 전용 타격음(`hit_wall`) |
+| `slipper` | STATIC | 스윙, ×0.8 |
+| `boxing_glove` | STATIC | 스윙, `bigImpact`, ×1.2 |
+| `debugger`(`DEVELOPER`) | STATIC | 스윙, ×1.1, 맞으면 **보스를 2초간 드래그 못 하게 고정**(`freezesBoss`) |
 
-- 같은 타입의 무기 2개를 드래그로 서로 겹치게 놓으면(드래그를 놓는 시점, `dragend`에 판정) 하나로 합쳐진다. **다른 타입끼리는 합쳐지지 않는다** — 설치형은 설치형끼리, 휴대형은 휴대형끼리, 투척형은 발사대끼리만
-- 합쳐지면 흡수한 쪽의 `stackLevel`이 상대방의 `stackLevel`만큼 누적되고, `damageMultiplier = STACK_DAMAGE_MULTIPLIER ^ (stackLevel - 1)`(기본 배율 1.5, 합칠 때마다 복리로 증가)로 재계산된다. 흡수된 쪽은 파괴된다
-- 합쳐진 무기는 `setTintFill(STACK_TINT_COLOR)`로 순수한 초록색으로 칠해져 한눈에 구분된다
-- 투척형이 합쳐지면 발사대의 `damageMultiplier`가 발사 시점에 투사체로 그대로 복사되어(`fireProjectile`), 이후 발사되는 투사체 데미지도 함께 강화된다
+**말랑이 (STATIC, 찌부 모션)**
 
-### 타격 이펙트
+| id | 특징 |
+|---|---|
+| `squishy` | 기본 찌부 모션, ×0.6 |
+| `rubber_duck` | 찌부 + 꽥 소리(`duck_quack`), ×0.6 |
+| `teddy_bear` | 찌부, ×0.6 |
+| `cheese_squishy` | 찌부, ×0.6 |
 
-`CombatSystem.handleHit`이 반환하는 `hits`(겹친 무기별 `{ amount, isBoosted, x, y }` 목록), `defeated`, `deathPosition`을 받아 `GameScene.onHit`에서 처리한다.
+**손/기타**
 
-- **보스 흔들림**(`Boss.shake`): 히트마다 tween으로 짧은 시간 x/y 오프셋(`BOSS_SHAKE_MAGNITUDE`)을 줬다가 원위치. 보스를 드래그 중이면 다음 드래그 좌표가 곧바로 덮어써서 자연히 묻힌다
-- **보스 플래시**(`Boss.flash`): `setTintFill`로 짧게(`BOSS_FLASH_DURATION`) 색이 바뀌었다 복귀. 겹친 무기 중 하나라도 [스택된(부스트)](#무기-합체스택) 무기가 있으면 초록색, 아니면 흰색
-- **데미지 텍스트 팝업**(`GameScene.spawnDamagePopup`): 겹친 무기마다 그 무기의 위치 근처에 데미지 숫자를 띄우고 위로 떠오르며 페이드아웃(tween + `destroy` on complete). 스택된 무기가 준 데미지는 더 크고 초록색(`BOOSTED_POPUP_COLOR`) 글씨로 구분된다
-- **처치 팝업**(`GameScene.spawnDefeatPopup`): HP가 0 이하가 되면 리스폰 전에 사망 위치를 미리 저장해두고, 그 위치에 주황색(`DEFEAT_POPUP_COLOR`) "처치!" 텍스트를 띄운다 — 리스폰된 새 위치가 아니라 실제로 맞은 자리에 뜨는 것이 포인트
+| id | 특징 |
+|---|---|
+| `hand`(`GOOD HAND`) | `heals: true` — 데미지 대신 [힐링](#전투-파이프라인) 처리 |
+| `bad_hand`(`BAD HAND`) | 평범한 데미지, ×0.9 |
+| `lips`(`LIPS by 서윤`) | 찌부 모션, ×0.5, **5연타 시 [구토 반응](#보스-메커닉)** 트리거 |
+| `taser` | 총구가 보스를 향함(`rotateToBoss`), 감전 이펙트, ×0.8 |
+| `keyboard` | 평범한 STATIC, ×1(기본값) |
 
-### 사운드 (미구현)
+## 전투 파이프라인
 
-- 타격음: 히트 쿨다운이 풀려 실제 데미지가 적용될 때마다 재생
-- 보스 처치음: HP 0 도달(리스폰 직전)에 1회 재생
+`CombatSystem.js`가 담당.
 
-## 점수 & 보스 리스폰
+- **`handleHit(triggerWeapon)`**: `HIT_COOLDOWN`(300ms) 동안 한 번만 실제 데미지를 적용한다. 이 시점에 겹쳐 있는 **모든 데미지 판정 대상**(`WeaponManager.getOverlappingDamageDealers()` — 들고 있는 무기 + 겹쳐 있는 모든 투사체)을 모아 각각 `rollDamage()`를 굴려 합산한다.
+- **`rollDamage(multiplier)`**: `round(random(5, 15) * multiplier)`. `multiplier`는 무기의 `damageMultiplier`가 기본이지만, 다이너마이트 연쇄처럼 그 순간 계산된 `damageMultiplierOverride`가 있으면 그 값이 우선한다.
+- **[보스 방패](#보스-메커닉)가 떠 있으면** 히트마다 먼저 차단 확률을 굴린다 — 막히면 데미지 0 + "BLOCKED!" 팝업, 막히지 않으면 방패의 실패 횟수(`shieldBreachCount`)가 누적되고 데미지는 정상 적용된다.
+- **`handlePet(weapon)`**: `hand`(`heals: true`) 전용 경로. 별도 쿨다운(`PET_COOLDOWN`, 500ms)으로 `HEAL_MIN~MAX`(20~40)만큼 회복시킨다. 점수/넉백/피격 표정에는 영향 없음.
+- **쿨다운 예외(이벤트성 1회 데미지)**: 패널에 부딪힌 넉백(`applyPanelPushDamage`, ×2), [구토 반응](#보스-메커닉)(`applyVomitDamage`, ×1.5), 세탁기 도는 중(`applyWashingMachineDamage`, ×1.1)은 `HIT_COOLDOWN`과 무관하게 그 순간 바로 적용된다.
+- **저격 스코프**: `sniper`(`zoomOnAim`)를 들고 있는 동안만, 메인 카메라는 그대로 두고 화면 좌상단에 별도 카메라(`GameScene.createSniperScope`)로 보스 주변을 2.3배 확대해 원형(190px)으로 보여준다. HUD 요소는 이 카메라에서 `ignore()` 처리해 확대되지 않는다.
 
-- **점수는 보스에게 입힌 데미지량에 비례해 증가한다**: 히트가 발생할 때마다 `score += damage`로 누적(겹친 무기가 여러 개면 [합산된 데미지](#다중-무기-히트-데미지-합산)만큼). HP가 깎일수록(=데미지를 줄수록) 점수가 오르는 구조. 보스 처치 자체에는 별도 보너스가 없다
-- **HP가 0 이하가 되면 즉시 리스폰**: 승리 오버레이나 씬 정지 없이 `Boss.respawn()`을 호출해 `hp = maxHp`로 초기화하고, `BOSS_SPAWN`(고정 좌표)으로 위치를 되돌린다. 무기 위치를 피해 랜덤 스폰하지는 않는다 — 필드에 무기가 여러 개 흩어져 있을 수 있는 지금 구조에서는 "무기에서 떨어진 위치"를 매번 계산하는 대신 고정 스폰 지점 하나로 충분하다고 판단
-- 리스폰 시 [처치 팝업](#타격-이펙트)("처치!" 텍스트, 사망 위치에 표시)만 띄우고 게임 진행은 끊기지 않는다 — 세션 전체가 하나의 연속된 플레이로 이어지고, 점수는 리스폰을 거듭해도 계속 누적된다
+## 보스 메커닉
 
-```js
-// 실제 구현은 CombatSystem.handleHit() / GameScene.onHit() — 아래는 흐름을 간략화한 의사코드
-function handleHit() {
-  if (now() - lastHitTime < HIT_COOLDOWN) return;
-  lastHitTime = now();
+`Boss.js` + `GameScene`의 상태 갱신 로직. 최초 설계에는 없던, 이후 추가된 기능들이다.
 
-  // 겹친 무기마다 개별로 굴려서 합산
-  const hits = overlappingWeapons.map((weapon) => ({
-    amount: rollDamage() * weapon.damageMultiplier,
-    isBoosted: weapon.stackLevel > 1,
-    x: weapon.x, y: weapon.y,
-  }));
-  const damage = hits.reduce((sum, h) => sum + h.amount, 0);
+- **HP/데미지 단계**: `maxHp = 1000`, HP 비율에 따라 3단계(0/1/2)로 표정·텍스처가 슬퍼진다(70% 이하 1단계, 30% 이하 2단계). HP 0 이하가 되면 즉시 `respawn()` — HP/위치(`BOSS_SPAWN`)/CC/방패 상태를 전부 초기화하고 게임은 끊기지 않는다.
+- **유휴 3단계** (`GameScene.updateIdleDrift`, 마지막 상호작용 이후 경과 시간 기준):
+  1. 0~10초: 평상시 그대로.
+  2. 10~30초: **잠듦** — 전용 텍스처 + Zzz 파티클.
+  3. 30초 초과: **종료 버튼 쪽으로 걸어감**(28px/s, 좌우로 갸우뚱). 클릭이 들어오면 즉시 1단계로 리셋되고 "걷다 걸린" 대사가 뜬다. 걷는 도중 열린 사이드 패널을 만나면 멈춰서 화난 표정으로 1초간 미는 연출 후 패널이 닫히고 다시 걷는다.
+  - 필드를 누르고 있는 동안은 어떤 단계든 유휴 판정이 정지된다.
+- **방패**: 최저 체력 단계(2단계)에서만 활성화 후보가 되며, 6~12초마다 무작위로 활성화 여부를 체크한다. 뜨면 히트당 70% 확률로 차단, 차단 실패가 5회 쌓이면 방패가 사라지고 20초 재정비 쿨다운이 붙는다.
+- **넉백 — 3가지**:
+  - 기본: 맞은 방향 반대로 26px 밀림(70ms).
+  - **구석 튕김**: 두 벽에서 동시에 60px 이내(구석)에 있을 때 맞으면, 대각선 반대쪽 구석까지 거리의 35%만큼 베지어 곡선으로 크게 튕겨나간다(회전 + 착지 시 붉은 플래시 + `hit_wall` 사운드 + 카메라 흔들림). 착지 연출은 원래 스쿼시(scaleX/Y) 트윈이었는데, 연타로 `knockback()`이 그 도중에 끼어들면 `killTweensOf`에 트윈이 끊겨 늘어난 스케일이 안 돌아오는 버그가 있어 패널 밀림과 같은 플래시 방식으로 교체했다.
+  - **패널 밀림**: 사이드 패널이 열려 보스 위치를 덮고 있으면 왼쪽 벽까지 날아가며(`flyOutToLeftWall`) 보너스 데미지(×2)가 들어간다.
+- **CC(상태이상)**: `debugger`에 맞으면 2초간 드래그 이동이 막히는 **빙결**(`freeze`). `wand`에 맞으면 넉백 대신 화면 랜덤 위치로 **텔레포트**(`teleportRandom`).
+- **구토 반응** (`showVomit` → `applyVomitDamage`, ×1.5, 쿨다운 무관 1회 데미지): 보스를 드래그하며 800ms 안에 방향을 3회 이상 반전시켜 4초 이상 유지하거나, `lips`로 5연타하면 발동.
+- **파이어브레스 콤보**: 3초 안에 8회 이상 히트가 들어가고 데미지 1단계 이상이면 0.5초간 불을 뿜는다(사운드만, 데미지 배율에는 영향 없음). 6초 재사용 대기.
+- **표정 우선순위**: 구토 > 파이어브레스 > 피격(X_X, 300ms) > 방패-썩소 > 수면 > 힐링-웃음(700ms) > 평상시 깜빡임(2~5초 간격, 180ms).
 
-  boss.hp -= damage;
-  score += damage;
+## UI (Hud)
 
-  const defeated = boss.hp <= 0;
-  const deathPosition = defeated ? { x: boss.x, y: boss.y } : null;
-  if (defeated) respawnBoss(); // BOSS_SPAWN 고정 좌표로 재배치
+- **사이드 패널**: 우상단 톱니바퀴로 여닫는 단일 패널(오른쪽에서 슬라이드). **WEAPON / AGENT / MAP** 세 탭이 전부 같은 2열 아이콘 격자(`createGridTabContent`)를 공유한다.
+  - WEAPON: [무기 종류](#무기-종류) 선택.
+  - AGENT: 보스 캐릭터 5종(`BOSS_TYPES`: `null_pointer`, `segfault`, `stack_overflow`, `memory_leak`, `merge_conflict`) 중 선택 — HP/위치는 유지한 채 텍스처만 교체.
+  - MAP: 배경 4종(`classic`/`diff`/`matrix`/`error`, 기본값 `matrix`) 중 선택, `BootScene`에서 캔버스로 미리 렌더링해둔 텍스처를 즉시 전환.
+- **HP바**: 화면 하단 중앙, 점수 텍스트는 그 위.
+- **종료 버튼**: 우하단 빨간 필 버튼. 유휴 3단계에서 보스가 걸어가는 목적지이기도 하다.
+- **종료 오버레이**: 점수 표시 + 상태 텍스트(리더보드/최고기록 비동기 채움) + **"다시하기" 버튼**. 재시작은 단순 클릭이 아니라 버튼을 드래그해서 위에 떠 있는 작은 타겟(현재 선택된 보스 텍스처)에 부딪혀야 확정되는 타격형 미니게임이다 — 맞히지 못하고 놓으면 버튼이 원위치로 튕겨 돌아간다.
 
-  onHit(hits, defeated, deathPosition); // HP바/점수 갱신 + 흔들림·플래시·팝업
-}
-```
+## 유저네임 모달
+
+`frontend/src/ui/usernameModal.js` — VSCode 팝업이 아니라 webview DOM 오버레이. `GameScene.onGameEnd`에서 `mode === 'online' && !gameContext.hasUserName`일 때만 뜬다. 확인/Enter로 확정(입력값 trim, 비었으면 현재 이름 유지), Esc로 취소(현재 이름 유지) — 어느 쪽이든 게임 흐름을 막지 않는다. 확정된 이름은 `saveUserName`으로 extension에 전달되어 `globalState('userName')`에 저장되고, 이후 판부터는 `hasUserName`이 `true`가 되어 다시 뜨지 않는다.
+
+## 사운드
+
+`BootScene.preload()`에서 `frontend/public/audio/*.mp3`를 로드해 Phaser Sound Manager로 재생한다. `audio.pauseOnBlur: false`로 webview가 포커스를 잃어도 소리가 끊기지 않게 한다.
+
+| 키 | 파일 | 트리거 |
+|---|---|---|
+| `boss_fire_roar` | boss_fire_roar.mp3 | 파이어브레스 콤보 |
+| `bat_hit` | hit.mp3 | 방망이/야구공/회초리/슬리퍼/디버거/부메랑 등 기본 근접·투척 타격음, 재시작 버튼 타격 |
+| `wand_hit` | wand.mp3 | 마술봉 타격 |
+| `dart_throw` | dart_throw.mp3 | 다트 발사 |
+| `taser_shock` | taser_shock.mp3 | 전기충격기 타격 |
+| `baseball_throw` | baseball.mp3 | 야구공/토마토/수박/물풍선/비치볼/부메랑/수류탄/다이너마이트 발사 |
+| `hit_wall` | sound_of_hitting_a_wall.mp3 | 권투 글러브 타격, 구석 튕김·패널 밀림 착지음 |
+| `keyboard_smash` | keyboard_smash.mp3 | 키보드 타격 |
+| `pistol_impact` | pistol_impact.mp3 | 모든 총기(권총/기관총/산탄총/저격총/리볼버) 타격음 |
+| `panel_open` | pannel_open.mp3 | 사이드 패널 여닫기 |
+| `exit_button` | exit_button.mp3 | 종료 버튼 클릭 |
+| `boss_vomit` | obite.mp3 | 구토 반응 |
+| `duck_quack` | duck_quack.mp3 | 러버덕 타격 |
+| `washing_machine_spin` | washing.mp3 | 세탁기 회전 중 반복 재생 |
+| `good_hand` | good_hand.mp3 | 착한 손 쓰다듬기(힐링, handlePet) |
+| `bad_hand_hit` | bad_hand.mp3 | 나쁜 손 타격 |
+| `frying_pan_hit` | frying_pan.mp3 | 프라이팬 타격 |
+| `whip_hit` | whip.mp3 | 채찍 타격 |
+
+다트, 확성기, 말랑이 계열(러버덕 제외)은 전용 타격음이 없다(무음).
 
 ## 게임 종료 → onGameEnd
 
-보스가 즉시 리스폰되며 게임이 자동으로 끝나지 않으므로, **플레이어가 화면의 "End" 버튼을 눌러야** 세션이 끝난다 (HP 0 시점이 더 이상 종료 트리거가 아님).
-
-화면 우상단 "End" 버튼(`Hud.createEndButton`)을 누르면 `GameScene.onEndButtonClick`이 실행되어, `Hud.showGameEndOverlay`가 화면을 어둡게 덮으며 "게임 종료" + 최종 점수 + 상태 텍스트(리더보드/최고기록, 처음엔 빈 문자열) + "다시하기" 버튼을 보여준다. 중복 클릭은 `this.isEnded` 플래그로 막는다.
-
-게임플레이 정지는 씬 전체를 멈추는 `this.scene.pause()` 대신, 아래처럼 **필요한 부분만** 멈춘다:
-- `this.physics.world.pause()`로 물리 시뮬레이션(투사체 이동, 보스-무기 overlap 판정)만 정지
-- `WeaponManager.stopAllFiring()`으로 발사 중이던 투척형 발사대의 자동 연사 타이머를 정리
-- 드래그(`drag`/`dragend`)와 무기 뽑기(`onDrawButtonClick`) 핸들러 각각에 `if (this.isEnded) return;` 가드를 넣어서 개별적으로 차단
-
-`this.scene.pause()`나 `game.input.enabled = false`처럼 씬의 입력 처리 자체를 막는 방식을 쓰지 않는 이유는, 그렇게 하면 결과 화면의 "다시하기" 버튼도 같은 씬에 속해 있어서 함께 눌리지 않게 되기 때문이다 (실제로 이 방식으로 처음 구현했다가 다시하기 버튼이 안 눌리는 버그를 겪고 지금 방식으로 바꿨다).
-
-"다시하기" 버튼(`Hud.createRestartButton`)을 누르면 `GameScene.onRestartButtonClick`이 `this.scene.restart()`를 호출해 씬을 완전히 새로 시작한다 — 점수/무기/보스 위치 등 모든 상태가 `create()`가 처음 실행됐을 때와 동일하게 초기화된다.
-
-결과 화면을 띄운 직후 `GameScene.onGameEnd(overlay, score)`가 `vscodeBridge.js`의 `gameContext.mode`를 보고 분기한다 (실제 구현은 `GameScene.onGameEnd` / `Hud.setEndOverlayStatus`):
+플레이어가 화면의 "종료" 버튼을 눌러야 세션이 끝난다(HP 0은 리스폰 트리거일 뿐 종료 조건이 아님). 실제 구현은 `GameScene.onGameEnd` / `Hud.setEndOverlayStatus`:
 
 ```js
 async function onGameEnd(overlay, score) {
   if (gameContext.mode === 'online' && gameContext.groupId) {
+    let { userName } = gameContext;
+    if (!gameContext.hasUserName) {
+      userName = await showUsernameModal(userName);
+      gameContext.userName = userName;
+      gameContext.hasUserName = true;
+      postToExtension({ type: 'saveUserName', userName }); // 다음 판부터 모달 없이 이 이름을 쓰도록 저장
+    }
     hud.setEndOverlayStatus(overlay, '리더보드 불러오는 중...');
     try {
-      await submitScore(gameContext.groupId, gameContext.userName, score);
+      await submitScore(gameContext.groupId, userName, score);
       const leaderboard = await fetchLeaderboard(gameContext.groupId);
       hud.setEndOverlayStatus(overlay, formatLeaderboard(leaderboard)); // 상위 5명
     } catch (e) {
@@ -187,18 +237,19 @@ async function onGameEnd(overlay, score) {
 }
 ```
 
-- `online`: webview(`frontend/src/api.js`)가 서버로 직접 `POST /api/scores` 호출 후 `GET /api/leaderboard` 조회 ([API 스펙](./API.md)). 요청 실패 시 크래시 없이 콘솔 경고 후 "리더보드를 불러오지 못했습니다" 텍스트로 폴백한다 ([API.md의 fallback](./API.md#클라이언트-측-fallback)).
-- `local`: 서버 요청 없이 extension에 `saveLocalScore` 메시지만 보낸다. 화면에 바로 보여주는 "내 최고 기록"은 서버 응답을 기다리지 않고 `init` 때 받은 `gameContext.bestScore`와 이번 판 점수 중 큰 값을 클라이언트에서 계산한 것 — extension은 그 값을 `globalState`에 저장만 하고 별도로 되돌려주지 않는다.
+- `online`: 이름을 모르면([유저네임 모달](#유저네임-모달) 참고) 먼저 확보한 뒤 `frontend/src/api.js`로 서버에 직접 `POST /api/scores` → `GET /api/leaderboard` 조회 ([API 스펙](./API.md)). 실패해도 크래시 없이 "리더보드를 불러오지 못했습니다"로 폴백 ([fallback](./API.md#클라이언트-측-fallback)).
+- `local`: 서버 요청 없이 `saveLocalScore`만 전송. 화면에 보여주는 "내 최고 기록"은 `init` 때 받은 `bestScore`와 이번 점수 중 큰 값을 클라이언트에서 계산한 것 — extension은 저장만 하고 값을 되돌려주지 않는다.
 
 ## extension ↔ webview 메시지 프로토콜
 
-모든 메시지는 `type` 필드로 구분하고, webview 쪽 단일 `message` 리스너(`frontend/src/vscodeBridge.js`)에서 분기한다. extension 쪽 발신 코드는 `extension/src/extension.ts` 참고.
+모든 메시지는 `type` 필드로 구분하고, webview 쪽 단일 `message` 리스너(`frontend/src/vscodeBridge.js`)에서 분기한다. extension 쪽 발신/수신 코드는 `extension/src/extension.ts` 참고.
 
 | 방향 | type | payload | 처리 |
 |---|---|---|---|
-| ext → webview | `init` | `{ mode, groupId, userName, bestScore }` | `vscodeBridge.gameContext`에 저장, 웹뷰 생성 직후 1회 전달. `bestScore`는 local 모드 결과 화면 비교용(online에서는 무시) |
+| ext → webview | `init` | `{ mode, groupId, userName, hasUserName, bestScore }` | `vscodeBridge.gameContext`에 저장, 웹뷰 생성 직후 1회 전달. `hasUserName`이 `false`면 online 모드 종료 시 [유저네임 모달](#유저네임-모달)을 띄운다. `bestScore`는 local 모드 결과 화면 비교용(online에서는 무시) |
 | ext → webview | `agentTaunt` | `{ tokenCount }` | Stop 훅이 토큰 임계치를 넘겨 발동했을 때 전달 — 패널이 열려 있으면 실시간으로, 닫혀 있었으면 다음 게임 시작 시 전달, 보스 대사 팝업 ([ARCHITECTURE.md](./ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고) |
 | webview → ext | `saveLocalScore` | `{ score }` | local 모드에서 종료 버튼 클릭 시 최고점수 저장 요청 |
+| webview → ext | `saveUserName` | `{ userName }` | 유저네임 모달에서 이름 확정 시 전송, extension이 `globalState('userName')`에 저장해 다음 판부터 `hasUserName: true`가 되게 함 |
 
 ```js
 // frontend/src/vscodeBridge.js
@@ -206,7 +257,10 @@ window.addEventListener('message', (event) => {
   const msg = event.data;
   switch (msg.type) {
     case 'init':
-      Object.assign(gameContext, { mode: msg.mode, groupId: msg.groupId, userName: msg.userName, bestScore: msg.bestScore ?? 0 });
+      Object.assign(gameContext, {
+        mode: msg.mode, groupId: msg.groupId, userName: msg.userName,
+        hasUserName: msg.hasUserName, bestScore: msg.bestScore ?? 0,
+      });
       initListeners.forEach((cb) => cb(gameContext));
       break;
     case 'agentTaunt':
@@ -220,8 +274,8 @@ window.addEventListener('message', (event) => {
 
 `gameContext.mode` 값에 따라 종료 버튼을 누른 뒤 보여줄 화면이 다르다 ([게임 종료 → onGameEnd](#게임-종료--ongameend) 참고).
 
-- `online`: 결과 화면 상태 텍스트에 리더보드 상위 5명. 응답 대기 중엔 "리더보드 불러오는 중...", 실패 시 에러 문구
-- `local`: 리더보드 대신 "내 최고 기록: XXX점" 텍스트만 표시
+- `online`: 이름이 없으면 먼저 [유저네임 모달](#유저네임-모달)이 뜬 뒤, 결과 화면 상태 텍스트에 리더보드 상위 5명. 응답 대기 중엔 "리더보드 불러오는 중...", 실패 시 에러 문구
+- `local`: 리더보드/모달 없이 "내 최고 기록: XXX점" 텍스트만 표시
 
 두 모드 모두 `mode` 판별 자체는 webview가 아니라 extension이 git remote 유무로 미리 계산해 `init` 메시지로 내려준 값을 그대로 신뢰한다 ([ARCHITECTURE.md 모드 분기](./ARCHITECTURE.md#모드-분기-local--online)).
 

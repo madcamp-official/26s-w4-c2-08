@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, GOLF_CLUB_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
+  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, GOLF_CLUB_WEAPON_SIZE, SPOON_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
   LIPS_WEAPON_SIZE,
   KEYBOARD_WEAPON_SIZE, MEGAPHONE_WEAPON_SIZE, PISTOL_WEAPON_SIZE, MACHINE_GUN_WEAPON_SIZE, BULLET_SIZE,
   SHOTGUN_WEAPON_SIZE, SNIPER_WEAPON_SIZE, REVOLVER_WEAPON_SIZE, PELLET_SIZE,
@@ -10,15 +10,18 @@ import {
   SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BEACH_BALL_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
   GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
   BOSS_SHIELD_SIZE, BORED_BUBBLE_WEAPON_SIZE,
+  WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT,
+  BOSS_BUMP_MAX_LEVEL,
+  SLINGSHOT_FRAME_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
   createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas,
-  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas,
+  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas, createBumpCanvas,
   createBossVomitCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
-  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createGolfClubCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+  createBaseballCanvas, createBasketballCanvas, createSlingshotFrameCanvas, createBaseballBatCanvas, createMagicWandCanvas, createGolfClubCanvas, createSpoonCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
   createKeyboardCanvas, createMegaphoneCanvas, createPistolCanvas, createMachineGunCanvas, createBulletCanvas,
   createShotgunCanvas, createSniperCanvas, createRevolverCanvas, createPelletCanvas,
   createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
@@ -26,7 +29,7 @@ import {
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
   createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createUreaSolutionCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
-  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createBoredGirlCanvas,
+  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createBoredGirlCanvas, createWashingMachineCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -41,10 +44,12 @@ export default class BootScene extends Phaser.Scene {
   preload() {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
     this.load.audio('bat_hit', assetUrl('audio/hit.mp3'));
+    this.load.audio('spoon_hit', assetUrl('audio/spoon.mp3'));
     this.load.audio('wand_hit', assetUrl('audio/wand.mp3'));
     this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
     this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
     this.load.audio('baseball_throw', assetUrl('audio/baseball.mp3'));
+    this.load.audio('basketball_bounce', assetUrl('audio/basketball.mp3'));
     this.load.audio('hit_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
     this.load.audio('keyboard_smash', assetUrl('audio/keyboard_smash.mp3'));
     this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
@@ -62,7 +67,13 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('boss_vomit', assetUrl('audio/obite.mp3'));
     this.load.audio('duck_quack', assetUrl('audio/duck_quack.mp3'));
     this.load.audio('seoyoon_bored', assetUrl('audio/seoyoon.wav'));
-    this.load.svg('icon_gear', assetUrl('icons/settings.svg'), { width: 64, height: 64 });
+    this.load.audio('washing_machine_spin', assetUrl('audio/washing.mp3'));
+    this.load.audio('good_hand', assetUrl('audio/good_hand.mp3'));
+    this.load.audio('bad_hand_hit', assetUrl('audio/bad_hand.mp3'));
+    this.load.audio('frying_pan_hit', assetUrl('audio/frying_pan.mp3'));
+    this.load.audio('whip_hit', assetUrl('audio/whip.mp3'));
+    this.load.audio('washing_machine_sparkle', assetUrl('audio/sparkle.mp3'));
+    this.load.svg('icon_menu', assetUrl('icons/menu.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
 
@@ -100,10 +111,16 @@ export default class BootScene extends Phaser.Scene {
     });
     // 체력 최저 단계에서 가끔 뜨는 방패(Boss.activateShield) — 보스 타입/데미지 단계와 무관한 단일 텍스처.
     this.textures.addCanvas('boss_shield', createBossShieldCanvas(BOSS_SHIELD_SIZE));
+    // 숟가락에 맞을 때마다 자라는 혹(1~3단계) — 보스 타입/데미지 단계와 무관한 단일 오버레이 텍스처라
+    // 방패와 마찬가지로 여기서 한 번만 만들어 둔다.
+    for (let level = 1; level <= BOSS_BUMP_MAX_LEVEL; level += 1) {
+      this.textures.addCanvas(`boss_bump_${level}`, createBumpCanvas(level));
+    }
   }
 
   createPlaceholderTextures() {
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_spoon', createSpoonCanvas(SPOON_WEAPON_SIZE));
     this.textures.addCanvas('weapon_wand', createMagicWandCanvas(WAND_WEAPON_SIZE));
     this.textures.addCanvas('weapon_golf_club', createGolfClubCanvas(GOLF_CLUB_WEAPON_SIZE));
     this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
@@ -125,6 +142,10 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_boomerang', createBoomerangCanvas(BOOMERANG_WEAPON_SIZE));
     this.textures.addCanvas('weapon_grenade', createGrenadeCanvas(GRENADE_WEAPON_SIZE));
     this.textures.addCanvas('weapon_dynamite', createDynamiteCanvas(DYNAMITE_WEAPON_SIZE));
+    // 문 닫힘/열림 두 상태를 미리 각각 텍스처로 만들어두고, 실제로는 WeaponManager.toggleWashingMachineDoor가
+    // setTexture로 갈아끼우기만 한다(재렌더링 없음).
+    this.textures.addCanvas('weapon_washing_machine_closed', createWashingMachineCanvas(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT, { doorOpen: false }));
+    this.textures.addCanvas('weapon_washing_machine_open', createWashingMachineCanvas(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT, { doorOpen: true }));
 
     this.createThrowWeaponTexture();
   }
@@ -136,6 +157,8 @@ export default class BootScene extends Phaser.Scene {
   createThrowWeaponTexture() {
     this.textures.addCanvas('weapon_throw', createBaseballCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_throw_projectile', createBaseballCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_basketball', createBasketballCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_slingshot_frame', createSlingshotFrameCanvas(SLINGSHOT_FRAME_SIZE));
     this.textures.addCanvas('weapon_dart', createDartCanvas(THROW_WEAPON_SIZE, DART_COLOR_VARIANTS[0]));
     DART_COLOR_VARIANTS.forEach((colors, i) => {
       this.textures.addCanvas(DART_PROJECTILE_TEXTURES[i], createDartCanvas(THROW_WEAPON_SIZE, colors));

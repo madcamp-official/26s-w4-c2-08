@@ -1,0 +1,9 @@
+.vscodeignore
+.gitignore
+tsconfig.json
+package-lock.json
+src/**
+scripts/copy-webview.mjs
+node_modules/**
+**/*.map
+**/.vscode-test/**

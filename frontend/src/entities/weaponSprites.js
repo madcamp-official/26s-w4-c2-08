@@ -431,6 +431,90 @@ export function createMagicWandCanvas(size) {
   return canvas;
 }
 
+// 휴대형 무기 추가 디자인: 은색 숟가락. 방망이(BAT)와 같은 PORTABLE 로직(45도 대각선 캡슐 판정)을 그대로
+// 쓰되 실루엣만 바꾼다 — 손잡이는 머리(볼)에서 멀어질수록(그립 쪽 끝) 넓어지는 사다리꼴이고, 머리
+// 쪽으로 갈수록 좁아져 머리 원 중심(bowlCenterX)까지 파고든다. 머리는 손잡이와 이어 그리는 대신
+// 완전히 별도의 원(ctx.arc 0~2π)을 손잡이보다 나중에 그려서 덮어씌우는 방식으로, 손잡이가 파고든
+// 이음매를 원 안에 완전히 숨겨 머리가 항상 진짜 원으로 보이게 한다(테이퍼 곡선으로 잇던 이전 방식은
+// 머리 한쪽이 눌린 물방울 모양으로 보이는 문제가 있었다). 은색 단일 재질이라 그립 밴드/knob처럼 색이
+// 다른 파츠는 없고 머리에 밝은 하이라이트 줄 하나로 광택만 표현한다. 방망이와 같은 이유로
+// getSpoonDimensions를 분리해 WeaponManager의 캡슐 히트박스(반지름은 머리 반지름 bowlRadius를
+// 그대로 씀)와 같은 치수를 공유한다.
+export function getSpoonDimensions(size) {
+  const totalLength = size * 0.94 * 0.9; // 막대(손잡이+머리 전체 길이) 10% 축소 — 머리 반지름(bowlRadius)은 그대로 두고 길이만 줄인다
+  const halfLen = totalLength / 2;
+  const gripHalfWidth = size * 0.045; // 손잡이 그립 쪽(머리에서 먼 끝) 두께 절반 — 사다리꼴의 넓은 변
+  const neckHalfWidth = size * 0.02; // 손잡이가 머리 쪽으로 좁아져 원 중심까지 파고드는 지점의 두께 절반 — 사다리꼴의 좁은 변
+  const bowlRadius = size * 0.12; // 머리(볼) 반지름 — 손잡이와 별개의 완전한 원으로 그려서 진짜 원이 되도록 함. 캡슐 판정 반지름으로도 그대로 쓴다
+
+  const bowlCenterX = halfLen - bowlRadius;
+
+  // 45도 회전한 막대의 축정렬 경계 상자 한 변 길이 (+2px는 안티에일리어싱 여백)
+  const canvasSize = Math.ceil(Math.SQRT2 * (halfLen + bowlRadius)) + 2;
+
+  return {
+    halfLen, gripHalfWidth, neckHalfWidth, bowlRadius, bowlCenterX, canvasSize,
+  };
+}
+
+export function createSpoonCanvas(size) {
+  // 단색 대신 축과 수직으로 밝음-어두움-밝음이 반복되는 그라디언트를 써서 크롬/스테인리스 특유의
+  // 금속 반사(회색 몸통에 진한 그림자 줄 + 밝은 하이라이트 줄이 나란히 지나가는 느낌)를 낸다.
+  const silverStroke = '#5b636b';
+  const highlightColor = '#ffffff';
+
+  const {
+    halfLen, gripHalfWidth, neckHalfWidth, bowlRadius, bowlCenterX, canvasSize,
+  } = getSpoonDimensions(size);
+
+  const canvas = createCanvas(canvasSize);
+  const ctx = canvas.getContext('2d');
+
+  ctx.save();
+  ctx.translate(canvasSize / 2, canvasSize / 2);
+  ctx.rotate(-Math.PI / 4);
+
+  const silverGradient = ctx.createLinearGradient(0, -bowlRadius, 0, bowlRadius);
+  silverGradient.addColorStop(0, '#f8fafb');
+  silverGradient.addColorStop(0.32, '#c3ccd2');
+  silverGradient.addColorStop(0.55, '#8b949c');
+  silverGradient.addColorStop(0.78, '#d6dde1');
+  silverGradient.addColorStop(1, '#f0f3f5');
+
+  ctx.fillStyle = silverGradient;
+  ctx.strokeStyle = silverStroke;
+  ctx.lineWidth = Math.max(1, size * 0.01);
+
+  // 손잡이 — 그립 쪽(-halfLen, 넓음)에서 머리 원 중심(bowlCenterX, 좁음)까지 이어지는 사다리꼴 하나.
+  // 끝이 원 중심까지 파고들어 있어서 뒤이어 그리는 머리 원이 이 끝부분을 완전히 덮는다.
+  ctx.beginPath();
+  ctx.moveTo(-halfLen, -gripHalfWidth);
+  ctx.lineTo(bowlCenterX, -neckHalfWidth);
+  ctx.lineTo(bowlCenterX, neckHalfWidth);
+  ctx.lineTo(-halfLen, gripHalfWidth);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 머리 — 손잡이와 독립적인 완전한 원. 손잡이보다 나중에 그려서 이음매를 원 안에 숨긴다.
+  ctx.beginPath();
+  ctx.arc(bowlCenterX, 0, bowlRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 광택 하이라이트 — 머리 한쪽에 밝은 세로 줄 하나로 은색 재질 느낌만 살짝 준다
+  ctx.strokeStyle = highlightColor;
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(bowlCenterX - bowlRadius * 0.25, -bowlRadius * 0.45);
+  ctx.lineTo(bowlCenterX - bowlRadius * 0.25, bowlRadius * 0.45);
+  ctx.stroke();
+
+  ctx.restore();
+  return canvas;
+}
+
 // 투척형 무기 세 번째/네 번째 디자인: 권총/기관총. 총알(투사체)이 뾰족한 방향을 향해야 자연스러워서
 // 다트와 같은 규칙으로 각도 0(오른쪽)을 바라보게 그린다 — WeaponManager가 rotateToTravel로 그대로 회전시킨다.
 

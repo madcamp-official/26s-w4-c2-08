@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
+  BOSS_TYPES, PORTABLE_WEAPON_SIZE, WAND_WEAPON_SIZE, SPOON_WEAPON_SIZE, THROW_WEAPON_SIZE, TASER_WEAPON_SIZE, HAND_WEAPON_SIZE, BAD_HAND_WEAPON_SIZE,
   LIPS_WEAPON_SIZE,
   KEYBOARD_WEAPON_SIZE, MEGAPHONE_WEAPON_SIZE, PISTOL_WEAPON_SIZE, MACHINE_GUN_WEAPON_SIZE, BULLET_SIZE,
   SHOTGUN_WEAPON_SIZE, SNIPER_WEAPON_SIZE, REVOLVER_WEAPON_SIZE, PELLET_SIZE,
@@ -10,16 +10,16 @@ import {
   SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BEACH_BALL_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
   GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
   WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT,
-  BOSS_SHIELD_SIZE,
+  BOSS_SHIELD_SIZE, BOSS_BUMP_MAX_LEVEL,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
   createBossCanvas, createBossHurtCanvas, createBossFireCanvas, createBossHappyCanvas, createBossBlinkCanvas,
-  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas,
+  createBossShieldCanvas, createBossSmirkCanvas, createBossSleepCanvas, createBumpCanvas,
   createBossVomitCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
-  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createSpoonCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
   createKeyboardCanvas, createMegaphoneCanvas, createPistolCanvas, createMachineGunCanvas, createBulletCanvas,
   createShotgunCanvas, createSniperCanvas, createRevolverCanvas, createPelletCanvas,
   createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
@@ -42,6 +42,7 @@ export default class BootScene extends Phaser.Scene {
   preload() {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
     this.load.audio('bat_hit', assetUrl('audio/hit.mp3'));
+    this.load.audio('spoon_hit', assetUrl('audio/spoon.mp3'));
     this.load.audio('wand_hit', assetUrl('audio/wand.mp3'));
     this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
     this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
@@ -93,10 +94,16 @@ export default class BootScene extends Phaser.Scene {
     });
     // 체력 최저 단계에서 가끔 뜨는 방패(Boss.activateShield) — 보스 타입/데미지 단계와 무관한 단일 텍스처.
     this.textures.addCanvas('boss_shield', createBossShieldCanvas(BOSS_SHIELD_SIZE));
+    // 숟가락에 맞을 때마다 자라는 혹(1~3단계) — 보스 타입/데미지 단계와 무관한 단일 오버레이 텍스처라
+    // 방패와 마찬가지로 여기서 한 번만 만들어 둔다.
+    for (let level = 1; level <= BOSS_BUMP_MAX_LEVEL; level += 1) {
+      this.textures.addCanvas(`boss_bump_${level}`, createBumpCanvas(level));
+    }
   }
 
   createPlaceholderTextures() {
     this.textures.addCanvas('weapon_portable', createBaseballBatCanvas(PORTABLE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_spoon', createSpoonCanvas(SPOON_WEAPON_SIZE));
     this.textures.addCanvas('weapon_wand', createMagicWandCanvas(WAND_WEAPON_SIZE));
     this.textures.addCanvas('weapon_taser', createTaserCanvas(TASER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_hand', createHandCanvas(HAND_WEAPON_SIZE));

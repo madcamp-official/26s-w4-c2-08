@@ -46,6 +46,7 @@ export const THROW_PROJECTILE_SPEED = 400; // px/s, 기본값 — 무기별로 �
 export const BALL_PROJECTILE_SPEED = 640; // px/s, 야구공은 기본보다 빠르게
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
 export const WAND_WEAPON_SIZE = 150; // 마술봉 텍스처 크기 — 방망이와 같은 캡슐 판정 파이프라인을 공유(PORTABLE)
+export const SPOON_WEAPON_SIZE = 105; // 숟가락 텍스처 크기 — 방망이보다 작은 소품이라 PORTABLE_WEAPON_SIZE보다 줄임
 export const THROW_WEAPON_SIZE = 40; // 야구공(투척형) 텍스처 크기 — 무기 자체와 던져지는 투사체가 같은 크기를 쓴다 (기존 50에서 20% 축소)
 // 투사체는 정사각 캔버스에 그린 둥근 이모지라, 사각 히트박스 그대로 쓰면 실제 공 그림이 없는 네 모서리까지
 // 보스와의 판정에 끼어들어 히트박스가 커 보인다. 실제 그림 크기에 맞춰 원형으로 판정한다.
@@ -107,6 +108,7 @@ export const WEAPON_IDS = {
   WASHING_MACHINE: 'washing_machine',
   // 근접 타격
   BAT: 'bat',
+  SPOON: 'spoon',
   WAND: 'wand',
   WHIP: 'whip',
   BAMBOO_CANE: 'bamboo_cane',
@@ -472,6 +474,12 @@ export const WEAPON_DEFINITIONS = {
     // 알루미늄 배트 — 무기 패널에서 가장 단단한 재질 축에 속해서 직접 휘두르는 PORTABLE답게 세게 잡는다.
     name: 'BAT', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_portable', hitSound: 'bat_hit', damageMultiplier: 1.3,
   },
+  // 은색 숟가락 — 방망이와 같은 PORTABLE 로직(대각선 캡슐 판정, WeaponManager의 PORTABLE_AXIS_CONFIG
+  // 참고)을 그대로 쓰지만, 실제로 때리는 무기가 아니라는 컨셉이라 damageMultiplier를 0으로 둬서
+  // 데미지는 전혀 들어가지 않는다(맞아도 카메라 흔들림/스파크/사운드 같은 타격 연출만 그대로 남음).
+  [WEAPON_IDS.SPOON]: {
+    name: 'SPOON by 도현', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_spoon', hitSound: 'spoon_hit', damageMultiplier: 0,
+  },
   // 방망이와 같은 PORTABLE 카테고리 — 검은 봉 + 양 끝 흰 캡 실루엣이라 방망이보다 얇은 균일한 두께의
   // 캡슐로 판정한다(WeaponManager의 PORTABLE_AXIS_CONFIG 참고). 들고 있는 동안 항상 끝(캡)이 보스 쪽을
   // 향하도록 회전한다. teleportsBoss: 데미지는 다른 PORTABLE 무기와 같은 파이프라인으로 그대로 들어가고,
@@ -612,6 +620,18 @@ export const BOSS_SHIELD_CHECK_MAX_INTERVAL = 12000; // ms, 다음 발동 확인
 export const BOSS_SHIELD_REARM_COOLDOWN_MS = 20000;
 export const HIT_SPARK_DURATION = 260; // ms, 타격 지점 스파크가 커지면서 사라지는 시간
 export const HIT_SPARK_COLOR = 0xffe066; // 일반 타격 스파크 색 (노랑)
+
+// 숟가락(SPOON, damageMultiplier 0 — 데미지 없이 이 반응만 있는 무기)에 맞을 때마다 자라는 "혹".
+// 맞을 때마다 지금 자라는 중인 혹 하나가 1→2→3단계로 커지고, 3단계까지 다 자란 뒤에 또 맞으면 그 옆에
+// 새 혹이 하나 더 생긴다 — BOSS_BUMP_MAX_COUNT개가 전부 3단계로 다 차면 더 이상 반응하지 않는다.
+export const BOSS_BUMP_MAX_LEVEL = 3;
+export const BOSS_BUMP_MAX_COUNT = 3;
+// 숟가락으로 안 맞은 채 이 시간이 지날 때마다 가장 최근 혹이 한 단계씩 줄어든다 — 1단계에서 또 줄면
+// 그 혹 자체가 사라진다(Boss.decayBump). 맞을 때마다(registerSpoonHit) 타이머가 다시 처음부터 시작된다.
+export const BOSS_BUMP_DECAY_MS = 3000;
+// 지금 자라는 중인 혹이 다음 단계로 넘어가는 데 필요한 누적 히트 수 — index는 혹의 "현재" 레벨
+// (0=아직 안 생김, 1, 2)에 대응한다. 즉 0→1단계는 5대, 1→2단계는 15대, 2→3단계는 25대를 맞아야 한다.
+export const BOSS_BUMP_LEVEL_HIT_THRESHOLDS = [1, 1, 1];
 
 // 연타 콤보: 최근 COMBO_WINDOW_MS 안에 히트가 COMBO_HIT_THRESHOLD번 이상 쌓이면 불 뿜는 연출.
 // 체력 단계(damageStage)와는 무관하게 얼마나 빠르게 연타하느냐만 본다 — 비주얼 전용, 데미지/판정에는 영향 없음.

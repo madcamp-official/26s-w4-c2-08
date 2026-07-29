@@ -6,6 +6,7 @@ import {
   THROW_PROJECTILE_HIT_RADIUS,
   PORTABLE_WEAPON_SIZE,
   WAND_WEAPON_SIZE,
+  SPOON_WEAPON_SIZE,
   WEAPON_IDS,
   WEAPON_CATEGORIES,
   WEAPON_DEFINITIONS,
@@ -23,7 +24,7 @@ import {
   WASHING_MACHINE_WIDTH,
   WASHING_MACHINE_HEIGHT,
 } from '../config/constants.js';
-import { getBaseballBatDimensions, getMagicWandDimensions, getWashingMachineDoorMetrics } from './weaponSprites.js';
+import { getBaseballBatDimensions, getMagicWandDimensions, getSpoonDimensions, getWashingMachineDoorMetrics } from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
 // PORTABLE 카테고리(방망이/마술봉처럼 대각선으로 들고 부딪히는 무기) 텍스처는 전부 로컬 기준 -45도로
@@ -37,9 +38,11 @@ const PORTABLE_BAKED_ROTATION = -Math.PI / 4;
 // 새 PORTABLE 무기를 추가할 때는 이 표에도 같이 추가해야 한다.
 const BAT_DIMENSIONS = getBaseballBatDimensions(PORTABLE_WEAPON_SIZE);
 const WAND_DIMENSIONS = getMagicWandDimensions(WAND_WEAPON_SIZE);
+const SPOON_DIMENSIONS = getSpoonDimensions(SPOON_WEAPON_SIZE);
 const PORTABLE_AXIS_CONFIG = {
   [WEAPON_IDS.BAT]: { halfLen: BAT_DIMENSIONS.halfLen, radius: BAT_DIMENSIONS.barrelHalfWidth },
   [WEAPON_IDS.WAND]: { halfLen: WAND_DIMENSIONS.halfLen, radius: WAND_DIMENSIONS.shaftHalfWidth },
+  [WEAPON_IDS.SPOON]: { halfLen: SPOON_DIMENSIONS.halfLen, radius: SPOON_DIMENSIONS.bowlRadius },
 };
 
 // 세탁기 문(드럼) 반지름/오프셋 — 그리기(weaponSprites.createWashingMachineCanvas)와 같은 계산을

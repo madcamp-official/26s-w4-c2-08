@@ -31,6 +31,10 @@ import {
   BOSS_CORNER_BOUNCE_DISTANCE_RATIO,
   BOSS_CORNER_BOUNCE_DURATION,
   LIPS_VOMIT_STREAK_THRESHOLD,
+  BOSS_BUMP_MAX_LEVEL,
+  BOSS_BUMP_MAX_COUNT,
+  BOSS_BUMP_DECAY_MS,
+  BOSS_BUMP_LEVEL_HIT_THRESHOLDS,
 } from '../config/constants.js';
 import { MAX_DAMAGE_STAGE, BOSS_MARGIN_TOP, BOSS_MARGIN_LEFT } from './bossSprite.js';
 
@@ -42,6 +46,20 @@ function computeDamageStage(ratio) {
   const stage = DAMAGE_RATIO_BREAKPOINTS.filter((breakpoint) => ratio <= breakpoint).length;
   return Math.min(stage, MAX_DAMAGE_STAGE);
 }
+
+// 혹 3개(BOSS_BUMP_MAX_COUNT)가 이마 위 좌/가운데/우에 자리 잡는 위치를 몸통 크기 대비 비율로
+// 미리 잡아둔다(updateBumpPositions가 bodyWidth/bodyHeight를 곱해 실제 world 좌표로 바꾼다).
+// y는 몸통 위쪽 경계선(topY) 바로 위 — syncBumpSprites가 depth를 몸통보다 낮게 둬서, 원 아래쪽
+// 일부가 머리 실루엣에 가려지고 위쪽만 살짝 튀어나온 것처럼 보인다. 가운데 혹은 좌우보다 더 위로
+// 띄워서(y가 더 음수) 세 개가 일직선이 아니라 가운데가 봉긋 솟은 모양이 되게 한다.
+const BUMP_SLOT_RATIOS = [
+  { x: -0.4, y: -0.04 },
+  { x: 0, y: -0.16 },
+  { x: 0.4, y: -0.04 },
+];
+// 가운데 혹(index 1)은 1단계일 때 이미지가 작아서 위 비율만으로는 몸통과 안 붙어 보인다 —
+// 몸통 크기와 무관하게 5px만큼 고정으로 내려서 붙여준다.
+const BUMP_CENTER_Y_OFFSET_PX = 5;
 
 export default class Boss {
   constructor(scene, bossTypeId) {
@@ -74,6 +92,12 @@ export default class Boss {
     // 세탁기 안에 들어가 도는 중인지 — GameScene.startWashingMachineSpin/endWashingMachineSpin이 관리하며,
     // 켜져 있는 동안은 드래그로 못 꺼낸다(디버거의 isFrozen과 같은 방식으로 GameScene의 'drag' 리스너가 가드).
     this.isInWashingMachine = false;
+    // 숟가락(SPOON)에 맞을 때마다 자라는 혹 — 레벨(1~BOSS_BUMP_MAX_LEVEL) 배열, 마지막 원소가 "지금
+    // 자라는 중"인 혹이다. bumpSprites는 이 배열과 병렬로 유지되는 오버레이 이미지(방패의 shieldSprite와 같은 패턴).
+    this.bumps = [];
+    this.bumpSprites = [];
+    this.bumpDecayEvent = null; // registerSpoonHit이 맞을 때마다 다시 시작(reset)하는 감쇠 타이머 — scheduleBumpDecay 참고
+    this.bumpHitCount = 0; // 지금 자라는 중인 혹이 다음 단계로 넘어가기까지 누적된 히트 수 — BOSS_BUMP_LEVEL_HIT_THRESHOLDS 참고
     this.resetShakeTracking();
 
     // 기본 물리 바디는 텍스처 전체(캔버스, 왼쪽/위 상태표시 여백 포함) 크기라 무기 overlap 판정 자체가
@@ -208,6 +232,8 @@ export default class Boss {
     // 세탁기 안에서 죽었다면(applyWashingMachineDamage) 다른 자리로 옮겨졌으니 스핀 세션 자체도 끝난 것 —
     // GameScene.applyWashingMachineDamageTick이 이 값을 보고 다시 위치를 옮기지 않도록 여기서 끈다.
     this.isInWashingMachine = false;
+    // 전신 회복이라 혹도 같이 초기화 — 새 판이 시작된 것으로 취급한다.
+    this.clearBumps();
     this.sprite.setTexture(this.getBaseTextureKey());
   }
 
@@ -605,6 +631,92 @@ export default class Boss {
     const x = this.bodyCenterX + Math.cos(angle) * (this.bodyWidth / 2 + margin);
     const y = this.bodyCenterY + Math.sin(angle) * (this.bodyHeight / 2 + margin);
     this.shieldSprite.setPosition(x, y);
+  }
+
+  // 숟가락(SPOON, damageMultiplier 0이라 데미지는 전혀 없음)에 맞을 때 호출 — 이 반응이 사실상 유일한
+  // 피드백이다. 매번 맞는다고 바로 단계가 오르지는 않고, 지금 자라는 중인 혹의 현재 레벨에 대응하는
+  // BOSS_BUMP_LEVEL_HIT_THRESHOLDS만큼 누적으로 맞아야 한 단계 오른다(0→1: 5대, 1→2: 15대, 2→3: 25대).
+  // 마지막 혹이 이미 BOSS_BUMP_MAX_LEVEL까지 다 자랐으면 자리가 남아있을 때만(BOSS_BUMP_MAX_COUNT) 옆에
+  // 새 혹을 위한 누적을 처음부터(0단계 기준 5대) 다시 센다. 3개가 전부 다 자라면(포화 상태) 더 이상
+  // 아무 반응도 없다.
+  registerSpoonHit() {
+    const lastBump = this.bumps[this.bumps.length - 1];
+    const startingNewBump = lastBump === undefined || lastBump >= BOSS_BUMP_MAX_LEVEL;
+    if (startingNewBump && this.bumps.length >= BOSS_BUMP_MAX_COUNT) return;
+
+    const currentLevel = startingNewBump ? 0 : lastBump;
+    this.bumpHitCount += 1;
+    this.scheduleBumpDecay();
+    if (this.bumpHitCount < BOSS_BUMP_LEVEL_HIT_THRESHOLDS[currentLevel]) return;
+
+    this.bumpHitCount = 0;
+    if (startingNewBump) this.bumps.push(1);
+    else this.bumps[this.bumps.length - 1] = lastBump + 1;
+    this.syncBumpSprites();
+  }
+
+  // BOSS_BUMP_DECAY_MS 동안 숟가락으로 안 맞으면 가장 최근 혹을 한 단계 줄인다 — registerSpoonHit이
+  // 맞을 때마다 기존 타이머를 지우고 다시 잡으므로(showHurtFace와 같은 "재시작" 패턴), 실제로는
+  // "마지막 히트로부터 BOSS_BUMP_DECAY_MS가 지나면"으로 동작한다. 혹이 하나도 없으면 예약하지 않는다.
+  scheduleBumpDecay() {
+    this.bumpDecayEvent?.remove();
+    this.bumpDecayEvent = null;
+    if (this.bumps.length === 0) return;
+    this.bumpDecayEvent = this.scene.time.delayedCall(BOSS_BUMP_DECAY_MS, () => this.decayBump());
+  }
+
+  // 가장 최근(마지막) 혹을 한 단계 줄인다 — 1단계였다면 그 혹 자체를 배열에서 제거한다.
+  // 아직 혹이 남아있으면(줄어들었거나 그 앞의 혹이 남았거나) 감쇠 루프를 다시 예약해서, 계속 안 맞으면
+  // 혹들이 마지막 것부터 순서대로 전부 사라질 때까지 이어진다.
+  decayBump() {
+    const lastIndex = this.bumps.length - 1;
+    if (lastIndex < 0) return;
+    if (this.bumps[lastIndex] <= 1) this.bumps.pop();
+    else this.bumps[lastIndex] -= 1;
+    this.bumpHitCount = 0; // 레벨이 내려갔으니 다음 단계까지의 누적 히트도 처음부터 다시 센다
+    this.syncBumpSprites();
+    this.scheduleBumpDecay();
+  }
+
+  // bumps 배열 길이/레벨에 맞춰 오버레이 스프라이트를 만들거나 텍스처만 갱신한다. 방패(shieldSprite)와
+  // 같은 이유로 매번 destroy/재생성하지 않고 부족한 칸만 새로 만들어 재사용한다. decayBump으로 배열이
+  // 줄어들 수도 있어서, bumps에 대응하는 레벨이 없는(=undefined) 자리의 스프라이트는 숨긴다.
+  // depth는 방패(sprite.depth + 1, 몸통 위로 덮음)와 반대로 몸통보다 낮게(sprite.depth - 1) 둔다 —
+  // 혹이 캐릭터 뒤에서 살짝 튀어나온 것처럼, 겹치는 아래쪽 부분이 몸통 실루엣에 가려지게 하기 위해서다.
+  syncBumpSprites() {
+    while (this.bumpSprites.length < this.bumps.length) {
+      const sprite = this.scene.add.image(0, 0, 'boss_bump_1').setDepth(this.sprite.depth - 1);
+      this.bumpSprites.push(sprite);
+    }
+    this.bumpSprites.forEach((sprite, index) => {
+      const level = this.bumps[index];
+      if (level === undefined) sprite.setVisible(false);
+      else sprite.setTexture(`boss_bump_${level}`).setVisible(true);
+    });
+    this.updateBumpPositions();
+  }
+
+  // 혹은 보스 이마~정수리를 가로질러 고정된 자리에 나란히 붙어 있고, 보스가 넉백/드래그/순간이동으로
+  // 움직일 때마다 같이 따라가야 해서 방패 위치 갱신(updateShieldPosition)과 같은 패턴으로 GameScene.update가
+  // 매 프레임 다시 계산해 호출한다.
+  updateBumpPositions() {
+    if (this.bumpSprites.length === 0) return;
+    const topY = this.bodyCenterY - this.bodyHeight / 2;
+    this.bumps.forEach((_, index) => {
+      const slot = BUMP_SLOT_RATIOS[index] ?? { x: 0, y: 0 };
+      const x = this.bodyCenterX + slot.x * this.bodyWidth;
+      const y = topY + slot.y * this.bodyHeight + (index === 1 ? BUMP_CENTER_Y_OFFSET_PX : 0);
+      this.bumpSprites[index].setPosition(x, y);
+    });
+  }
+
+  // 리스폰(체력 전부 회복 + 위치 초기화)하면 혹도 완전히 사라진다.
+  clearBumps() {
+    this.bumps = [];
+    this.bumpHitCount = 0;
+    this.bumpSprites.forEach((sprite) => sprite.setVisible(false));
+    this.bumpDecayEvent?.remove();
+    this.bumpDecayEvent = null;
   }
 
   // 피격 시 잠깐 눈이 X_X로 바뀜. 연타 중에는 매번 타이머를 새로 잡아 원래 표정으로 너무 빨리 돌아오지 않게 한다.

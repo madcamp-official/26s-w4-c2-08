@@ -11,6 +11,7 @@ import {
   BOSS_SHIELD_BLOCK_CHANCE,
   VOMIT_DAMAGE_MULTIPLIER,
   WASHING_MACHINE_DAMAGE_MULTIPLIER,
+  WEAPON_IDS,
 } from '../config/constants.js';
 
 export default class CombatSystem {
@@ -49,7 +50,9 @@ export default class CombatSystem {
     // 방패는 그대로 유지된다. 막기에 실패하면(확률 밖) registerShieldBreach로 실패 횟수만 쌓고(방패는
     // BOSS_SHIELD_BREACH_LIMIT번 뚫려야 완전히 사라짐), 이번 히트는 return 없이 아래로 흘려보내
     // 진짜 몸통을 맞은 것처럼 정상 데미지 처리를 계속한다.
-    if (this.boss.isShielded) {
+    // 숟가락은 애초에 damageMultiplier 0(데미지 없음, 혹만 자람)이라 막을 데미지 자체가 없으므로
+    // 방패 확률 체크 자체를 건너뛴다 — 방패 중에도 혹은 항상 자란다.
+    if (this.boss.isShielded && triggerWeapon.weaponId !== WEAPON_IDS.SPOON) {
       const blocked = Phaser.Math.FloatBetween(0, 1) < BOSS_SHIELD_BLOCK_CHANCE;
       if (blocked) {
         this.onBlocked?.(this.weaponManager.getHitPoint(triggerWeapon));

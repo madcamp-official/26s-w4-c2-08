@@ -276,6 +276,8 @@ export default class GameScene extends Phaser.Scene {
     // 방향을 보고 있어 막는 것처럼 안 보이는 문제가 있었다.
     const activeWeapon = this.weaponManager.activeWeapon;
     this.boss.updateShieldPosition(activeWeapon ? this.weaponManager.getHitPoint(activeWeapon) : null);
+    // 숟가락에 맞아 자란 혹도 방패와 같은 이유로 보스 위치를 따라가야 해서 매 프레임 다시 계산한다.
+    this.boss.updateBumpPositions();
     // 보스가 넉백/패널 충돌 등으로 계속 움직이는 동안에도 스코프가 계속 보스를 따라가게 매 프레임 갱신.
     if (this.sniperScope.camera.visible) {
       this.sniperScope.camera.centerOn(this.boss.bodyCenterX, this.boss.bodyCenterY);
@@ -655,7 +657,9 @@ export default class GameScene extends Phaser.Scene {
         this.boss.showHurtFace();
       }
       hits.forEach((hit) => {
-        this.spawnDamagePopup(hit);
+        // 숟가락은 damageMultiplier가 0이라 데미지 팝업("0")을 띄우는 대신 혹이 자라는 반응이 유일한 피드백.
+        if (hit.weaponId === WEAPON_IDS.SPOON) this.boss.registerSpoonHit();
+        else this.spawnDamagePopup(hit);
         const bigImpact = WEAPON_DEFINITIONS[hit.weaponId]?.bigImpact;
         if (hit.weaponId === WEAPON_IDS.TASER) this.spawnElectrocuteEffect();
         else if (hit.weaponId === WEAPON_IDS.MEGAPHONE) this.spawnSoundWaveEffect(hit.x, hit.y);

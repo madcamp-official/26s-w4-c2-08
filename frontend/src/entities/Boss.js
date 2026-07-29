@@ -308,13 +308,15 @@ export default class Boss {
   // 화면을 완전히 가로지르면 너무 멀리 날아가 보여서, 대각선 반대쪽 구석까지 거리 중
   // BOSS_CORNER_BOUNCE_DISTANCE_RATIO만큼만 이동한다. 직선으로 밀면 뻣뻣해 보여서
   // WeaponManager.throwBoomerang과 같은 방식으로 경로 중간을 위로 부풀린 2차 베지어 곡선을
-  // 따라가게 하고(던져진 듯한 궤적), 회전은 easeIn과 같이 갈수록 빨라지다 착지 순간 멈추고,
-  // 착지할 때 살짝 눌렸다 튕겨 돌아오는 스쿼시를 더해 벽에 부딪힌 충격감을 낸다.
+  // 따라가게 하고(던져진 듯한 궤적), 회전은 easeIn과 같이 갈수록 빨라지다 착지 순간 멈춘다.
+  // 착지 충격감은 (예전엔 scaleX/scaleY 스쿼시 트윈이었는데) knockback()이 연타로 다시 불리면
+  // killTweensOf로 yoyo가 되돌아오기 전에 끊겨 늘어난 스케일이 그대로 굳는 문제가 있어서,
+  // flyOutToLeftWall(패널 넉백) 착지와 같은 방식인 flash(붉은 틴트)로 바꿨다 — 스케일을 건드리지
+  // 않으니 다른 트윈이 중간에 끊겨도 찌그러진 채로 남을 일이 없다.
   flyToOppositeCorner(onComplete) {
     this.scene.tweens.killTweensOf(this.sprite);
     this.isPanelBounceActive = false;
     this.sprite.setAngle(0);
-    this.sprite.setScale(1); // 이전 착지 스쿼시가 안 끝난 채 끊겼을 경우를 대비해 기준 스케일로 정리
 
     const halfW = this.displayWidth / 2;
     const halfH = this.displayHeight / 2;
@@ -351,14 +353,7 @@ export default class Boss {
         this.sprite.setAngle(0);
         this.isPanelBounceActive = false;
         this.scene.sound.play('hit_wall');
-        this.scene.tweens.add({
-          targets: this.sprite,
-          scaleX: 1.25,
-          scaleY: 0.78,
-          duration: 90,
-          yoyo: true,
-          ease: 'Sine.easeOut',
-        });
+        this.flash(0xff3333);
         onComplete?.(this.sprite.x, this.sprite.y);
       },
     });

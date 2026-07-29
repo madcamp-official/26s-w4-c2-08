@@ -788,6 +788,9 @@ export default class GameScene extends Phaser.Scene {
     this.washingMachineSpinActive = true;
     this.releaseBossDrag();
     this.boss.isInWashingMachine = true;
+    // 방패(Boss.isShielded) 상태와 무관하게 빨려들어가는 순간 강제로 벗겨낸다 — applyWashingMachineDamage는
+    // CombatSystem.handleHit의 막기 확률 체크 없이 항상 데미지를 주므로, 방패도 그에 맞춰 바로 사라져야 한다.
+    this.boss.deactivateShield();
     this.boss.setPosition(doorPoint.x, doorPoint.y);
     // 몸체 흔들림(applyWashingMachineJitter)이 매번 새로 뽑는 오프셋을 이 설치 자리 기준으로 더하므로,
     // 흔들리기 전 원래 자리를 따로 저장해둔다 — 안 그러면 washingMachine.x/y에 계속 offset을 누적

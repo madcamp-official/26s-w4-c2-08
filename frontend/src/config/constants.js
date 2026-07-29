@@ -44,6 +44,12 @@ export const CONTACT_OVERLAP = 4; // px of intentional overlap left at contact s
 export const THROW_FIRE_INTERVAL = 400; // ms between auto-fired projectiles while holding the throw weapon
 export const THROW_PROJECTILE_SPEED = 400; // px/s, 기본값 — 무기별로 다르면 WEAPON_DEFINITIONS[id].projectileSpeed로 덮어씀
 export const BALL_PROJECTILE_SPEED = 640; // px/s, 야구공은 기본보다 빠르게
+export const BASKETBALL_MAX_ACTIVE = 15; // 벽에 튕기며 화면 밖으로 안 나가고 계속 남기 때문에, 필드에 동시에 존재할 수 있는 개수를 직접 제한한다
+export const SLINGSHOT_MAX_PULL = 150; // px, 이 이상 당겨도 더 세지지 않는 최대 당김 거리(=최대 속도 지점)
+export const SLINGSHOT_MIN_PULL = 20; // px, 이보다 적게 당기고 놓으면 그냥 클릭으로 취급해 발사하지 않는다
+export const SLINGSHOT_FRAME_SIZE = 90; // 새총 프레임(Y자 몸체) 텍스처 크기 — 갈래 끝 좌표(weaponSprites.getSlingshotFrameMetrics)도 이 값을 기준으로 계산
+export const SLINGSHOT_BAND_COLOR = 0x6b4423; // 고무줄(Graphics) 색 — 프레임과 같은 나무/가죽 계열 갈색
+export const SLINGSHOT_BAND_WIDTH = 4; // px, 고무줄 두께
 export const PORTABLE_WEAPON_SIZE = 160; // 야구 방망이 텍스처 크기 — WeaponManager의 캡슐 히트박스 계산도 이 값을 같이 씀
 export const WAND_WEAPON_SIZE = 150; // 마술봉 텍스처 크기 — 방망이와 같은 캡슐 판정 파이프라인을 공유(PORTABLE)
 export const SPOON_WEAPON_SIZE = 105; // 숟가락 텍스처 크기 — 방망이보다 작은 소품이라 PORTABLE_WEAPON_SIZE보다 줄임
@@ -71,6 +77,10 @@ export const THROW_PROJECTILE_HIT_RADIUS = THROW_WEAPON_SIZE * 0.4;
 // (GameScene.checkWashingMachineSuckIn/startWashingMachineSpin) — 오버랩이 아니라 "문이 열린 채
 // 근접"이 트리거인 완전히 새로운 판정 방식이라 별도 카테고리로 둔다. 동시에 1개만 존재할 수 있고
 // 새로 설치하면 기존 것을 교체한다.
+// SLINGSHOT: 농구공 — 누른 자리(anchor)에서 포인터를 뒤로 당긴 채 놓으면, 당긴 방향의 반대쪽으로
+// 당긴 거리에 비례한 속도로 날아가는 새총형 무기. BOOMERANG/BOMB처럼 들고 있는 동안(조준 중)은
+// 판정이 없고, 손을 뗀 그 오브젝트 자체가 그대로 투사체가 된다(WeaponManager.throwSlingshot) —
+// 다만 놓는 방향/속도가 anchor 대비 상대 위치로 매번 달라진다는 점이 고정 궤적인 BOOMERANG과 다르다.
 export const WEAPON_CATEGORIES = {
   PORTABLE: 'portable',
   STATIC: 'static',
@@ -78,6 +88,7 @@ export const WEAPON_CATEGORIES = {
   BOOMERANG: 'boomerang',
   BOMB: 'bomb',
   MACHINE: 'machine',
+  SLINGSHOT: 'slingshot',
 };
 
 // 무기 패널에 실제로 보이는 개별 무기. category가 동작 방식을 정하고, 같은 category를 여러 무기가
@@ -93,6 +104,7 @@ export const WEAPON_IDS = {
   REVOLVER: 'revolver',
   // 투척형(공/과일/소리 등)
   BALL: 'ball',
+  BASKETBALL: 'basketball',
   DART: 'dart',
   MEGAPHONE: 'megaphone',
   TOMATO: 'tomato',
@@ -372,6 +384,22 @@ export const WEAPON_DEFINITIONS = {
     fireSound: 'baseball_throw',
     hitSound: 'bat_hit', // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
     damageMultiplier: 0.9, // 단단하지만 배트보다 작고 가벼운 공
+  },
+  // 새총형(SLINGSHOT) — 잡은 자리(anchor)에서 뒤로 당긴 채 놓으면 당긴 반대 방향으로, 당긴 거리에
+  // 비례한 속도(최대 projectileSpeed)로 날아간다(WeaponManager.throwSlingshot). 당구공처럼 벽(화면
+  // 가장자리)에서 입사각=반사각으로 튕기고(bounceOffWalls) 다른 투척형과 달리 화면 밖으로 나가서
+  // 사라지지 않으므로, 계속 쌓이지 않도록 maxActive로 필드에 동시에 존재 가능한 개수를 제한한다.
+  [WEAPON_IDS.BASKETBALL]: {
+    name: '농구공 by 건희',
+    category: WEAPON_CATEGORIES.SLINGSHOT,
+    texture: 'weapon_basketball',
+    projectileSpeed: BALL_PROJECTILE_SPEED,
+    fireSound: 'baseball_throw',
+    hitSound: 'bat_hit',
+    damageMultiplier: 0.9,
+    bounceOffWalls: true,
+    wallBounceSound: 'basketball_bounce', // 벽 튕길 때(WeaponManager의 'worldbounds' 리스너) 재생
+    maxActive: BASKETBALL_MAX_ACTIVE,
   },
   [WEAPON_IDS.DART]: {
     name: 'DART',

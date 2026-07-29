@@ -23,8 +23,15 @@ import {
   DYNAMITE_CHAIN_DAMAGE_BONUS_PER_EXTRA,
   WASHING_MACHINE_WIDTH,
   WASHING_MACHINE_HEIGHT,
+  SLINGSHOT_MAX_PULL,
+  SLINGSHOT_MIN_PULL,
+  SLINGSHOT_FRAME_SIZE,
+  SLINGSHOT_BAND_COLOR,
+  SLINGSHOT_BAND_WIDTH,
 } from '../config/constants.js';
-import { getBaseballBatDimensions, getMagicWandDimensions, getSpoonDimensions, getWashingMachineDoorMetrics } from './weaponSprites.js';
+import {
+  getBaseballBatDimensions, getMagicWandDimensions, getSpoonDimensions, getWashingMachineDoorMetrics, getSlingshotFrameMetrics,
+} from './weaponSprites.js';
 import { capsuleIntersectsRect, pushRectOutOfCapsule } from '../systems/geometry.js';
 
 // PORTABLE 카테고리(방망이/마술봉처럼 대각선으로 들고 부딪히는 무기) 텍스처는 전부 로컬 기준 -45도로
@@ -44,6 +51,10 @@ const PORTABLE_AXIS_CONFIG = {
   [WEAPON_IDS.WAND]: { halfLen: WAND_DIMENSIONS.halfLen, radius: WAND_DIMENSIONS.shaftHalfWidth },
   [WEAPON_IDS.SPOON]: { halfLen: SPOON_DIMENSIONS.halfLen, radius: SPOON_DIMENSIONS.bowlRadius },
 };
+
+// 새총(농구공) 갈래 끝의 anchor 기준 로컬 오프셋 — 그리기(weaponSprites.createSlingshotFrameCanvas)와
+// 같은 계산을 공유해서 고무줄(Graphics)이 실제 그림 속 갈래 끝에서 시작하는 것처럼 보이게 한다.
+const SLINGSHOT_FRAME = getSlingshotFrameMetrics(SLINGSHOT_FRAME_SIZE);
 
 // 세탁기 문(드럼) 반지름/오프셋 — 그리기(weaponSprites.createWashingMachineCanvas)와 같은 계산을
 // 공유해서 흡입 판정 중심/반투명 원 크기가 실제 그림의 문 위치와 항상 맞도록 한다.
@@ -68,6 +79,14 @@ export default class WeaponManager {
     // 세탁기가 설치(armWashingMachine)되는 순간 알려주는 콜백 — GameScene이 무기 패널 선택을 바로
     // 풀어서, 도는 동안 근처를 터치해도 새 세탁기가 또 설치되지 않게 한다.
     this.onWashingMachineArmed = null;
+
+    // 벽(world bounds)에 튕기는 무기(농구공)가 실제로 튕기는 순간 소리를 내기 위한 전역 리스너 —
+    // Arcade Physics는 body.onWorldBounds가 켜진 바디가 벽에 부딪힐 때마다 world 전체에 이 이벤트
+    // 하나로 알려주므로, weaponId별 wallBounceSound(WEAPON_DEFINITIONS)가 있는 경우에만 재생한다.
+    this.scene.physics.world.on('worldbounds', (body) => {
+      const definition = WEAPON_DEFINITIONS[body.gameObject?.weaponId];
+      if (definition?.wallBounceSound) this.scene.sound.play(definition.wallBounceSound);
+    });
   }
 
   // 선택된 무기(WEAPON_IDS)를 pointer 위치에 만들어 화면에 보이게 한다. 투척형은 즉시 자동 연사를 시작한다.
@@ -94,6 +113,19 @@ export default class WeaponManager {
     } else if (category === WEAPON_CATEGORIES.MACHINE) {
       // 세탁기도 폭탄처럼 들고 있는 동안은 판정이 없다 — 어디든 놓을 수 있고, 데미지는 오버랩이 아니라
       // 놓은 뒤(armWashingMachine) 문을 열고 보스를 가까이 끌고 갔을 때 GameScene이 별도로 처리한다.
+    } else if (category === WEAPON_CATEGORIES.SLINGSHOT) {
+      // 새총(농구공)도 조준 중(당기는 동안)에는 판정이 없다 — 잡은 자리를 anchor로 저장해두고,
+      // 손을 뗄 때(throwSlingshot) 그 시점 위치와 anchor 사이 벡터로 방향/속도를 계산한다.
+      weapon.anchorX = x;
+      weapon.anchorY = y;
+      // 새총 몸체(Y자 프레임)는 anchor에 고정된 별도 스프라이트 — 당겨지는 공(weapon 자신)과
+      // 달리 움직이지 않는다. 공이 항상 프레임/고무줄보다 위에 보이도록 depth를 명시적으로 나눈다.
+      // 프로퍼티명을 weapon.frame으로 두면 Phaser GameObject 내장 텍스처 프레임(sprite.frame,
+      // CanvasRenderer가 렌더링에 직접 쓰는 값)을 덮어써서 공이 안 그려지는 문제가 생긴다 — slingFrame으로 분리.
+      weapon.slingFrame = this.scene.add.image(x, y, 'weapon_slingshot_frame').setDepth(0);
+      weapon.bandGraphics = this.scene.add.graphics().setDepth(0);
+      weapon.setDepth(1);
+      this.drawSlingshotBands(weapon);
     } else {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
       if (category === WEAPON_CATEGORIES.PORTABLE) this.updatePortableRotation(weapon);
@@ -111,10 +143,41 @@ export default class WeaponManager {
   // 들고 있는 무기를 pointer 위치로 옮기되, 보스를 완전히 뚫고 지나가지 않도록 막는다 (히트 판정용 여백은 남김).
   moveActiveWeapon(x, y) {
     if (!this.activeWeapon) return;
+    // 새총(농구공)은 보스를 피해 다닐 필요가 없는 조준 동작이라 resolveAgainstBoss를 안 타고
+    // anchor 기준 당김 거리만 클램프한다.
+    if (this.activeWeapon.category === WEAPON_CATEGORIES.SLINGSHOT) {
+      this.pullSlingshot(this.activeWeapon, x, y);
+      return;
+    }
     const resolved = this.resolveAgainstBoss(this.activeWeapon, x, y);
     this.activeWeapon.setPosition(resolved.x, resolved.y);
     if (this.activeWeapon.category === WEAPON_CATEGORIES.PORTABLE) this.updatePortableRotation(this.activeWeapon);
     else if (WEAPON_DEFINITIONS[this.activeWeapon.weaponId].rotateToBoss) this.faceBoss(this.activeWeapon);
+  }
+
+  // 새총(농구공) 조준 — anchor에서 포인터 쪽으로 당겨지는 모습을 그대로 보여주되, SLINGSHOT_MAX_PULL을
+  // 넘는 거리는 그 이상 당겨도 더 세지지 않도록 방향은 유지한 채 거리만 clamp한다.
+  pullSlingshot(weapon, x, y) {
+    const dx = x - weapon.anchorX;
+    const dy = y - weapon.anchorY;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= SLINGSHOT_MAX_PULL) {
+      weapon.setPosition(x, y);
+    } else {
+      const ratio = SLINGSHOT_MAX_PULL / dist;
+      weapon.setPosition(weapon.anchorX + dx * ratio, weapon.anchorY + dy * ratio);
+    }
+    this.drawSlingshotBands(weapon);
+  }
+
+  // 새총 갈래 끝(anchor + SLINGSHOT_FRAME 로컬 오프셋)에서 공(weapon.x/y)까지 고무줄 두 가닥을
+  // 그린다 — 당기는 동안 매 프레임 다시 불러 공을 따라 늘어나는 것처럼 보이게 한다.
+  drawSlingshotBands(weapon) {
+    const g = weapon.bandGraphics;
+    g.clear();
+    g.lineStyle(SLINGSHOT_BAND_WIDTH, SLINGSHOT_BAND_COLOR, 1);
+    g.lineBetween(weapon.anchorX + SLINGSHOT_FRAME.prongLeftX, weapon.anchorY + SLINGSHOT_FRAME.prongLeftY, weapon.x, weapon.y);
+    g.lineBetween(weapon.anchorX + SLINGSHOT_FRAME.prongRightX, weapon.anchorY + SLINGSHOT_FRAME.prongRightY, weapon.x, weapon.y);
   }
 
   // 보스(고정된 사각형)를 완전히 뚫고 지나가지 않도록 후보 좌표 (x,y)를 보정.
@@ -179,6 +242,11 @@ export default class WeaponManager {
 
     if (weapon.category === WEAPON_CATEGORIES.MACHINE) {
       this.armWashingMachine(weapon);
+      return;
+    }
+
+    if (weapon.category === WEAPON_CATEGORIES.SLINGSHOT) {
+      this.throwSlingshot(weapon);
       return;
     }
 
@@ -256,6 +324,62 @@ export default class WeaponManager {
         });
       },
     });
+  }
+
+  // 새총(농구공)을 놓는 순간 발사한다 — anchor(잡은 자리)에서 놓은 위치(=당겨진 자리)까지의 벡터
+  // 반대 방향으로, 당긴 거리에 비례한 속도(최대 SLINGSHOT_MAX_PULL에서 definition.projectileSpeed)로
+  // 날아간다. BOOMERANG처럼 들고 있던 오브젝트 자체가 그대로 투사체가 된다. 거의 안 당기고 놓으면
+  // (SLINGSHOT_MIN_PULL 미만) 조준 취소로 보고 그냥 지운다 — 매번 최소한으로라도 당겨야 발사되게
+  // 해서, 무기를 집기만 하고 바로 떼는 실수 클릭이 엉뚱한 방향으로 안 날아가게 막는다. maxActive
+  // 상한(필드에 이미 다 차 있음)에 걸린 경우도 같은 방식으로 조용히 취소한다.
+  throwSlingshot(weapon) {
+    const definition = WEAPON_DEFINITIONS[weapon.weaponId];
+    const dx = weapon.anchorX - weapon.x;
+    const dy = weapon.anchorY - weapon.y;
+    const pullDistance = Math.hypot(dx, dy);
+
+    // 프레임/고무줄은 이번 조준 한 번짜리 소품이라, 쏘든 취소하든 조준이 끝나는 시점에 항상 지운다.
+    weapon.slingFrame.destroy();
+    weapon.bandGraphics.destroy();
+    // 조준 중엔 프레임보다 위에 보이도록 depth를 올려뒀었는데(spawnAt), 날아가는 동안은 다른
+    // 투사체와 같은 기본 depth(0)로 되돌려 보스 등과의 그리기 순서가 어긋나지 않게 한다.
+    weapon.setDepth(0);
+
+    const activeCount = this.projectiles.filter((p) => p.weaponId === weapon.weaponId).length;
+    const overCap = definition.maxActive && activeCount >= definition.maxActive;
+
+    if (pullDistance < SLINGSHOT_MIN_PULL || overCap) {
+      weapon.destroy();
+      return;
+    }
+
+    if (definition.fireSound) this.scene.sound.play(definition.fireSound);
+
+    const angle = Math.atan2(dy, dx);
+    const speedRatio = Math.min(pullDistance, SLINGSHOT_MAX_PULL) / SLINGSHOT_MAX_PULL;
+    const speed = (definition.projectileSpeed ?? THROW_PROJECTILE_SPEED) * speedRatio;
+
+    const hitRadius = definition.projectileHitRadius ?? THROW_PROJECTILE_HIT_RADIUS;
+    const bodyOffset = (weapon.width - hitRadius * 2) / 2;
+    weapon.hitRadius = hitRadius;
+    weapon.body.setCircle(hitRadius, bodyOffset, bodyOffset);
+    // 당구공처럼 화면 가장자리에서 입사각=반사각으로 튕겨야 하는 무기(농구공) — Arcade의 world bounds
+    // 충돌+반발계수 1(에너지 손실 없이 반사)을 그대로 써서 축별 속도 반전을 물리 엔진에 맡긴다.
+    if (definition.bounceOffWalls) {
+      weapon.body.setCollideWorldBounds(true);
+      weapon.body.setBounce(1, 1);
+      // onWorldBounds를 켜야 실제로 튕기는 순간마다 world가 'worldbounds' 이벤트를 쏴서
+      // wallBounceSound(생성자에서 등록한 리스너)가 재생된다 — 꺼두면 반사 자체는 여전히 되지만 무음.
+      weapon.body.onWorldBounds = true;
+    }
+    this.projectiles.push(weapon);
+
+    weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => {
+      this.onOverlap(weapon);
+      this.destroyProjectile(weapon);
+    }, null, this.scene);
+
+    this.scene.physics.velocityFromRotation(angle, speed, weapon.body.velocity);
   }
 
   // 폭탄을 놓은 자리에 그대로 무장시킨다 — 부메랑과 달리 날아가지 않고 제자리에서 퓨즈만 타들어간다.
@@ -670,6 +794,8 @@ export default class WeaponManager {
     const margin = 20;
     for (const projectile of [...this.projectiles]) {
       if (projectile.category === WEAPON_CATEGORIES.BOOMERANG) continue;
+      // 벽에 튕기는 무기(농구공)는 world bounds 충돌로 화면 안에 계속 붙잡혀 있으므로 이탈 정리 대상이 아니다.
+      if (WEAPON_DEFINITIONS[projectile.weaponId]?.bounceOffWalls) continue;
       if (projectile.x < -margin || projectile.x > width + margin || projectile.y < -margin || projectile.y > height + margin) {
         this.destroyProjectile(projectile);
       }
@@ -693,12 +819,13 @@ export default class WeaponManager {
   // 방망이(휴대형)는 대각선 캡슐로, 투사체(공)는 원으로 — 둘 다 사각 히트박스보다 실제 그림에 가깝게 판정한다.
   getOverlappingDamageDealers() {
     const dealers = [...this.projectiles];
-    // 들고 있는(activeWeapon) 부메랑은 아직 hitRadius가 없는 판정 없는 상태라 제외한다 —
-    // 실제 판정은 놓은 뒤 날아가는 동안(this.projectiles에 들어간 뒤)에만 생긴다.
+    // 들고 있는(activeWeapon) 부메랑/새총(조준 중인 농구공)은 아직 hitRadius가 없는 판정 없는
+    // 상태라 제외한다 — 실제 판정은 놓은 뒤 날아가는 동안(this.projectiles에 들어간 뒤)에만 생긴다.
     if (
       this.activeWeapon
       && this.activeWeapon.category !== WEAPON_CATEGORIES.THROW
       && this.activeWeapon.category !== WEAPON_CATEGORIES.BOOMERANG
+      && this.activeWeapon.category !== WEAPON_CATEGORIES.SLINGSHOT
     ) {
       dealers.push(this.activeWeapon);
     }

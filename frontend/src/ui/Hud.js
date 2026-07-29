@@ -83,7 +83,7 @@ export default class Hud {
       strokeThickness: 1,
     }).setOrigin(0.5).setDepth(HUD_DEPTH);
     this.hpBarBg = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH + 4, 20, 0x444444).setStrokeStyle(2, 0xffaa00).setDepth(HUD_DEPTH);
-    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0xff0000).setDepth(HUD_DEPTH);
+    this.hpBar = scene.add.rectangle(HP_BAR_X, HP_BAR_Y, HP_BAR_WIDTH, 16, 0xff073a).setDepth(HUD_DEPTH);
 
     this.panelOpen = false;
     this.activeTab = 'weapon';

@@ -21,6 +21,7 @@ import {
   HIT_SPARK_COLOR,
   WEAPON_IDS,
   WEAPON_DEFINITIONS,
+  WEAPON_CATEGORIES,
   SNIPER_SCOPE_DIAMETER,
   SNIPER_SCOPE_ZOOM,
   SNIPER_SCOPE_MARGIN,
@@ -227,6 +228,17 @@ export default class GameScene extends Phaser.Scene {
 
     this.input.on('pointerup', () => {
       this.stopActiveWeapon();
+    });
+
+    // Phaser의 mousemove 리스너는 캔버스 엘리먼트 자체에 걸려 있어서, 포인터가 캔버스 밖으로
+    // 완전히 나가면 pointermove 자체가 더 이상 안 온다 — 그 경우까지 잡으려면 캔버스를 벗어나는
+    // 순간 별도로 발생하는 'gameout'(Phaser.Input.Events#GAME_OUT)을 써야 한다. 새총(농구공)을
+    // 당기다가 화면 밖으로 나가면, 마지막으로 pointermove가 갱신해둔 화면 가장자리 위치를 그대로
+    // 기준 삼아 자동으로 손을 뗀 것처럼 발사시킨다.
+    this.input.on('gameout', () => {
+      if (this.weaponManager.activeWeapon?.category === WEAPON_CATEGORIES.SLINGSHOT) {
+        this.stopActiveWeapon();
+      }
     });
 
     // webview가 다른 에디터 탭 등으로 포커스를 잃었다 돌아오면, 실제로는 마우스 버튼이 떼어졌는데도

@@ -27,6 +27,52 @@ export function createBaseballCanvas(size) {
   return createEmojiCanvas('⚾', size);
 }
 
+// 새총형(SLINGSHOT)으로 당겨서 쏘고 벽에 튕기는(bounceOffWalls) 농구공 — 새총 프레임(아래)의
+// 갈래 사이 고무줄에 얹혀 당겨지는 공 자체.
+export function createBasketballCanvas(size) {
+  return createEmojiCanvas('🏀', size);
+}
+
+// 새총(농구공) 몸체 — anchor(잡은 자리)에 고정되는 Y자 프레임. 갈래 끝 좌표(로컬, 캔버스 중심 기준)를
+// 그리기와 판정 양쪽에서 같이 써야 고무줄이 실제 갈래 끝에서 시작하는 것처럼 보인다 — WeaponManager가
+// getSlingshotFrameMetrics(같은 size)로 이 좌표를 가져다 매 프레임 고무줄(Graphics) 양 끝을 그린다.
+export function getSlingshotFrameMetrics(size) {
+  return {
+    prongLeftX: -size * 0.24,
+    prongLeftY: -size * 0.34,
+    prongRightX: size * 0.24,
+    prongRightY: -size * 0.34,
+  };
+}
+
+export function createSlingshotFrameCanvas(size) {
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+  const { prongLeftX, prongLeftY, prongRightX, prongRightY } = getSlingshotFrameMetrics(size);
+
+  ctx.strokeStyle = '#8a5a2b';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(3, size * 0.1);
+
+  // 손잡이 — 중심(anchor)에서 아래로
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx, cy + size * 0.4);
+  ctx.stroke();
+
+  // 왼쪽/오른쪽 갈래 — 중심에서 위로 벌어지는 Y자
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + prongLeftX, cy + prongLeftY);
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + prongRightX, cy + prongRightY);
+  ctx.stroke();
+
+  return canvas;
+}
+
 // 투척형 무기 두 번째 디자인: 다트. 은색 뾰족한 촉 + 색깔 있는 샤프트 + 깃(flight) 실루엣.
 // 방망이(대각선 baked)와 달리 다트는 항상 "오른쪽(각도 0)"을 향하게 그려서, 날아가는 방향으로
 // 돌릴 때 baked 보정 없이 그냥 projectile.rotation = 이동 각도만 대입하면 되게 한다 (WeaponManager 참고).

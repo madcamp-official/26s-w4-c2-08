@@ -11,6 +11,7 @@ import {
   GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
   WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT,
   BOSS_SHIELD_SIZE, BOSS_BUMP_MAX_LEVEL,
+  SLINGSHOT_FRAME_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
@@ -19,7 +20,7 @@ import {
   createBossVomitCanvas, MAX_DAMAGE_STAGE,
 } from '../entities/bossSprite.js';
 import {
-  createBaseballCanvas, createBaseballBatCanvas, createMagicWandCanvas, createSpoonCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
+  createBaseballCanvas, createBasketballCanvas, createSlingshotFrameCanvas, createBaseballBatCanvas, createMagicWandCanvas, createSpoonCanvas, createDartCanvas, createTaserCanvas, createHandCanvas,
   createKeyboardCanvas, createMegaphoneCanvas, createPistolCanvas, createMachineGunCanvas, createBulletCanvas,
   createShotgunCanvas, createSniperCanvas, createRevolverCanvas, createPelletCanvas,
   createSoundWaveProjectileCanvas, createWhipCanvas, createDeveloperCanvas,
@@ -47,6 +48,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('dart_throw', assetUrl('audio/dart_throw.mp3'));
     this.load.audio('taser_shock', assetUrl('audio/taser_shock.mp3'));
     this.load.audio('baseball_throw', assetUrl('audio/baseball.mp3'));
+    this.load.audio('basketball_bounce', assetUrl('audio/basketball.mp3'));
     this.load.audio('hit_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
     this.load.audio('keyboard_smash', assetUrl('audio/keyboard_smash.mp3'));
     this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
@@ -138,6 +140,8 @@ export default class BootScene extends Phaser.Scene {
   createThrowWeaponTexture() {
     this.textures.addCanvas('weapon_throw', createBaseballCanvas(THROW_WEAPON_SIZE));
     this.textures.addCanvas('weapon_throw_projectile', createBaseballCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_basketball', createBasketballCanvas(THROW_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_slingshot_frame', createSlingshotFrameCanvas(SLINGSHOT_FRAME_SIZE));
     this.textures.addCanvas('weapon_dart', createDartCanvas(THROW_WEAPON_SIZE, DART_COLOR_VARIANTS[0]));
     DART_COLOR_VARIANTS.forEach((colors, i) => {
       this.textures.addCanvas(DART_PROJECTILE_TEXTURES[i], createDartCanvas(THROW_WEAPON_SIZE, colors));

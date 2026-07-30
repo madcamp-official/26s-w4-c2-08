@@ -355,7 +355,7 @@ export const WEAPON_DEFINITIONS = {
     pelletCount: SHOTGUN_PELLET_COUNT,
     spreadAngleDeg: SHOTGUN_SPREAD_ANGLE_DEG,
     recoilAngle: SHOTGUN_RECOIL_ANGLE,
-    hitSound: 'shotgun_blast', // 진짜 샷건 소리로 교체 — 다른 총기와 공용이던 pistol_impact 대신 전용 사운드
+    hitSound: 'shotgun_blast', // 진짜 샷건 소리로 교체 — 다른 총기와 공용이던 사운드 대신 전용 사운드
   },
   [WEAPON_IDS.SNIPER]: {
     name: 'SNIPER',
@@ -584,7 +584,7 @@ export const WEAPON_DEFINITIONS = {
   },
   // 직선 펀치답게 다른 STATIC 무기보다 한 방이 더 아프도록 damageMultiplier를 살짝 높게 잡는다.
   // bigImpact: 히트 스파크를 다른 STATIC 무기보다 크게(spawnHitSpark scale) + GameScene.onHit에서 카메라
-  // shake까지 추가로 겹쳐서 데미지 배율이 높은 무기다운 타격감을 준다. hitSound도 총기(pistol_impact)나
+  // shake까지 추가로 겹쳐서 데미지 배율이 높은 무기다운 타격감을 준다. hitSound도 총기 사운드나
   // 다른 근접(bat_hit)과 겹치지 않게 더 묵직한 hit_wall로 차별화한다.
   [WEAPON_IDS.BOXING_GLOVE]: {
     name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2, bigImpact: true, hitSound: 'hit_wall',

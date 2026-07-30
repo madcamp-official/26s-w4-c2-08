@@ -10,6 +10,7 @@ import {
   HEAL_MIN,
   HEAL_MAX,
   BOSS_SHIELD_BLOCK_CHANCE,
+  SHIELD_TAUNT_COOLDOWN,
   VOMIT_DAMAGE_MULTIPLIER,
   UREA_SOLUTION_EXPLOSION_DAMAGE_MULTIPLIER,
   UREA_IGNITE_STREAK_THRESHOLD,
@@ -27,6 +28,7 @@ export default class CombatSystem {
     this.score = 0;
     this.lastHitTime = 0;
     this.lastPetTime = 0;
+    this.lastShieldTauntTime = -Infinity; // "허 ㅋ" 조롱 사운드 마지막 재생 시각 — SHIELD_TAUNT_COOLDOWN 간격 유지용
     // 요소수를 다른 무기 안 섞고 연속으로(UREA_IGNITE_STREAK_THRESHOLD번) 맞히면 마찰로 자체 인화되는
     // 스트릭 카운터 — 보스 불 뿜기(fireBreathEvent)에 우연히 맞아야만 터지던 것과 별개로, 플레이어가
     // 직접 노려서 터뜨릴 수 있는 경로. LIPS_VOMIT_STREAK_THRESHOLD(Boss.registerLipsHit)와 같은 결의
@@ -47,8 +49,10 @@ export default class CombatSystem {
     // 무기별 타격음은 WEAPON_DEFINITIONS[id].hitSound로 정의 (야구공은 방망이와 같은 소리를 재사용).
     // hitVolume(기본 1)으로 권총처럼 센 무기만 더 크게 재생할 수 있다.
     const definition = WEAPON_DEFINITIONS[triggerWeapon.weaponId];
-    // 채찍/노트북 스윙 모션도 실제 히트 시점에만 — handleOverlap은 매 프레임 불려서 여기서 해야 한다.
-    if (definition?.meleeSwing) this.weaponManager.playMeleeSwing(triggerWeapon);
+    // 채찍 등 회전 스윙 모션도 실제 히트 시점에만 — handleOverlap은 매 프레임 불려서 여기서 해야 한다.
+    // 노트북(thrustSwing)은 제자리에서 도는 대신 뒤로 당겼다 내려찍는 위치 이동형 모션을 쓴다.
+    if (definition?.thrustSwing) this.weaponManager.playThrustSwing(triggerWeapon);
+    else if (definition?.meleeSwing) this.weaponManager.playMeleeSwing(triggerWeapon);
     // 말랑이 찌부 모션도 같은 이유로 여기서만 트리거한다.
     if (definition?.squishHit) this.weaponManager.playSquish(triggerWeapon);
 
@@ -62,13 +66,33 @@ export default class CombatSystem {
     if (this.boss.isShielded && triggerWeapon.weaponId !== WEAPON_IDS.SPOON) {
       const blocked = Phaser.Math.FloatBetween(0, 1) < BOSS_SHIELD_BLOCK_CHANCE;
       if (blocked) {
+        // 막을 때마다 매번 "허 ㅋ"를 틀면 겹쳐서 탕탕거리므로, SHIELD_TAUNT_COOLDOWN 간격을 두고
+        // 그 사이는 튕기는 소리(shield_bounce)만 재생 — 조롱 사운드가 주기적으로 섞여 나오게 한다.
+        if (now - this.lastShieldTauntTime >= SHIELD_TAUNT_COOLDOWN) {
+          this.scene.sound.play('shield_block');
+          this.lastShieldTauntTime = now;
+        } else {
+          this.scene.sound.play('shield_bounce');
+        }
         this.onBlocked?.(this.weaponManager.getHitPoint(triggerWeapon));
         return;
       }
       this.boss.registerShieldBreach();
     }
 
-    if (definition?.hitSound) this.scene.sound.play(definition.hitSound, { volume: definition.hitVolume ?? 1 });
+    // hitSound가 배열이면(무기별 타격음 여러 개 등록) 매번 랜덤으로 하나 골라 재생 — 같은 소리 반복 방지.
+    if (definition?.hitSound) {
+      const hitSound = Array.isArray(definition.hitSound)
+        ? Phaser.Utils.Array.GetRandom(definition.hitSound)
+        : definition.hitSound;
+      this.scene.sound.play(hitSound, { volume: definition.hitVolume ?? 1 });
+    }
+    // voiceSound: 타격음(hitSound)과 별개로 같이 재생하는 부가 사운드(기합, 바람 소리 등) — developer(기합), hair dryer(바람) 등.
+    // 이미 재생 중이면(voiceSoundOnGrab로 집자마자 틀었거나, 직전 히트의 소리가 아직 안 끝났으면) 다시 안 틀어서
+    // 헤어드라이기 바람 소리 같은 긴 클립이 HIT_COOLDOWN마다 겹쳐 쌓이지 않게 한다.
+    if (definition?.voiceSound && !this.scene.sound.sounds.some((s) => s.key === definition.voiceSound && s.isPlaying)) {
+      this.scene.sound.play(definition.voiceSound);
+    }
 
     // weaponId를 같이 넘겨서 GameScene.onHit이 무기별로 다른 이펙트(전기충격기 감전 등)를 고를 수 있게 한다.
     // damageMultiplierOverride: WEAPON_DEFINITIONS의 고정 배율 대신 이 히트만 특별히 쓸 배율 —
@@ -134,7 +158,11 @@ export default class CombatSystem {
     this.lastPetTime = now;
 
     const definition = WEAPON_DEFINITIONS[weapon.weaponId];
-    if (definition?.petSound) this.scene.sound.play(definition.petSound, { volume: definition.petVolume ?? 1 });
+    // 웃음소리처럼 재생 시간이 쿨다운(PET_COOLDOWN)보다 긴 petSound는 연타 시 여러 인스턴스가
+    // 겹쳐 재생될 수 있어서, 같은 키가 이미 재생 중이면 새로 틀지 않고 넘어간다.
+    if (definition?.petSound && !this.scene.sound.sounds.some((s) => s.key === definition.petSound && s.isPlaying)) {
+      this.scene.sound.play(definition.petSound, { volume: definition.petVolume ?? 1 });
+    }
 
     const amount = Phaser.Math.Between(HEAL_MIN, HEAL_MAX);
     this.boss.heal(amount);

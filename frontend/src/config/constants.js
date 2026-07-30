@@ -12,6 +12,7 @@ export const BASE_DAMAGE_MAX = 15;
 export const PET_COOLDOWN = 500; // ms, 쓰다듬기(힐링)는 공격보다 조금 여유 있게
 export const HEAL_MIN = 20;
 export const HEAL_MAX = 40;
+export const SHIELD_TAUNT_COOLDOWN = 3000; // ms, 방패로 막을 때마다 "허 ㅋ" 조롱 사운드를 재생하는 최소 간격 — 매번 틀면 겹쳐서 탕탕거리므로 쿨다운으로 텀을 둔다
 export const HP_BAR_WIDTH = 200;
 export const HP_BAR_X = 400; // 보스와 같은 x(화면 중앙)를 유지
 export const HP_BAR_Y = 560; // 화면 하단으로 이동 — 보스 체력바를 화면 아래에 두는 보스전 UI 컨벤션
@@ -31,12 +32,19 @@ export const BOSS_IDLE_WALK_TILT_DEG = 5;
 export const BOSS_IDLE_WALK_CYCLE_MS = 300;
 export const BOSS_IDLE_ARRIVAL_DISTANCE = 2; // px, 종료 버튼과 이 거리 이내면 도착으로 보고 멈춘다
 // 보스 캐릭터 목록 — 코드/에러 테마 이름 + 픽셀 스프라이트 몸통 색. 첫 항목이 기본 보스.
+// 빨주노초파남보 7색 + 무지개색 하나까지 채운 구성. color가 문자열 'rainbow'인 항목은 hex가 아니라
+// bossSprite.js의 resolveFillStyle이 알아보는 센티널 — 몸통을 그라디언트로 칠한다. GameScene.js가
+// bossType.color를 parseInt(hex)로도 쓰는 다른 항목들과 달리 'rainbow'는 그 계산에 안 들어가게(귀 색 등)
+// 주의해서 다뤄야 한다.
 export const BOSS_TYPES = [
-  { id: 'null_pointer', name: 'NULL_POINTER', color: '#e8631a' }, // Classic Coral 후보의 진한 주황
-  { id: 'segfault', name: 'SEGFAULT', color: '#c0392b' },
-  { id: 'stack_overflow', name: 'STACK_OVERFLOW', color: '#8e44ad' },
-  { id: 'memory_leak', name: 'MEMORY_LEAK', color: '#27ae60' },
-  { id: 'merge_conflict', name: 'MERGE_CONFLICT', color: '#d4a017' }, // git 컨플릭트 마커(<<<<<<<) 색인 앰버
+  { id: 'null_pointer', name: 'NULL_POINTER', color: '#e8631a' }, // 주 — Classic Coral 후보의 진한 주황
+  { id: 'segfault', name: 'SEGFAULT', color: '#c0392b' }, // 빨
+  { id: 'merge_conflict', name: 'MERGE_CONFLICT', color: '#d4a017' }, // 노 — git 컨플릭트 마커(<<<<<<<) 색인 앰버
+  { id: 'memory_leak', name: 'MEMORY_LEAK', color: '#27ae60' }, // 초
+  { id: 'race_condition', name: 'RACE_CONDITION', color: '#2980b9' }, // 파
+  { id: 'deadlock', name: 'DEADLOCK', color: '#4b3f8f' }, // 남
+  { id: 'stack_overflow', name: 'STACK_OVERFLOW', color: '#8e44ad' }, // 보
+  { id: 'heisenbug', name: 'HEISENBUG', color: 'rainbow' }, // 무지개 — 관찰할 때마다 달라지는 유명한 버그 용어라 컨셉에 맞춰 골랐다
 ];
 export const DRAW_SCORE_STEP = 100;
 export const INITIAL_FREE_DRAWS = 1; // 필드에 무기가 하나도 없는 상태로 시작하므로 시작 시 무기 뽑기 1회를 무료로 제공
@@ -143,10 +151,12 @@ export const WEAPON_IDS = {
   TASER: 'taser',
   KEYBOARD: 'keyboard',
   BORED_BUBBLE: 'bored_bubble',
+  HAIR_DRYER: 'hair_dryer',
 };
 
 export const TASER_WEAPON_SIZE = 70; // 전기충격기 텍스처 크기 — 방망이보다 작은 소형 휴대 도구
 export const BORED_BUBBLE_WEAPON_SIZE = 110; // "심심해" 말풍선 + 밑에 긴 머리 여자애 캐릭터 텍스처 크기 — 세로로 둘 다 들어가야 해서 다른 STATIC 무기보다 크게
+export const HAIR_DRYER_WEAPON_SIZE = 100; // 드라이기 텍스처 크기 — 몸통+손잡이+노즐까지 나와야 해서 전기충격기보다 크게
 export const HAND_WEAPON_SIZE = 70; // 쓰다듬는 손(착한 손) 텍스처 크기
 export const BAD_HAND_WEAPON_SIZE = 70; // 주먹(나쁜 손) 텍스처 크기
 export const LIPS_WEAPON_SIZE = 70; // 입술 텍스처 크기
@@ -460,7 +470,7 @@ export const WEAPON_DEFINITIONS = {
     texture: 'weapon_watermelon',
     projectileTexture: 'weapon_watermelon_projectile',
     fireSound: 'baseball_throw',
-    hitSound: 'watermelon_splat',
+    hitSound: ['watermelon_splat', 'watermelon_eating'],
     bigImpact: true,
     damageMultiplier: 1.5, // 크고 무거운 과일 — bigImpact 비주얼에 맞게 데미지도 확실히 무겁게
   },
@@ -522,6 +532,7 @@ export const WEAPON_DEFINITIONS = {
     blastRadius: DYNAMITE_BLAST_RADIUS,
     damageMultiplier: DYNAMITE_DAMAGE_MULTIPLIER,
     fireSound: 'baseball_throw',
+    hitSound: 'thud_impact_hit',
     bigImpact: true,
   },
 
@@ -574,7 +585,7 @@ export const WEAPON_DEFINITIONS = {
     texture: 'weapon_bamboo_cane',
     meleeSwing: true,
     damageMultiplier: BAMBOO_CANE_DAMAGE_MULTIPLIER,
-    hitSound: 'bat_hit',
+    hitSound: 'bamboo_whoosh',
   },
   [WEAPON_IDS.FRYING_PAN]: {
     name: 'FRYING PAN', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_frying_pan', meleeSwing: true, damageMultiplier: 1.4, hitSound: 'frying_pan_hit', // 무쇠 프라이팬 — 이 게임에서 가장 무거운 근접 재질이라 전용 타격음(frying_pan_hit)을 쓴다
@@ -587,14 +598,14 @@ export const WEAPON_DEFINITIONS = {
   // shake까지 추가로 겹쳐서 데미지 배율이 높은 무기다운 타격감을 준다. hitSound도 총기(pistol_impact)나
   // 다른 근접(bat_hit)과 겹치지 않게 더 묵직한 hit_wall로 차별화한다.
   [WEAPON_IDS.BOXING_GLOVE]: {
-    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2, bigImpact: true, hitSound: 'hit_wall',
+    name: 'BOXING GLOVE', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_boxing_glove', meleeSwing: true, damageMultiplier: 1.2, bigImpact: true, hitSound: 'thud_impact_hit',
   },
   // freezesBoss: 데미지 자체는 평범하지만, 맞으면 GameScene의 drag 리스너가 잠깐 boss.isFrozen을
   // 보고 드래그 이동을 막는다(Boss.freeze) — 보스가 자체 행동이 없는 게임이라 "기절"보다
   // "위치 고정"이 실제로 의미 있는 CC라고 판단해서 그렇게 구현했다.
   // meleeSwing: 노트북을 실제로 휘둘러서 때리는 느낌을 주는 스윙 모션 (WHIP과 같은 메커니즘 재사용).
   [WEAPON_IDS.DEBUGGER]: {
-    name: 'DEVELOPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_debugger', freezesBoss: true, meleeSwing: true, damageMultiplier: 1.1, hitSound: 'bat_hit', // 노트북 — 딱딱한 편
+    name: 'DEVELOPER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_debugger', freezesBoss: true, thrustSwing: true, damageMultiplier: 1.1, voiceSound: 'developer_shout', // meleeSwing(제자리 회전) 대신 뒤로 당겼다 내려찍는 thrustSwing. 타격음 없이 기합(voiceSound)만 재생.
   },
 
   // ── 말랑이(찌부 모션) ──
@@ -602,17 +613,17 @@ export const WEAPON_DEFINITIONS = {
   // 이름 그대로 "말랑말랑"한 장난감다운 타격감을 주려는 의도. 말랑이 계열은 전부 부드러운 재질이라
   // 다른 STATIC 무기보다 데미지를 낮게 잡는다.
   [WEAPON_IDS.SQUISHY]: {
-    name: 'SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_squishy', squishHit: true, damageMultiplier: 0.6,
+    name: 'SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_squishy', squishHit: true, damageMultiplier: 0.6, hitSound: 'squishy_hit',
   },
   // 모양만 다르고 동작(찌부 모션)은 SQUISHY와 동일. 오리답게 hitSound만 꽥 소리로 차별화한다.
   [WEAPON_IDS.RUBBER_DUCK]: {
     name: 'RUBBER DUCK', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_rubber_duck', squishHit: true, damageMultiplier: 0.6, hitSound: 'duck_quack',
   },
   [WEAPON_IDS.TEDDY_BEAR]: {
-    name: 'TEDDY BEAR', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_teddy_bear', squishHit: true, damageMultiplier: 0.6,
+    name: 'TEDDY BEAR', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_teddy_bear', squishHit: true, damageMultiplier: 0.6, hitSound: 'teddy_bear_hit',
   },
   [WEAPON_IDS.CHEESE_SQUISHY]: {
-    name: 'CHEESE SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_cheese_squishy', squishHit: true, damageMultiplier: 0.6,
+    name: 'CHEESE SQUISHY', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_cheese_squishy', squishHit: true, damageMultiplier: 0.6, hitSound: 'cheese_squishy_hit',
   },
 
   // ── 손/기타 ──
@@ -642,6 +653,12 @@ export const WEAPON_DEFINITIONS = {
   [WEAPON_IDS.BORED_BUBBLE]: {
     name: '서윤 by 서윤', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_bored_bubble', hitSound: 'seoyoon_bored', earBleed: true,
   },
+  // 드라이기 — 계속 갖다 대고 있으면(STATIC 오버랩 판정) HIT_COOLDOWN마다 데미지가 들어가는 다른
+  // STATIC 무기와 같은 파이프라인 — "말려 죽인다"는 컨셉은 별도 로직 없이 그 지속 접촉 데미지로 표현된다.
+  // rotateToBoss: 노즐(텍스처 각도 0=오른쪽)이 항상 보스를 향해야 "바람을 쐬는" 느낌이 자연스럽다.
+  [WEAPON_IDS.HAIR_DRYER]: {
+    name: 'HAIR DRYER', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_hair_dryer', rotateToBoss: true, damageMultiplier: 0.6, hitSound: 'hair_dryer_hit', voiceSound: 'hair_dryer_wind', voiceSoundOnGrab: true, hitReach: 500, // 보스에 안 맞아도 집는 순간부터 바람 소리. hitReach로 실제 그림보다 훨씬 먼 거리에서도 바람이 닿아 날아간다
+  },
 };
 
 export const DART_STICK_DURATION = 8000; // ms, 다트가 맞은 자리에 박힌 채로 남아 있다가 사라지기까지 시간
@@ -650,6 +667,9 @@ export const DART_EMBED_DEPTH = 10; // px, 맞은 지점에서 날아가던 방�
 // 타격 이펙트
 export const BOSS_KNOCKBACK_DISTANCE = 26; // px, 타격당 타격 반대 방향으로 밀려나는 거리 (누적됨)
 export const BOSS_KNOCKBACK_OUT_DURATION = 70; // ms, 밀려나는 트윈 시간
+export const HAIR_DRYER_KNOCKBACK_DISTANCE = 160; // px, 헤어드라이기 바람은 다른 무기보다 훨씬 세게 밀어낸다
+export const HAIR_DRYER_KNOCKBACK_DURATION = 260; // ms, 멀리 날아가는 만큼 기본 넉백보다 트윈 시간도 늘려야 안 뻣뻣하다
+export const HAIR_DRYER_KNOCKBACK_SPIN_TURNS = 1.4; // 날아가는 동안 빙글 도는 바퀴 수
 // 보스가 화면 구석(두 벽이 만나는 자리)에 있을 때 맞으면, 그 자리에서 찔끔 밀려나는 평소 knockback
 // 대신 반대쪽 방향으로 살짝 더 크게 튕긴다(Boss.flyToOppositeCorner) — 화면을 완전히 가로지르면
 // 너무 멀리 날아가 보여서, 대각선 반대쪽 구석까지 가는 거리 중 일부만 이동한다.

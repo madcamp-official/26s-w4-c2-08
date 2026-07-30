@@ -1121,15 +1121,16 @@ export function createDeveloperCanvas(size) {
   const laptopColor = '#4a4d52';
   const laptopStroke = '#2b2d30';
   const screenColor = '#8fd6ff';
+  const angryColor = '#2b2d30';
 
   const canvas = createCanvas(size);
   const ctx = canvas.getContext('2d');
   const cx = size / 2;
 
-  // 몸(셔츠)
+  // 몸(셔츠) — 노트북 쪽으로 웅크린 느낌을 주려고 머리 바로 아래까지 끌어올려 놓는다.
   const bodyWidth = size * 0.5;
-  const bodyHeight = size * 0.32;
-  const bodyTop = size * 0.42;
+  const bodyHeight = size * 0.3;
+  const bodyTop = size * 0.38;
   ctx.fillStyle = shirtColor;
   ctx.strokeStyle = shirtStroke;
   ctx.lineWidth = Math.max(1, size * 0.02);
@@ -1137,8 +1138,8 @@ export function createDeveloperCanvas(size) {
   ctx.strokeRect(cx - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight);
 
   // 머리
-  const headRadius = size * 0.16;
-  const headCenterY = size * 0.24;
+  const headRadius = size * 0.13;
+  const headCenterY = size * 0.26;
   ctx.fillStyle = skinColor;
   ctx.strokeStyle = skinStroke;
   ctx.beginPath();
@@ -1146,23 +1147,56 @@ export function createDeveloperCanvas(size) {
   ctx.fill();
   ctx.stroke();
 
-  // 노트북 — 베이스(키보드, 평평한 사각) + 화면(뒤로 기운 사다리꼴)
+  // 화난 눈썹 — 미간 쪽으로 처박히는 짙은 사선 두 줄
+  ctx.strokeStyle = angryColor;
+  ctx.lineWidth = Math.max(1.5, size * 0.02);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - headRadius * 0.6, headCenterY - headRadius * 0.15);
+  ctx.lineTo(cx - headRadius * 0.15, headCenterY + headRadius * 0.05);
+  ctx.moveTo(cx + headRadius * 0.6, headCenterY - headRadius * 0.15);
+  ctx.lineTo(cx + headRadius * 0.15, headCenterY + headRadius * 0.05);
+  ctx.stroke();
+
+  // 앙 다문 화난 입 — 작고 각진 다크 레드 사각
+  ctx.fillStyle = '#8f2e24';
+  const mouthWidth = headRadius * 0.5;
+  const mouthY = headCenterY + headRadius * 0.5;
+  ctx.fillRect(cx - mouthWidth / 2, mouthY, mouthWidth, headRadius * 0.18);
+
+  // 머리 양옆에 떠 있는 코드 기호 — 짜증나서 키보드 두드리는 느낌(캔버스가 작아서 위쪽엔 안 둔다, 잘림 방지)
+  ctx.fillStyle = angryColor;
+  ctx.font = `bold ${Math.round(size * 0.11)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('<>', cx - headRadius * 2.1, headCenterY - headRadius * 0.6);
+  ctx.fillText('{}', cx + headRadius * 2.1, headCenterY - headRadius * 0.6);
+
+  // 노트북 — 원래 자리(가슴 앞)는 그대로 두고, 밑변 중앙을 축으로 살짝 기울여서
+  // 정면으로 딱 마주보던 정적인 느낌 대신 막 내려친 듯한 각도를 준다. 회전축 기준 로컬 좌표로 그린다.
   const laptopWidth = size * 0.42;
   const baseHeight = size * 0.05;
-  const baseY = bodyTop + bodyHeight - size * 0.02;
-  const baseX = cx - laptopWidth / 2;
-  ctx.fillStyle = laptopColor;
-  ctx.strokeStyle = laptopStroke;
-  ctx.fillRect(baseX, baseY, laptopWidth, baseHeight);
-  ctx.strokeRect(baseX, baseY, laptopWidth, baseHeight);
-
+  const baseY = bodyTop + bodyHeight - size * 0.02; // 베이스(키보드) 윗면 y좌표, 화전 전 기준
+  const swingAngle = -0.18; // 라디안 — 과하지 않게 살짝만 기울인다
   const screenHeight = size * 0.22;
   const screenTopInset = size * 0.05;
+
+  ctx.save();
+  ctx.translate(cx, baseY);
+  ctx.rotate(swingAngle);
+
+  const lx = -laptopWidth / 2; // 로컬 좌표: 원점(0,0)이 베이스 윗면 중앙
+  ctx.fillStyle = laptopColor;
+  ctx.strokeStyle = laptopStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.fillRect(lx, 0, laptopWidth, baseHeight);
+  ctx.strokeRect(lx, 0, laptopWidth, baseHeight);
+
   ctx.beginPath();
-  ctx.moveTo(baseX, baseY);
-  ctx.lineTo(baseX + screenTopInset, baseY - screenHeight);
-  ctx.lineTo(baseX + laptopWidth - screenTopInset, baseY - screenHeight);
-  ctx.lineTo(baseX + laptopWidth, baseY);
+  ctx.moveTo(lx, 0);
+  ctx.lineTo(lx + screenTopInset, -screenHeight);
+  ctx.lineTo(lx + laptopWidth - screenTopInset, -screenHeight);
+  ctx.lineTo(lx + laptopWidth, 0);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
@@ -1171,12 +1205,14 @@ export function createDeveloperCanvas(size) {
   ctx.fillStyle = screenColor;
   const inset = size * 0.03;
   ctx.beginPath();
-  ctx.moveTo(baseX + inset, baseY - inset);
-  ctx.lineTo(baseX + screenTopInset + inset * 0.6, baseY - screenHeight + inset);
-  ctx.lineTo(baseX + laptopWidth - screenTopInset - inset * 0.6, baseY - screenHeight + inset);
-  ctx.lineTo(baseX + laptopWidth - inset, baseY - inset);
+  ctx.moveTo(lx + inset, -inset);
+  ctx.lineTo(lx + screenTopInset + inset * 0.6, -screenHeight + inset);
+  ctx.lineTo(lx + laptopWidth - screenTopInset - inset * 0.6, -screenHeight + inset);
+  ctx.lineTo(lx + laptopWidth - inset, -inset);
   ctx.closePath();
   ctx.fill();
+
+  ctx.restore();
 
   return canvas;
 }
@@ -2322,6 +2358,105 @@ export function createWashingMachineCanvas(width, height, { doorOpen = false } =
     ctx.arc(cx, doorCy, doorRadius, 0, Math.PI * 2);
     ctx.stroke();
   }
+
+  return canvas;
+}
+
+// 드라이기(헤어드라이어): 타원형 모터 하우징 + 앞으로 좁아지는 노즐(각도 0=오른쪽을 보게 그려서
+// TASER/MEGAPHONE과 같은 rotateToBoss 규칙을 그대로 씀) + 아래로 내려온 손잡이 + 노즐 앞에서
+// 퍼지는 뜨거운 바람 물결선 2개. STATIC 카테고리라 방망이 캡슐 판정 없이 사각 판정만 쓴다.
+export function createHairDryerCanvas(size) {
+  const bodyColor = '#f2f2f0';
+  const bodyStroke = '#a8a8a4';
+  const accentColor = '#3f7fe0'; // 배럴/노즐 경계 포인트 컬러 — 실제 드라이어의 투톤 배색 흉내
+  const gripColor = '#2b2b2b';
+  const nozzleColor = '#3a3a3a';
+  const ventColor = '#7a7a76';
+  const heatColor = '#ff8a4c';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cy = size / 2;
+
+  const barrelLeftX = size * 0.22;
+  const barrelRightX = size * 0.58;
+  const barrelHalfWidth = size * 0.155;
+  const nozzleTipX = size * 0.84;
+  const nozzleHalfWidth = size * 0.075;
+
+  // 손잡이 — 배럴 뒤쪽(후면)에서 살짝 뒤로 기울어 내려오는 권총 그립 형태. 몸통보다 먼저 그려서
+  // 이음매가 배럴 아래에 가려지게 한다.
+  const gripTopX = barrelLeftX + (barrelRightX - barrelLeftX) * 0.22;
+  const gripWidth = size * 0.14;
+  const gripHeight = size * 0.36;
+  const gripLean = size * 0.05; // 아래로 갈수록 뒤(왼쪽)로 기우는 정도 — 권총 손잡이 각도 느낌
+  ctx.fillStyle = gripColor;
+  ctx.beginPath();
+  ctx.moveTo(gripTopX - gripWidth / 2, cy + barrelHalfWidth * 0.55);
+  ctx.lineTo(gripTopX + gripWidth / 2, cy + barrelHalfWidth * 0.55);
+  ctx.lineTo(gripTopX + gripWidth / 2 - gripLean, cy + barrelHalfWidth * 0.55 + gripHeight);
+  ctx.lineTo(gripTopX - gripWidth / 2 - gripLean, cy + barrelHalfWidth * 0.55 + gripHeight);
+  ctx.closePath();
+  ctx.fill();
+
+  // 배럴(모터 하우징) — 각진 사각형 대신 캡슐(타원 양끝) 실루엣으로 실제 드라이기 통 느낌을 낸다.
+  ctx.fillStyle = bodyColor;
+  ctx.strokeStyle = bodyStroke;
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  ctx.beginPath();
+  ctx.roundRect(barrelLeftX, cy - barrelHalfWidth, barrelRightX - barrelLeftX, barrelHalfWidth * 2, barrelHalfWidth);
+  ctx.fill();
+  ctx.stroke();
+
+  // 후면 흡입구 — 배럴 뒤쪽 끝에 붙은 작은 원 + 방사형 슬릿. 헤어드라이어를 한눈에 알아보게 하는
+  // 대표적인 디테일이라 추가한다.
+  const ventCx = barrelLeftX + barrelHalfWidth * 0.55;
+  const ventRadius = barrelHalfWidth * 0.72;
+  ctx.fillStyle = ventColor;
+  ctx.beginPath();
+  ctx.arc(ventCx, cy, ventRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#4a4a46';
+  ctx.lineWidth = Math.max(1, size * 0.006);
+  for (let i = 0; i < 6; i += 1) {
+    const a = (Math.PI * 2 * i) / 6;
+    ctx.beginPath();
+    ctx.moveTo(ventCx + Math.cos(a) * ventRadius * 0.25, cy + Math.sin(a) * ventRadius * 0.25);
+    ctx.lineTo(ventCx + Math.cos(a) * ventRadius * 0.85, cy + Math.sin(a) * ventRadius * 0.85);
+    ctx.stroke();
+  }
+
+  // 배럴-노즐 경계 포인트 컬러 밴드
+  ctx.fillStyle = accentColor;
+  ctx.fillRect(barrelRightX - size * 0.015, cy - barrelHalfWidth * 0.95, size * 0.03, barrelHalfWidth * 1.9);
+
+  // 노즐 — 배럴 끝에서 앞으로 둥글게 좁아지는 디퓨저 실루엣(직선 사다리꼴 대신 완만한 곡선)
+  ctx.fillStyle = nozzleColor;
+  ctx.strokeStyle = '#1c1c1c';
+  ctx.lineWidth = Math.max(1, size * 0.012);
+  ctx.beginPath();
+  ctx.moveTo(barrelRightX, cy - barrelHalfWidth * 0.85);
+  ctx.quadraticCurveTo(barrelRightX + (nozzleTipX - barrelRightX) * 0.6, cy - barrelHalfWidth * 0.7, nozzleTipX, cy - nozzleHalfWidth);
+  ctx.lineTo(nozzleTipX, cy + nozzleHalfWidth);
+  ctx.quadraticCurveTo(barrelRightX + (nozzleTipX - barrelRightX) * 0.6, cy + barrelHalfWidth * 0.7, barrelRightX, cy + barrelHalfWidth * 0.85);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 뜨거운 바람 — 노즐 앞으로 퍼지는 물결선 3개(점점 커지며 옅어짐)로 바람이 뿜어져 나오는 느낌을 강조
+  ctx.lineCap = 'round';
+  [0, size * 0.06, size * 0.12].forEach((offset, i) => {
+    const x0 = nozzleTipX + size * 0.03 + offset;
+    const waveHalf = nozzleHalfWidth * (0.7 + i * 0.22);
+    ctx.strokeStyle = heatColor;
+    ctx.globalAlpha = 1 - i * 0.28;
+    ctx.lineWidth = Math.max(1, size * 0.018);
+    ctx.beginPath();
+    ctx.moveTo(x0, cy - waveHalf);
+    ctx.quadraticCurveTo(x0 + size * 0.03, cy, x0, cy + waveHalf);
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
 
   return canvas;
 }

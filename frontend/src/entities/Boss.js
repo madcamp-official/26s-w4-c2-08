@@ -199,7 +199,10 @@ export default class Boss {
     return this.hp <= 0;
   }
 
+  // CombatSystem의 handleHit/applyPanelPushDamage/applyVomitDamage/applyWashingMachineDamage 4곳이
+  // 전부 defeated 판정 후 여기로 모이므로, 처치 사운드는 각 호출부가 아니라 여기 한 곳에서만 재생한다.
   respawn() {
+    this.scene.sound.play('boss_defeated');
     this.hp = this.maxHp;
     this.damageStage = 0;
     this.setPosition(BOSS_SPAWN.x, BOSS_SPAWN.y);
@@ -259,7 +262,10 @@ export default class Boss {
 
   // 타격 지점(hitX,hitY) 반대 방향으로 보스를 실제로 밀어낸다. 원위치로 돌아오지 않고 그 자리가 새 위치가 된다.
   // 드래그 중이면 다음 드래그 좌표가 곧바로 덮어써서 자연히 묻힌다. 화면 밖으로는 나가지 않도록 clamp.
-  knockback(hitX, hitY) {
+  // distance/duration: 기본은 BOSS_KNOCKBACK_DISTANCE/BOSS_KNOCKBACK_OUT_DURATION, 헤어드라이기처럼 유독
+  // 세게 멀리 날려야 하는 무기는 GameScene.onHit이 HAIR_DRYER_KNOCKBACK_DISTANCE 등으로 덮어쓴다.
+  // spinTurns: 0이면 회전 없음(기존 동작 그대로), 0보다 크면 날아가는 동안 그만큼 빙글 돈 뒤 0도로 정리된다.
+  knockback(hitX, hitY, { distance = BOSS_KNOCKBACK_DISTANCE, duration = BOSS_KNOCKBACK_OUT_DURATION, spinTurns = 0 } = {}) {
     // 연타로 이전 knockback이 끝나기 전에 다시 호출되면, 진행 중이던 트윈을 끊고 그 시점의 실제 위치부터 이어서 밀린다.
     this.scene.tweens.killTweensOf(this.sprite);
     this.isPanelBounceActive = false;
@@ -271,16 +277,26 @@ export default class Boss {
     const halfW = this.displayWidth / 2;
     const halfH = this.displayHeight / 2;
     const { width, height } = this.scene.scale;
-    const targetX = Phaser.Math.Clamp(originX + Math.cos(angle) * BOSS_KNOCKBACK_DISTANCE, halfW, width - halfW);
-    const targetY = Phaser.Math.Clamp(originY + Math.sin(angle) * BOSS_KNOCKBACK_DISTANCE, halfH, height - halfH);
+    const targetX = Phaser.Math.Clamp(originX + Math.cos(angle) * distance, halfW, width - halfW);
+    const targetY = Phaser.Math.Clamp(originY + Math.sin(angle) * distance, halfH, height - halfH);
 
     this.scene.tweens.add({
       targets: this.sprite,
       x: targetX,
       y: targetY,
-      duration: BOSS_KNOCKBACK_OUT_DURATION,
+      duration,
       ease: 'Quad.easeOut',
     });
+
+    if (spinTurns > 0) {
+      this.scene.tweens.add({
+        targets: this.sprite,
+        angle: 360 * spinTurns,
+        duration,
+        ease: 'Cubic.easeOut',
+        onComplete: () => this.sprite.setAngle(0),
+      });
+    }
   }
 
   // 마술봉(WAND)에 맞으면 넉백 대신 호출된다(GameScene.onHit) — 데미지는 이미 CombatSystem.handleHit이
@@ -378,7 +394,7 @@ export default class Boss {
       onComplete: () => {
         this.sprite.setAngle(0);
         this.isPanelBounceActive = false;
-        this.scene.sound.play('hit_wall');
+        this.scene.sound.play('boss_wall_slam_scream');
         this.flash(0xff3333);
         onComplete?.(this.sprite.x, this.sprite.y);
       },
@@ -404,7 +420,7 @@ export default class Boss {
       onComplete: () => {
         this.sprite.setAngle(0);
         this.isPanelBounceActive = false;
-        this.scene.sound.play('hit_wall');
+        this.scene.sound.play('boss_wall_slam_scream');
         onComplete?.(this.sprite.x, this.sprite.y);
       },
     });
@@ -783,7 +799,7 @@ export default class Boss {
     this.blinkEvent = null;
     this.fireBreathEvent?.remove();
     this.sprite.setTexture(`boss_fire_${this.bossTypeId}_d${this.damageStage}`);
-    this.scene.sound.play('boss_fire_roar');
+    this.scene.sound.play('boss_fire_roar', { volume: 5 });
     this.fireBreathEvent = this.scene.time.delayedCall(BOSS_FIRE_BREATH_DURATION, () => {
       this.fireBreathEvent = null;
       this.sprite.setTexture(this.getBaseTextureKey());

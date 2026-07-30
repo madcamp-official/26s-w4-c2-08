@@ -6,6 +6,9 @@ import {
   BOSS_PANEL_PUSH_POPUP_COLOR,
   VOMIT_POPUP_COLOR,
   WAND_TELEPORT_SPARK_COLOR,
+  HAIR_DRYER_KNOCKBACK_DISTANCE,
+  HAIR_DRYER_KNOCKBACK_DURATION,
+  HAIR_DRYER_KNOCKBACK_SPIN_TURNS,
   AGENT_TAUNT_POPUP_DURATION,
   AGENT_TAUNT_TYPING_SPEED,
   AGENT_TAUNT_INTRO_DELAY,
@@ -679,6 +682,8 @@ export default class GameScene extends Phaser.Scene {
       // 마술봉(teleportsBoss)에 맞으면 넉백 대신 화면 안 랜덤한 위치로 순간이동시킨다(Boss.teleportRandom) —
       // 데미지는 다른 PORTABLE 무기와 동일하게 이미 CombatSystem.handleHit에서 처리됐다.
       const isWandHit = hits.some((hit) => WEAPON_DEFINITIONS[hit.weaponId]?.teleportsBoss);
+      // 헤어드라이기는 바람으로 미는 무기라 다른 무기보다 훨씬 크게 날아가야 자연스럽다(Boss.knockback distance override).
+      const isHairDryerHit = hits.some((hit) => hit.weaponId === WEAPON_IDS.HAIR_DRYER);
       if (isWandHit) {
         this.boss.teleportRandom();
       } else if (this.boss.isNearCorner()) {
@@ -686,7 +691,9 @@ export default class GameScene extends Phaser.Scene {
         // 대각선 반대쪽 구석까지 크게 튕겨나간다.
         this.boss.flyToOppositeCorner(() => this.cameras.main.shake(100, 0.006));
       } else {
-        this.boss.knockback(hitX, hitY);
+        this.boss.knockback(hitX, hitY, isHairDryerHit
+          ? { distance: HAIR_DRYER_KNOCKBACK_DISTANCE, duration: HAIR_DRYER_KNOCKBACK_DURATION, spinTurns: HAIR_DRYER_KNOCKBACK_SPIN_TURNS }
+          : undefined);
       }
       this.boss.flash(isTaserHit ? 0x66e0ff : (isWandHit ? WAND_TELEPORT_SPARK_COLOR : 0xffffff));
       // 입술로만(다른 무기가 안 끼고) 계속 맞으면 평소 X_X 대신 threshold를 넘는 순간 구토 반응으로
@@ -723,6 +730,8 @@ export default class GameScene extends Phaser.Scene {
         else if (hit.weaponId === WEAPON_IDS.BEACH_BALL) this.spawnBeachBallBounceEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.FRYING_PAN) this.spawnMetalClangEffect(hit.x, hit.y);
         else if (hit.weaponId === WEAPON_IDS.SLIPPER) this.spawnSlipperSmackEffect(hit.x, hit.y);
+        // 드라이기: 노즐(hit.x,hit.y)에서 보스 쪽으로 바람 줄기가 뻗어나가는 것처럼 보이게 스파크 대신 사용.
+        else if (hit.weaponId === WEAPON_IDS.HAIR_DRYER) this.spawnHairDryerWindEffect(hit.x, hit.y);
         // "심심해" 말풍선: 스파크 대신 귀에서 피 — hit 좌표(말풍선 위치)가 아니라 보스 몸통 기준
         // 양쪽 귀 위치에서 그린다(spawnEarBloodEffect가 boss.getHitRect()로 계산).
         else if (hit.weaponId === WEAPON_IDS.BORED_BUBBLE) this.spawnEarBloodEffect();
@@ -1086,7 +1095,8 @@ export default class GameScene extends Phaser.Scene {
   spawnEarBloodEffect() {
     const bodyRect = this.boss.getHitRect();
     const bossType = BOSS_TYPES.find((b) => b.id === this.boss.bossTypeId);
-    const earColor = bossType ? parseInt(bossType.color.slice(1), 16) : 0xe8631a;
+    // 'rainbow'(무지개 보스, bossSprite.js resolveFillStyle 참고)는 hex가 아니라서 parseInt로 못 바꾼다 — 대체색으로 폴백.
+    const earColor = bossType && bossType.color !== 'rainbow' ? parseInt(bossType.color.slice(1), 16) : 0xe8631a;
     const earY = bodyRect.y + bodyRect.height * 0.21;
     const earPoints = [
       { x: bodyRect.x + bodyRect.width * 0.04, y: earY },
@@ -1557,6 +1567,36 @@ export default class GameScene extends Phaser.Scene {
         duration: 380,
         ease: 'Cubic.easeOut',
         onComplete: () => star.destroy(),
+      });
+    }
+  }
+
+  // 드라이기 노즐(x,y)에서 보스 몸통 쪽으로 흰 바람 줄기를 연달아 쏘아 보낸다 — 실제 넉백(Boss.knockback)은
+  // 다른 STATIC 무기와 같은 경로로 이미 처리되니, 여기서는 "바람에 밀려난다"는 인상을 주는 시각 효과만 담당한다.
+  spawnHairDryerWindEffect(x, y) {
+    const bossX = this.boss.bodyCenterX;
+    const bossY = this.boss.bodyCenterY;
+    const angle = Phaser.Math.Angle.Between(x, y, bossX, bossY);
+    const streakCount = 4;
+    for (let i = 0; i < streakCount; i += 1) {
+      const streakAngle = angle + Phaser.Math.FloatBetween(-0.22, 0.22);
+      const startDist = Phaser.Math.Between(8, 18);
+      const startX = x + Math.cos(streakAngle) * startDist;
+      const startY = y + Math.sin(streakAngle) * startDist;
+      const length = Phaser.Math.Between(16, 26);
+      const streak = this.add.rectangle(startX, startY, length, 3, 0xeaf7ff, 0.85)
+        .setRotation(streakAngle)
+        .setDepth(999);
+      const travelDist = Phaser.Math.Between(55, 85);
+      this.tweens.add({
+        targets: streak,
+        x: startX + Math.cos(streakAngle) * travelDist,
+        y: startY + Math.sin(streakAngle) * travelDist,
+        alpha: 0,
+        delay: i * 25,
+        duration: 240,
+        ease: 'Sine.easeOut',
+        onComplete: () => streak.destroy(),
       });
     }
   }

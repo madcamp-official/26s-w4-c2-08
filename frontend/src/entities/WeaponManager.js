@@ -133,6 +133,9 @@ export default class WeaponManager {
       weapon.overlapCollider = this.scene.physics.add.overlap(this.boss.sprite, weapon, () => this.handleOverlap(weapon), null, this.scene);
       if (category === WEAPON_CATEGORIES.PORTABLE) this.updatePortableRotation(weapon);
       else if (WEAPON_DEFINITIONS[weaponId].rotateToBoss) this.faceBoss(weapon);
+      // 헤어드라이기처럼 voiceSoundOnGrab이 있는 무기는 보스에 맞히기 전, 집는 순간부터 바로 소리가 나야 한다
+      // (CombatSystem.handleHit은 실제로 맞아야만 재생돼서 그걸로는 이 타이밍을 못 채운다).
+      if (WEAPON_DEFINITIONS[weaponId].voiceSoundOnGrab) this.scene.sound.play(WEAPON_DEFINITIONS[weaponId].voiceSound);
     }
 
     return weapon;
@@ -232,6 +235,15 @@ export default class WeaponManager {
     const weapon = this.activeWeapon;
     if (!weapon) return;
     this.activeWeapon = null;
+
+    // 헤어드라이기처럼 hitSound/voiceSound 재생 시간이 HIT_COOLDOWN보다 훨씬 길면(예: 바람 소리 17초)
+    // 손을 뗀 뒤에도 계속 울린다 — 무기를 놓는 순간 그 무기가 쓰던 사운드 키를 전부 끊는다.
+    const releasedDefinition = WEAPON_DEFINITIONS[weapon.weaponId];
+    if (releasedDefinition?.hitSound) {
+      const hitSoundKeys = Array.isArray(releasedDefinition.hitSound) ? releasedDefinition.hitSound : [releasedDefinition.hitSound];
+      hitSoundKeys.forEach((key) => this.scene.sound.stopByKey(key));
+    }
+    if (releasedDefinition?.voiceSound) this.scene.sound.stopByKey(releasedDefinition.voiceSound);
 
     if (weapon.category === WEAPON_CATEGORIES.BOOMERANG) {
       this.throwBoomerang(weapon);
@@ -600,10 +612,17 @@ export default class WeaponManager {
 
   // 전기충격기처럼 대각선/원이 아니라 그냥 네모난 휴대형 무기(STATIC)는 방망이 캡슐도, 투사체 원도
   // 안 맞아서 자기 표시 영역(getBounds) 그대로 사각-사각 겹침만 본다.
+  // hitReach(WEAPON_DEFINITIONS): 헤어드라이기처럼 실제 그림보다 더 멀리서도 닿아야 하는(바람) 무기는
+  // 이 값(px)만큼 판정 영역을 사방으로 넓혀서, 화면에 안 그려지는 "사정거리"만큼 먼저 닿게 한다.
   rectOverlapsBoss(weapon) {
     const boss = this.boss.getHitRect();
     const bounds = weapon.getBounds();
-    return bounds.x < boss.right && bounds.right > boss.x && bounds.y < boss.bottom && bounds.bottom > boss.y;
+    const reach = WEAPON_DEFINITIONS[weapon.weaponId]?.hitReach ?? 0;
+    const left = bounds.x - reach;
+    const right = bounds.right + reach;
+    const top = bounds.y - reach;
+    const bottom = bounds.bottom + reach;
+    return left < boss.right && right > boss.x && top < boss.bottom && bottom > boss.y;
   }
 
   startFiring(launcher) {
@@ -698,7 +717,7 @@ export default class WeaponManager {
     });
   }
 
-  // 채찍/노트북처럼 "휘둘러서 때리는" STATIC 무기가 실제로 맞을 때(CombatSystem.handleHit, 쿨다운을
+  // 채찍처럼 "휘둘러서 때리는" STATIC 무기가 실제로 맞을 때(CombatSystem.handleHit, 쿨다운을
   // 통과한 순간)마다 재생하는 스윙 모션: 보스 반대쪽으로 먼저 홱 넘겼다가(windup) 보스 쪽으로 후려친 뒤
   // 원래 각도로 스프링백한다. handleOverlap(겹쳐있는 동안 매 프레임 호출)에서 하면 계속 재시작돼
   // 덜덜 떨리므로, 쿨다운이 걸린 실제 히트 시점에만 트리거해야 한다.
@@ -723,6 +742,48 @@ export default class WeaponManager {
             this.scene.tweens.add({
               targets: weapon,
               rotation: original,
+              duration: 120,
+              ease: 'Sine.easeOut',
+            });
+          },
+        });
+      },
+    });
+  }
+
+  // 노트북(DEVELOPER)처럼 제자리 회전이 아니라 "쥐고 있는 물체를 뒤로 당겼다가 내려찍는" 느낌이 필요한
+  // STATIC 무기용 스윙 — playMeleeSwing과 트리거 시점(쿨다운 통과한 실제 히트 순간)은 같지만 회전 대신
+  // x/y 위치를 보스 반대 방향(windup)→보스 방향으로 오버슈트(strike)→원위치 순으로 옮긴다.
+  // STATIC 히트 판정(rectOverlapsBoss)은 매 프레임 weapon.getBounds()를 그대로 읽으므로, 이 트윈이
+  // 도는 동안 겹침이 잠깐 끊겨도(당겨서 멀어질 때) HIT_COOLDOWN(300ms)이 어차피 재히트를 막고 있어 안전하다.
+  playThrustSwing(weapon) {
+    this.scene.tweens.killTweensOf(weapon);
+    const originalX = weapon.x;
+    const originalY = weapon.y;
+    const toBoss = this.getAngleToBoss(weapon.x, weapon.y);
+    const dx = Math.cos(toBoss);
+    const dy = Math.sin(toBoss);
+    const pullBack = weapon.displayWidth * 0.4;
+    const strike = weapon.displayWidth * 0.55;
+
+    this.scene.tweens.add({
+      targets: weapon,
+      x: originalX - dx * pullBack,
+      y: originalY - dy * pullBack,
+      duration: 90,
+      ease: 'Sine.easeOut',
+      onComplete: () => {
+        this.scene.tweens.add({
+          targets: weapon,
+          x: originalX + dx * strike,
+          y: originalY + dy * strike,
+          duration: 80,
+          ease: 'Back.easeIn',
+          onComplete: () => {
+            this.scene.tweens.add({
+              targets: weapon,
+              x: originalX,
+              y: originalY,
               duration: 120,
               ease: 'Sine.easeOut',
             });

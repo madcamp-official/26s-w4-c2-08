@@ -42,10 +42,35 @@ function cellRect(r, c) {
   return { x: c * CELL + SIDE_MARGIN, y: r * CELL + TOP_MARGIN, w: CELL, h: CELL };
 }
 
+// BOSS_TYPES의 color가 실제 hex 문자열 대신 'rainbow' 센티널이면, 매번 캔버스 절대좌표 기준으로
+// 같은 그라디언트를 새로 만들어 돌려준다 — 셀 단위로 나눠 칠해도(drawBody가 칸마다 fillRect) 좌표계가
+// 캔버스 전체 기준이라 이어붙이면 몸통 전체에 걸친 하나의 무지개로 보인다.
+// GameScene.js가 bossType.color를 parseInt(hex)로도 쓰기 때문에(귀 색 등) BOSS_TYPES.color 자체는
+// 항상 유효한 hex 문자열로 두고, 무지개는 이 센티널 하나로만 표현한다.
+function resolveFillStyle(ctx, bodyColor) {
+  if (bodyColor !== 'rainbow') return bodyColor;
+  // 그라디언트 시작점을 캔버스 원점(0,0)이 아니라 몸통이 실제로 그려지는 가장 왼쪽 위 칸(BODY_CELLS의
+  // [0,1])에 맞춘다 — 몸통 자체가 여백(SIDE_MARGIN/TOP_MARGIN)만큼 안쪽에서 시작하고 첫 줄도 0열이 아니라
+  // 1열부터라, (0,0) 기준으로 그리면 눈에 보이는 왼쪽 위 칸이 이미 그라디언트 20~30% 지점(주황~노랑)이 되어
+  // 빨간색이 안 보였다.
+  const startX = 1 * CELL + SIDE_MARGIN;
+  const startY = 0 * CELL + TOP_MARGIN;
+  const gradient = ctx.createLinearGradient(startX, startY, ctx.canvas.width, ctx.canvas.height);
+  gradient.addColorStop(0, '#ff3b3b'); // 빨
+  gradient.addColorStop(0.14, '#ff9a3b'); // 주
+  gradient.addColorStop(0.28, '#ffe23b'); // 노
+  gradient.addColorStop(0.43, '#4ade6c'); // 초
+  gradient.addColorStop(0.57, '#3b82f6'); // 파
+  gradient.addColorStop(0.71, '#5b3bff'); // 남
+  gradient.addColorStop(0.86, '#c23bff'); // 보
+  gradient.addColorStop(1, '#ff3b3b'); // 빨 — 끝에서 다시 빨강으로 돌아와 무지개가 한 바퀴 도는 느낌
+  return gradient;
+}
+
 function drawBody(ctx, bodyColor) {
   BODY_CELLS.forEach(([r, c]) => {
     const { x, y, w, h } = cellRect(r, c);
-    ctx.fillStyle = bodyColor;
+    ctx.fillStyle = resolveFillStyle(ctx, bodyColor);
     ctx.fillRect(x, y, w, h);
   });
 }
@@ -72,7 +97,7 @@ function drawEyes(ctx, bodyColor, eyeColor, { droopStage, forceBothEyesX }) {
 
 // 피격 시 잠깐 보여주는 부드러운 X_X 표정
 function drawSmoothX(ctx, bodyColor, eyeColor, x, y, w, h) {
-  ctx.fillStyle = bodyColor;
+  ctx.fillStyle = resolveFillStyle(ctx, bodyColor);
   ctx.fillRect(x, y, w, h);
 
   const pad = CELL * 0.22;
@@ -88,7 +113,7 @@ function drawSmoothX(ctx, bodyColor, eyeColor, x, y, w, h) {
 // 70% 이하부터 계속 떠 있는 처진(tired/sad) 눈 — 바깥쪽은 높고 안쪽은 낮은 사선 하나로 표현.
 // 2단계에서는 선이 더 굵어지고 더 아래로 처져서 지친 인상이 강해진다.
 function drawDroopyEye(ctx, bodyColor, eyeColor, x, y, w, h, isLeftEye, stage) {
-  ctx.fillStyle = bodyColor;
+  ctx.fillStyle = resolveFillStyle(ctx, bodyColor);
   ctx.fillRect(x, y, w, h);
 
   const thickness = stage >= 2 ? CELL * 0.3 : CELL * 0.22;
@@ -111,7 +136,7 @@ function drawDroopyEye(ctx, bodyColor, eyeColor, x, y, w, h, isLeftEye, stage) {
 
 // 쓰다듬을 때 잠깐 보여주는 귀여운 "^‿^" 감은 눈 — 위로 볼록한 꺾은선 하나로 표현.
 function drawHappyEye(ctx, bodyColor, eyeColor, x, y, w, h) {
-  ctx.fillStyle = bodyColor;
+  ctx.fillStyle = resolveFillStyle(ctx, bodyColor);
   ctx.fillRect(x, y, w, h);
 
   const pad = CELL * 0.14;
@@ -359,7 +384,7 @@ export function createBossHappyCanvas(bodyColor, eyeColor = '#000000') {
 // 평소 가만히 있을 때 랜덤 간격으로 잠깐 뜨는 눈 깜빡임 — 얇은 가로선 하나로 감은 눈을 표현한다.
 // 입/데미지 단계는 그대로 두고 눈만 바뀌므로 damageStage별로 따로 만든다(hurt/fire와 같은 패턴).
 function drawBlinkEye(ctx, bodyColor, eyeColor, x, y, w, h) {
-  ctx.fillStyle = bodyColor;
+  ctx.fillStyle = resolveFillStyle(ctx, bodyColor);
   ctx.fillRect(x, y, w, h);
 
   const pad = CELL * 0.15;

@@ -9,7 +9,7 @@ import {
   RUBBER_DUCK_WEAPON_SIZE, TEDDY_BEAR_WEAPON_SIZE, CHEESE_SQUISHY_WEAPON_SIZE, FRYING_PAN_WEAPON_SIZE,
   SLIPPER_WEAPON_SIZE, BOXING_GLOVE_WEAPON_SIZE, WATERMELON_WEAPON_SIZE, TOMATO_WEAPON_SIZE, BEACH_BALL_WEAPON_SIZE, BOOMERANG_WEAPON_SIZE,
   GRENADE_WEAPON_SIZE, DYNAMITE_WEAPON_SIZE,
-  BOSS_SHIELD_SIZE, BORED_BUBBLE_WEAPON_SIZE,
+  BOSS_SHIELD_SIZE, BORED_BUBBLE_WEAPON_SIZE, HAIR_DRYER_WEAPON_SIZE,
   WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT,
   BOSS_BUMP_MAX_LEVEL,
   SLINGSHOT_FRAME_SIZE,
@@ -29,7 +29,7 @@ import {
   createRubberDuckCanvas, createTeddyBearCanvas, createCheeseSquishyCanvas, createTomatoCanvas,
   createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createUreaSolutionCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
-  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createBoredGirlCanvas, createWashingMachineCanvas,
+  createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createBoredGirlCanvas, createWashingMachineCanvas, createHairDryerCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -43,6 +43,13 @@ export default class BootScene extends Phaser.Scene {
   // preload에서 등록한 로드가 끝나면 Phaser가 알아서 create()를 호출한다.
   preload() {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
+    // 날아가다 벽에 처박힐 때 전용 — fire_roar와 같은 소스지만 키를 분리해 의미 구분(권투장갑 hit_wall 벽 타격음과는 별개).
+    this.load.audio('boss_wall_slam_scream', assetUrl('audio/boss_wall_slam_scream.mp3'));
+    this.load.audio('laptop_slam', assetUrl('audio/laptop_slam.mp3'));
+    this.load.audio('developer_shout', assetUrl('audio/developer_shout.mp3'));
+    this.load.audio('bamboo_whoosh', assetUrl('audio/bamboo_whoosh.mp3'));
+    this.load.audio('hair_dryer_wind', assetUrl('audio/hair_dryer_wind.mp3'));
+    this.load.audio('boss_defeated', assetUrl('audio/boss_defeated.mp3'));
     this.load.audio('bat_hit', assetUrl('audio/hit.mp3'));
     this.load.audio('spoon_hit', assetUrl('audio/spoon.mp3'));
     this.load.audio('wand_hit', assetUrl('audio/wand.mp3'));
@@ -55,13 +62,14 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
     this.load.audio('pistol_shot', assetUrl('audio/pistol_shot.mp3'));
     this.load.audio('machine_gun_shot', assetUrl('audio/machinegun.mp3'));
-    this.load.audio('shotgun_blast', assetUrl('audio/universfield-shotgun-blast-352038.mp3'));
-    this.load.audio('sniper_shot', assetUrl('audio/freesound_community-sniper-rifle-5989.mp3'));
-    this.load.audio('revolver_shot', assetUrl('audio/freesound_community-gun-shots-from-a-distance-7-96391.mp3'));
-    this.load.audio('megaphone_feedback', assetUrl('audio/freesound_community-microphone-feedback-100786.mp3'));
-    this.load.audio('tomato_squish', assetUrl('audio/freesound_community-tomato-squishwet-103934.mp3'));
-    this.load.audio('watermelon_splat', assetUrl('audio/universfield-cartoon-splat-310479.mp3'));
-    this.load.audio('water_balloon_pop', assetUrl('audio/freesound_community-balloon-pop-48030.mp3'));
+    this.load.audio('shotgun_blast', assetUrl('audio/shotgun_blast.mp3'));
+    this.load.audio('sniper_shot', assetUrl('audio/sniper_shot.mp3'));
+    this.load.audio('revolver_shot', assetUrl('audio/revolver_shot.mp3'));
+    this.load.audio('megaphone_feedback', assetUrl('audio/megaphone_feedback.mp3'));
+    this.load.audio('tomato_squish', assetUrl('audio/tomato_squish.mp3'));
+    this.load.audio('watermelon_splat', assetUrl('audio/watermelon_splat.mp3'));
+    this.load.audio('watermelon_eating', assetUrl('audio/watermelon_eating.mp3'));
+    this.load.audio('water_balloon_pop', assetUrl('audio/water_balloon_pop.mp3'));
     this.load.audio('panel_open', assetUrl('audio/pannel_open.mp3'));
     this.load.audio('exit_button', assetUrl('audio/exit_button.mp3'));
     this.load.audio('boss_vomit', assetUrl('audio/obite.mp3'));
@@ -73,6 +81,13 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('frying_pan_hit', assetUrl('audio/frying_pan.mp3'));
     this.load.audio('whip_hit', assetUrl('audio/whip.mp3'));
     this.load.audio('washing_machine_sparkle', assetUrl('audio/sparkle.mp3'));
+    this.load.audio('squishy_hit', assetUrl('audio/squishy_hit.mp3'));
+    this.load.audio('shield_block', assetUrl('audio/shield_block.mp3'));
+    this.load.audio('shield_bounce', assetUrl('audio/shield_bounce.mp3'));
+    this.load.audio('hair_dryer_hit', assetUrl('audio/hair_dryer_hit.mp3'));
+    this.load.audio('teddy_bear_hit', assetUrl('audio/teddy_bear_squeak.mp3'));
+    this.load.audio('cheese_squishy_hit', assetUrl('audio/cheese_squishy_hit.mp3'));
+    this.load.audio('thud_impact_hit', assetUrl('audio/thud_impact_hit.mp3'));
     this.load.svg('icon_menu', assetUrl('icons/menu.svg'), { width: 64, height: 64 });
     this.load.svg('icon_logout', assetUrl('icons/log-out.svg'), { width: 64, height: 64 });
   }
@@ -128,6 +143,7 @@ export default class BootScene extends Phaser.Scene {
     this.textures.addCanvas('weapon_bad_hand', createHandCanvas(BAD_HAND_WEAPON_SIZE, { skinColor: '#e0574a', skinStroke: '#8f2e24' }));
     this.textures.addCanvas('weapon_lips', createLipsCanvas(LIPS_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bored_bubble', createBoredGirlCanvas(BORED_BUBBLE_WEAPON_SIZE));
+    this.textures.addCanvas('weapon_hair_dryer', createHairDryerCanvas(HAIR_DRYER_WEAPON_SIZE));
     this.textures.addCanvas('weapon_keyboard', createKeyboardCanvas(KEYBOARD_WEAPON_SIZE));
     this.textures.addCanvas('weapon_whip', createWhipCanvas(WHIP_WEAPON_SIZE));
     this.textures.addCanvas('weapon_bamboo_cane', createBambooCaneCanvas(BAMBOO_CANE_WEAPON_SIZE));

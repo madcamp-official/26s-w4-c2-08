@@ -87,8 +87,11 @@ export default class Hud {
 
     this.panelOpen = false;
     this.activeTab = 'weapon';
+    this.infoTooltipOpen = false;
 
     this.settingsButton = this.createSettingsButton(() => this.togglePanel());
+    this.infoButton = this.createInfoButton(() => this.toggleInfoTooltip());
+    this.infoTooltip = this.createInfoTooltip();
 
     this.sidePanel = this.createSidePanel({
       currentBossTypeId: currentBossType,
@@ -154,12 +157,17 @@ export default class Hud {
   }
 
   // 둥근 배경 + 히트 영역만 만드는 하부 헬퍼. 아이콘(텍스트/이미지)은 호출부가 알아서 얹는다.
-  createPillBackground(x, y, size, bgColor, onClick) {
+  // strokeColor를 주면(옵션) 테두리도 같이 그린다 — 기존 호출부(설정/나가기 버튼)는 안 넘겨서 그대로 꽉 찬 배경.
+  createPillBackground(x, y, size, bgColor, onClick, strokeColor, strokeWidth = 2) {
     const radius = size / 2;
 
     const bg = this.scene.add.graphics().setDepth(HUD_DEPTH);
     bg.fillStyle(bgColor, 1);
     bg.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
+    if (strokeColor !== undefined) {
+      bg.lineStyle(strokeWidth, strokeColor, 1);
+      bg.strokeRoundedRect(x - size / 2, y - size / 2, size, size, radius);
+    }
 
     const hitArea = new Phaser.Geom.Rectangle(x - size / 2, y - size / 2, size, size);
     bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
@@ -181,6 +189,72 @@ export default class Hud {
     const icon = this.scene.add.image(x, y, 'icon_menu').setDisplaySize(22, 22).setDepth(HUD_DEPTH);
 
     return { bg, icon };
+  }
+
+  // 톱니바퀴(설정) 버튼 왼쪽에 붙는 작은 안내(ⓘ) 버튼 — extension 쪽 Token Watch Hook 설정을 켜면
+  // 뭐가 달라지는지 게임 화면 안에서 알려주는 용도. 다른 버튼들(꽉 찬 액센트 배경)과 달리 배경은
+  // 패널 톤 그대로 두고 테두리/글자만 형광 초록(PANEL_ACCENT)으로 — 배경에 묻히지 않게 대비를 준다.
+  createInfoButton(onClick) {
+    const size = 26;
+    const x = this.scene.scale.width - 40 - 16 - size / 2 - 10; // 톱니바퀴 버튼(40px, x=width-16-20) 왼쪽에 10px 띄우고 배치
+    const y = TOP_HUD_Y;
+
+    const bg = this.createPillBackground(x, y, size, PANEL_CONTENT_BG, onClick, PANEL_ACCENT, 1.5);
+    // 기울임(italic)이 픽셀 폰트(Galmuri11)에서 삐뚤빼뚤하게 보여서 뺐다 — bold만으로 똑바르게.
+    const icon = this.scene.add.text(x, y, 'i', {
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: PANEL_ACCENT_CSS,
+      fontFamily: UI_FONT_FAMILY,
+    }).setOrigin(0.5).setDepth(HUD_DEPTH);
+
+    return { bg, icon };
+  }
+
+  // ⓘ 버튼을 누르면 뜨는 짧은 안내 팝업. 기본은 숨김(visible=false) 상태로 만들어두고
+  // toggleInfoTooltip이 보이기/숨기기만 전환한다 — 사이드 패널처럼 슬라이드 트윈은 필요 없어 단순 토글로 충분하다.
+  createInfoTooltip() {
+    const width = 260;
+    const height = 92;
+    const x = this.scene.scale.width - 16 - width; // 오른쪽 끝에 맞춰서 버튼들 아래로 자연스럽게 이어지게
+    const y = TOP_HUD_Y + 34;
+
+    const bg = this.scene.add.graphics().setDepth(HUD_DEPTH);
+    bg.fillStyle(PANEL_HEADER_BG, 0.97);
+    bg.fillRoundedRect(x, y, width, height, 10);
+    bg.lineStyle(1, PANEL_ACCENT, 0.6);
+    bg.strokeRoundedRect(x, y, width, height, 10);
+    bg.setVisible(false);
+
+    const text = this.scene.add.text(x + 14, y + 12, [
+      'VSCode 설정에서 "Hit the Agent: Enable',
+      'Token Watch Hook"을 켜면, Claude Code',
+      '토큰 사용량이 임계치를 넘을 때 이 캐릭터가',
+      '실시간으로 말을 겁니다.',
+    ].join('\n'), {
+      fontSize: '11px',
+      color: '#ffffff',
+      fontFamily: UI_FONT_FAMILY,
+      lineSpacing: 4,
+    }).setDepth(HUD_DEPTH).setVisible(false);
+
+    // 팝업 배경도 클릭 판정을 흡수해야, 팝업이 떠 있는 상태에서 그 아래 필드를 클릭한 것으로 오인해
+    // 무기가 스폰되는(togglePanel 주석의 isPointerOnUI 참고) 일이 없다.
+    const hitArea = new Phaser.Geom.Rectangle(x, y, width, height);
+    bg.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains });
+    this.uiElements.add(bg);
+
+    return { bg, text };
+  }
+
+  // forceOpen 생략 시 토글. togglePanel(forceOpen)과 같은 패턴 — 사이드 패널을 열 때 이 팝업을
+  // 강제로 닫는 데도(this.toggleInfoTooltip(false)) 재사용한다.
+  toggleInfoTooltip(forceOpen) {
+    const shouldOpen = forceOpen === undefined ? !this.infoTooltipOpen : forceOpen;
+    if (shouldOpen === this.infoTooltipOpen) return;
+    this.infoTooltipOpen = shouldOpen;
+    this.infoTooltip.bg.setVisible(shouldOpen);
+    this.infoTooltip.text.setVisible(shouldOpen);
   }
 
   // 패널 왼쪽 가장자리(로컬 x=0)에서 게임 화면 쪽으로 튀어나오는 닫기 손잡이.
@@ -331,6 +405,8 @@ export default class Hud {
     const shouldOpen = forceOpen === undefined ? !this.panelOpen : forceOpen;
     if (shouldOpen === this.panelOpen) return;
     this.panelOpen = shouldOpen;
+    // 안내 팝업(ⓘ)과 화면 자리가 겹칠 수 있어서, 무기/보스/배경 패널을 열면 안내 팝업은 닫아둔다.
+    if (shouldOpen) this.toggleInfoTooltip(false);
 
     // 열 때마다 스크롤 위치를 맨 위로 되돌려서, 스크롤해 둔 채 닫았다가 다시 열었을 때
     // 첫 줄이 안 보여 패널이 비어 보이는 혼란을 막는다.

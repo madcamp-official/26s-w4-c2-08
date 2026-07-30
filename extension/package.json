@@ -3,11 +3,26 @@
   "displayName": "Hit the Agent",
   "description": "VSCode 안에서 실행되는 보스 클리커 게임 + git repo 단위 팀 랭킹",
   "version": "0.0.1",
-  "publisher": "hit-the-agent-dev",
+  "publisher": "Jaeyun",
+  "icon": "resources/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/madcamp-official/26s-w4-c2-08.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "game",
+    "clicker",
+    "agent",
+    "leaderboard",
+    "fun"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -42,6 +57,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.4.0"
   }
 }

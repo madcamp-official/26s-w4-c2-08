@@ -32,7 +32,8 @@ VSCode 안에서 실행되는 보스 클리커 게임. 바이브 코딩 중 비�
 
 - 효과음: 대부분 [Pixabay](https://pixabay.com), 일부(`seoyoon.wav`)는 자체 녹음
 - 폰트: [Galmuri](https://github.com/quiple/galmuri) (Lee Minseo, SIL Open Font License 1.1)
-- 아이콘: [Iconoir](https://iconoir.com) (MIT License)
+- UI 아이콘(로그아웃, 메뉴 등): [Iconoir](https://iconoir.com) (MIT License)
+- 확장 아이콘: 자체 제작
 
 ## 라이선스
 

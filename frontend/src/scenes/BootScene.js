@@ -59,7 +59,6 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('basketball_bounce', assetUrl('audio/basketball.mp3'));
     this.load.audio('hit_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
     this.load.audio('keyboard_smash', assetUrl('audio/keyboard_smash.mp3'));
-    this.load.audio('pistol_impact', assetUrl('audio/pistol_impact.mp3'));
     this.load.audio('pistol_shot', assetUrl('audio/pistol_shot.mp3'));
     this.load.audio('machine_gun_shot', assetUrl('audio/machinegun.mp3'));
     this.load.audio('shotgun_blast', assetUrl('audio/shotgun_blast.mp3'));

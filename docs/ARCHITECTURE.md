@@ -52,9 +52,9 @@ online 모드에서 서버 요청이 실패해도 게임이 죽지 않도록 fal
 
 ## Stop 훅 (토큰 사용량 기반 실시간 캐릭터 대사)
 
-`hitTheAgent.enableTokenWatchHook` 설정(기본 off)을 켜면, Claude Code가 **매 턴 응답을 마칠 때마다**(`Stop` 이벤트) 이번 세션 누적 토큰 사용량을 확인해 임계치(`hitTheAgent.tokenThreshold`)를 넘기면 확률적으로 게임 캐릭터가 대사를 띄운다. extension이 직접 감지하는 게 아니라 Claude Code 자체의 hook 메커니즘에 얹는 구조라, 두 프로세스가 파일로만 통신한다. 처음엔 `SessionEnd`(세션 완전 종료 시 1회)로 만들었다가, 게임이 열려 있는 동안 실시간으로 반응하게 하려고 `Stop`(매 턴)으로 바꿨다.
+`hitTheAgent.enableTokenWatchHook` 설정(기본 off)을 켜면, Claude Code가 **매 턴 응답을 마칠 때마다**(`Stop` 이벤트) 이번 세션 누적 토큰 사용량을 확인해 임계치(`extension/src/hookManager.ts`의 `TOKEN_THRESHOLD` 상수, 코드에 고정값)를 넘기면 확률적으로 게임 캐릭터가 대사를 띄운다. extension이 직접 감지하는 게 아니라 Claude Code 자체의 hook 메커니즘에 얹는 구조라, 두 프로세스가 파일로만 통신한다. 처음엔 `SessionEnd`(세션 완전 종료 시 1회)로 만들었다가, 게임이 열려 있는 동안 실시간으로 반응하게 하려고 `Stop`(매 턴)으로 바꿨다.
 
-1. **등록/해제**: `extension/src/hookManager.ts`가 워크스페이스의 `.claude/settings.local.json`(로컬 전용, gitignore 대상 — 팀원 설정에는 영향 없음)에 `hooks.Stop` 항목을 추가/제거한다. `activate()` 시점과 두 설정 변경 시점에 동기화되며, 우리가 심은 항목인지는 커맨드 문자열에 `token-watch-hook.js`가 포함돼 있는지로 식별해 다른 훅은 건드리지 않는다. `Stop`은 matcher를 지원하지 않는다.
+1. **등록/해제**: `extension/src/hookManager.ts`가 워크스페이스의 `.claude/settings.local.json`(로컬 전용, gitignore 대상 — 팀원 설정에는 영향 없음)에 `hooks.Stop` 항목을 추가/제거한다. `activate()` 시점과 `enableTokenWatchHook` 설정 변경 시점에 동기화되며, 우리가 심은 항목인지는 커맨드 문자열에 `token-watch-hook.js`가 포함돼 있는지로 식별해 다른 훅은 건드리지 않는다. `Stop`은 matcher를 지원하지 않는다.
 2. **훅 실행**: Claude Code가 각 턴을 마칠 때마다 `node extension/scripts/token-watch-hook.js --threshold=... --chance=... --stateFile=...`를 실행하고, `{ session_id, transcript_path, cwd, stop_hook_active, ... }`를 stdin으로 넘겨준다. 이 스크립트는 VSCode API에 접근할 수 없는 완전히 독립된 Node 프로세스다.
 3. **절대 block하면 안 됨**: `Stop` 훅은 SessionEnd와 달리 exit code 2나 `{"decision":"block"}`을 반환하면 사용자의 실제 턴이 끝나지 못하게 막아버릴 수 있다. 이 스크립트는 순수 관찰자로만 동작 — 항상 exit 0, stdout에 아무것도 안 찍고, 모든 에러 경로(최상위 try/catch 포함)를 조용히 삼킨다. `stop_hook_active`가 true면(재진입 루프 방지용 플래그) 바로 종료한다.
 4. **토큰 계산 — 증분(incremental) 방식**: 매 턴마다 훅이 도는 만큼, 매번 트랜스크립트 전체를 다시 읽으면 세션이 길어질수록 턴마다 지연이 계속 늘어난다(Stop 훅은 동기적으로 사용자의 다음 입력을 막는 훅이라 이 지연이 그대로 체감됨). 그래서 세션별 진행 상태를 `.claude/hit-the-agent/progress/<session_id>.json`에 `{ offset, tokenTotal, notified }`로 저장해두고, 매 턴마다 트랜스크립트 파일에서 **이전 offset 이후로 새로 추가된 바이트만** `fs.readSync`로 읽어 `type: "assistant"`인 줄들의 `message.usage.input_tokens + output_tokens`만 더한다. 마지막 줄이 아직 개행으로 안 끝났으면(쓰는 도중) 다음 턴으로 넘긴다.

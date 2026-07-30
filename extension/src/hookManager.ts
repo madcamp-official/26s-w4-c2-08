@@ -2,9 +2,12 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// 확률적으로 게임 캐릭터가 말을 걸 확률. 세션 누적 토큰이 threshold를 넘긴 턴부터 매 턴 이 확률로 재도전한다.
-// TODO 테스트 후 0.3 정도로 되돌리기 — 지금은 실측 테스트가 매번 확실히 발동하도록 1로 임시 고정해둔 상태.
+// 확률적으로 게임 캐릭터가 말을 걸 확률. 매 턴 이 확률로 도전한다. 무조건 뜨도록 1로 고정.
 const TRIGGER_CHANCE = 1;
+// 세션 내 input+output 토큰 합계가 이 값을 넘겨야 이벤트가 발생할 확률이 생긴다.
+// 임계치 없이 매 턴 무조건 뜨도록 0으로 고정 — 대사 톤은 실제 tokenCount 기준 3단계로 여전히 갈린다
+// (frontend/src/config/constants.js의 AGENT_TAUNT_TOKEN_TIERS).
+const TOKEN_THRESHOLD = 0;
 // 우리가 심은 Stop 항목인지 식별하는 마커 — 커맨드 문자열에 이 스크립트 경로가 포함돼 있는지로 판단한다.
 const HOOK_SCRIPT_NAME = 'token-watch-hook.js';
 
@@ -57,20 +60,19 @@ function isOurEntry(entry: ClaudeHookEntry): boolean {
   return entry.hooks?.some((h) => h.command.includes(HOOK_SCRIPT_NAME)) ?? false;
 }
 
-function buildHookCommand(extensionPath: string, workspaceRoot: string, threshold: number): string {
+function buildHookCommand(extensionPath: string, workspaceRoot: string): string {
   const scriptPath = path.join(extensionPath, 'scripts', HOOK_SCRIPT_NAME);
   const stateFilePath = getStateFilePath(workspaceRoot);
   const progressFilePath = getProgressFilePath(workspaceRoot);
-  return `node ${quote(scriptPath)} --threshold=${threshold} --chance=${TRIGGER_CHANCE} --stateFile=${quote(stateFilePath)} --progressFile=${quote(progressFilePath)}`;
+  return `node ${quote(scriptPath)} --threshold=${TOKEN_THRESHOLD} --chance=${TRIGGER_CHANCE} --stateFile=${quote(stateFilePath)} --progressFile=${quote(progressFilePath)}`;
 }
 
-// 설정값(on/off, threshold)과 .claude/settings.local.json의 실제 훅 등록 상태를 맞춘다.
+// 설정값(on/off)과 .claude/settings.local.json의 실제 훅 등록 상태를 맞춘다.
 // activate 시점과 설정 변경 시점 양쪽에서 호출된다 — 멱등이라 여러 번 불러도 안전하다.
 // Stop은 매 턴 종료마다 발동하는 훅이라 SessionEnd와 달리 실시간에 가깝게 반응할 수 있다 (docs/ARCHITECTURE.md 참고).
 export function syncTokenWatchHook(context: vscode.ExtensionContext, workspaceRoot: string): void {
   const config = vscode.workspace.getConfiguration('hitTheAgent');
   const enabled = config.get<boolean>('enableTokenWatchHook', false);
-  const threshold = config.get<number>('tokenThreshold', 50000);
 
   const settingsPath = getSettingsPath(workspaceRoot);
   const settings = readSettings(settingsPath);
@@ -86,7 +88,7 @@ export function syncTokenWatchHook(context: vscode.ExtensionContext, workspaceRo
 
   if (enabled) {
     remaining.push({
-      hooks: [{ type: 'command', command: buildHookCommand(context.extensionPath, workspaceRoot, threshold) }],
+      hooks: [{ type: 'command', command: buildHookCommand(context.extensionPath, workspaceRoot) }],
     });
   }
 

@@ -193,7 +193,6 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 | `baseball_throw` | baseball.mp3 | 야구공/토마토/수박/물풍선/비치볼/부메랑/수류탄/다이너마이트 발사 |
 | `hit_wall` | sound_of_hitting_a_wall.mp3 | 권투 글러브 타격, 구석 튕김·패널 밀림 착지음 |
 | `keyboard_smash` | keyboard_smash.mp3 | 키보드 타격 |
-| `pistol_impact` | pistol_impact.mp3 | 모든 총기(권총/기관총/산탄총/저격총/리볼버) 타격음 |
 | `panel_open` | pannel_open.mp3 | 사이드 패널 여닫기 |
 | `exit_button` | exit_button.mp3 | 종료 버튼 클릭 |
 | `boss_vomit` | obite.mp3 | 구토 반응 |

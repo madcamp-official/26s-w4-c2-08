@@ -84,10 +84,7 @@ export function activate(context: vscode.ExtensionContext) {
     syncTokenWatchHook(context, workspaceRoot);
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (
-          e.affectsConfiguration('hitTheAgent.enableTokenWatchHook') ||
-          e.affectsConfiguration('hitTheAgent.tokenThreshold')
-        ) {
+        if (e.affectsConfiguration('hitTheAgent.enableTokenWatchHook')) {
           syncTokenWatchHook(context, workspaceRoot);
         }
       }),

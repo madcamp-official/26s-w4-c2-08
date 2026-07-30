@@ -22,7 +22,6 @@ VSCode 안에서 실행되는 보스 클리커 게임. 바이브 코딩 중 비�
 | 설정 | 기본값 | 설명 |
 |---|---|---|
 | `hitTheAgent.enableTokenWatchHook` | `false` | 켜면 Claude Code가 매 턴 응답을 마칠 때마다 누적 토큰 사용량을 확인해 임계치를 넘으면 확률적으로 게임 캐릭터가 실시간으로 말을 겁니다. |
-| `hitTheAgent.tokenThreshold` | `1` | 위 옵션이 발동하는 토큰 임계치(세션 내 input+output 합계). |
 
 ## 요구사항
 

@@ -87,7 +87,7 @@ Express + `better-sqlite3`(WAL 모드), KCLOUD VM에 systemd로 상시 구동. �
 
 ### Stop 훅 — 토큰 사용량 기반 실시간 캐릭터 대사 (선택 기능, 기본 off)
 
-`hitTheAgent.enableTokenWatchHook` 설정을 켜면, Claude Code가 매 턴 응답을 마칠 때마다 세션 누적 토큰 사용량이 임계치(`hitTheAgent.tokenThreshold`)를 넘길 때 확률적으로 게임 캐릭터가 대사를 띄운다. 워크스페이스의 `.claude/settings.local.json`(로컬 전용)에 마커 기반으로 Stop 훅을 등록/해제하며, 항상 exit 0으로 종료해 사용자의 실제 코딩 세션을 절대 막지 않는다. 자세한 동작은 [ARCHITECTURE.md](./docs/ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고.
+`hitTheAgent.enableTokenWatchHook` 설정을 켜면, Claude Code가 매 턴 응답을 마칠 때마다 세션 누적 토큰 사용량이 임계치(코드에 고정된 `TOKEN_THRESHOLD`, `extension/src/hookManager.ts`)를 넘길 때 확률적으로 게임 캐릭터가 대사를 띄운다. 워크스페이스의 `.claude/settings.local.json`(로컬 전용)에 마커 기반으로 Stop 훅을 등록/해제하며, 항상 exit 0으로 종료해 사용자의 실제 코딩 세션을 절대 막지 않는다. 자세한 동작은 [ARCHITECTURE.md](./docs/ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고.
 
 ---
 

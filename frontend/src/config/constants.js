@@ -766,11 +766,7 @@ export const AGENT_TAUNT_TOKEN_TIERS = {
 //<1000
 const AGENT_TAUNT_LINES_LOW = [
   '이정도면 그냥해',
-  '나 아직 안 죽었다?',
-  '컨텍스트가 무겁다구요',
-  '컨텍스트 창 터지겠다!!',
-  '토큰을 대체 얼마나 쓴 거야??',
-  '프롬프트 진짜 못쓰네',
+  '토큰 야미',
 ];
 //<10000
 const AGENT_TAUNT_LINES_MID = [

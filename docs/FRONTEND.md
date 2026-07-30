@@ -18,6 +18,7 @@ webview 안에서 실행되는 보스 클리커 게임 **Hit the Agent**의 씬 
 | [게임 종료 → onGameEnd](#게임-종료--ongameend) — online: 유저네임 확보 후 점수 제출 + 리더보드 조회(실패 시 로컬 표시로 폴백), local: `saveLocalScore`로 최고기록 저장 | ✅ 구현됨 |
 | extension ↔ webview 연동 | ✅ 구현됨 — `extension/src/extension.ts`, `frontend/src/vscodeBridge.js` |
 | Stop 훅 기반 실시간 캐릭터 대사(`agentTaunt`) | ✅ 구현됨 — 기본 off, `hitTheAgent.enableTokenWatchHook` 설정으로 토글. [ARCHITECTURE.md](./ARCHITECTURE.md#stop-훅-토큰-사용량-기반-실시간-캐릭터-대사) 참고 |
+| 보너스 버그(`FlyingBug`) — 프로펠러(실제로 회전) 모자 쓴 개발자가 노트북을 안고 화면 위쪽을 가로질러 날아다니다 클릭하면 보너스 점수+커피 한 잔 드롭, 놓치면 쏟은 커피 드롭 | ✅ 구현됨 — `frontend/src/entities/FlyingBug.js`, 전투 파이프라인(CombatSystem)과 무관한 독립 미니게임 |
 
 콤보 시스템/크리티컬 히트는 원래 설계에서 제외하기로 했었으나, 실제로는 [파이어브레스 콤보](#보스-메커닉)라는 형태로 유사한 개념이 다시 들어왔다(순수 비주얼, 데미지 배율에는 영향 없음).
 

@@ -2460,3 +2460,308 @@ export function createHairDryerCanvas(size) {
 
   return canvas;
 }
+
+// 보너스 버그(FlyingBug) 몸통: 프로펠러 모자를 쓴 개발자가 노트북을 품에 안고 날아다니는 모습
+// ("Hit the Agent"답게 코딩하며 날아다니는 컨셉). 프로펠러는 실제로 빙글빙글 돌아야 해서 이
+// 텍스처에는 안 그리고(FlyingBug.js가 Container로 body 위에 별도 프로펠러 스프라이트를 얹어
+// 회전시킨다, createFlyingBugPropellerCanvas 참고 — 모자의 기둥까지만 여기서 그리고 날개+허브는
+// 그쪽 텍스처 몫이다. 기둥 끝 좌표(propAttachY)를 FLYING_BUG_PROPELLER_OFFSET_RATIO로 맞춰둬야
+// 두 레이어가 어긋나지 않는다) 모자까지만 그린다. 정사각형이 아니라 세로로 긴 캔버스라
+// createCanvas 대신 직접 만든다. 몸통 색은 debugger 무기(createDeveloperCanvas)의 파란 셔츠와
+// 겹치지 않게 초록 후드로 구분한다.
+export function createFlyingBugBodyCanvas(width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const cx = width / 2;
+
+  const skinColor = '#f0b892';
+  const skinStroke = '#c98a5e';
+  const capColor = '#e0574a';
+  const capStroke = '#a8332a';
+  const hoodieColor = '#3fae7f';
+  const hoodieStroke = '#237a52';
+  const pantsColor = '#5a5a58';
+  const darkLine = '#2b2d30';
+  const laptopColor = '#4a4d52';
+  const laptopStroke = '#2b2d30';
+  const screenColor = '#8fd6ff';
+
+  // 머리
+  const headCy = height * 0.22;
+  const headR = width * 0.22;
+  ctx.fillStyle = skinColor;
+  ctx.strokeStyle = skinStroke;
+  ctx.lineWidth = Math.max(1, width * 0.02);
+  ctx.beginPath();
+  ctx.arc(cx, headCy, headR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 모자 — 머리 위쪽 절반을 덮는 돔 + 챙
+  ctx.fillStyle = capColor;
+  ctx.strokeStyle = capStroke;
+  ctx.lineWidth = Math.max(1, width * 0.02);
+  ctx.beginPath();
+  ctx.arc(cx, headCy - headR * 0.15, headR * 1.05, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(cx, headCy - headR * 0.15, headR * 1.08, headR * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 프로펠러 기둥 — 모자 위로 짧게 솟은 대만 여기서 그리고, 실제로 도는 날개+허브는 별도 레이어
+  // (createFlyingBugPropellerCanvas)가 이 기둥 끝(propAttachY) 위치에 얹힌다.
+  const propAttachY = headCy - headR * 1.35;
+  ctx.strokeStyle = darkLine;
+  ctx.lineWidth = Math.max(1.5, width * 0.035);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, headCy - headR * 1.2);
+  ctx.lineTo(cx, propAttachY);
+  ctx.stroke();
+
+  // 신난 표정 — 웃는 눈(^ ^) + 함박웃음
+  ctx.strokeStyle = darkLine;
+  ctx.lineWidth = Math.max(1.2, width * 0.025);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.arc(cx + side * headR * 0.42, headCy + headR * 0.05, headR * 0.2, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.stroke();
+  });
+  ctx.beginPath();
+  ctx.arc(cx, headCy + headR * 0.42, headR * 0.35, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  // 몸(후드) — 살짝 벌어진 어깨선의 사다리꼴로 아래가 넓어 보이게
+  const bodyTop = headCy + headR * 0.85;
+  const bodyBottom = height * 0.62;
+  const shoulderHalf = width * 0.2;
+  const waistHalf = width * 0.28;
+  ctx.fillStyle = hoodieColor;
+  ctx.strokeStyle = hoodieStroke;
+  ctx.lineWidth = Math.max(1, width * 0.02);
+  ctx.beginPath();
+  ctx.moveTo(cx - shoulderHalf, bodyTop);
+  ctx.lineTo(cx + shoulderHalf, bodyTop);
+  ctx.lineTo(cx + waistHalf, bodyBottom);
+  ctx.lineTo(cx - waistHalf, bodyBottom);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 다리 — 후드 아래로 살짝 삐져나온 짧은 다리(나는 자세라 뒤로 살짝 접힘)
+  ctx.fillStyle = pantsColor;
+  ctx.strokeStyle = darkLine;
+  ctx.lineWidth = Math.max(1, width * 0.015);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.ellipse(cx + side * waistHalf * 0.55, bodyBottom + height * 0.05, width * 0.09, height * 0.06, side * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // 노트북 — 후드 앞으로 들고 있는 자세. 밑변(키보드) 중심을 축으로 살짝 기울여 안고 있는 느낌을 준다.
+  const laptopBaseY = bodyBottom - height * 0.05;
+  const laptopWidth = width * 0.56;
+  const baseHeight = height * 0.035;
+  const screenHeight = height * 0.2;
+  const screenTopInset = width * 0.06;
+
+  ctx.save();
+  ctx.translate(cx, laptopBaseY);
+  ctx.rotate(-0.14);
+
+  const lx = -laptopWidth / 2;
+  ctx.fillStyle = laptopColor;
+  ctx.strokeStyle = laptopStroke;
+  ctx.lineWidth = Math.max(1, width * 0.02);
+  ctx.fillRect(lx, 0, laptopWidth, baseHeight);
+  ctx.strokeRect(lx, 0, laptopWidth, baseHeight);
+
+  ctx.beginPath();
+  ctx.moveTo(lx, 0);
+  ctx.lineTo(lx + screenTopInset, -screenHeight);
+  ctx.lineTo(lx + laptopWidth - screenTopInset, -screenHeight);
+  ctx.lineTo(lx + laptopWidth, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 화면 안쪽 밝은 부분(코드 화면 느낌)
+  ctx.fillStyle = screenColor;
+  const inset = width * 0.035;
+  ctx.beginPath();
+  ctx.moveTo(lx + inset, -inset);
+  ctx.lineTo(lx + screenTopInset + inset * 0.6, -screenHeight + inset);
+  ctx.lineTo(lx + laptopWidth - screenTopInset - inset * 0.6, -screenHeight + inset);
+  ctx.lineTo(lx + laptopWidth - inset, -inset);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+
+  // 손 — 노트북 밑변 양 끝을 붙잡은 것처럼 몸통 색 손 두 개를 겹쳐 그린다
+  ctx.fillStyle = skinColor;
+  ctx.strokeStyle = skinStroke;
+  ctx.lineWidth = Math.max(1, width * 0.015);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.ellipse(cx + side * laptopWidth * 0.42, laptopBaseY + height * 0.02, width * 0.09, width * 0.065, side * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  return canvas;
+}
+
+// 보너스 버그(FlyingBug) 프로펠러 — body 위에 별도 레이어로 얹혀 FlyingBug.js가 매 프레임 회전시킨다.
+// 정사각형 캔버스 중앙에 허브+날개만 그려서 자기 중심으로 자연스럽게 빙글빙글 돌게 한다. 눈에 잘
+// 띄어야 해서 두꺼운 노란 날개 + 검정 허브로 확실하게 그린다.
+export function createFlyingBugPropellerCanvas(size) {
+  const darkLine = '#2b2d30';
+  const bladeColor = '#ffd54a';
+  const bladeStroke = '#c9971f';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cy = size / 2;
+
+  ctx.fillStyle = bladeColor;
+  ctx.strokeStyle = bladeStroke;
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.ellipse(cx + side * size * 0.27, cy, size * 0.2, size * 0.06, side * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = darkLine;
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  return canvas;
+}
+
+// 보너스 버그를 놓쳤을 때 바닥에 떨어지는 아이템 — 개발자가 놀라서 놓친 커피가 옆으로 쏟아진 모습.
+// 이모지 대신 다른 무기들과 같은 방식으로 직접 그린다.
+export function createSpilledCoffeeCanvas(size) {
+  const cupColor = '#ffffff';
+  const cupStroke = '#c9c2a8';
+  const coffeeColor = '#5c3a1a';
+  const puddleColor = '#7a4e28';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const groundY = size * 0.8;
+
+  // 웅덩이 — 컵보다 먼저 그려서 컵 아래 깔리게
+  ctx.fillStyle = puddleColor;
+  ctx.beginPath();
+  ctx.ellipse(cx + size * 0.08, groundY, size * 0.34, size * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 옆으로 쓰러진 컵 — 눕혀서 그린 뒤 전체를 회전시켜 배치
+  ctx.save();
+  ctx.translate(cx - size * 0.16, groundY - size * 0.12);
+  ctx.rotate(Math.PI * 0.42);
+
+  const topHalf = size * 0.2;
+  const bottomHalf = size * 0.15;
+  const cupLen = size * 0.32;
+  ctx.fillStyle = cupColor;
+  ctx.strokeStyle = cupStroke;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.beginPath();
+  ctx.moveTo(-topHalf, 0);
+  ctx.lineTo(topHalf, 0);
+  ctx.lineTo(bottomHalf, cupLen);
+  ctx.lineTo(-bottomHalf, cupLen);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 입구에서 흘러나오는 커피 자국
+  ctx.fillStyle = coffeeColor;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, topHalf * 0.85, size * 0.03, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 손잡이
+  ctx.beginPath();
+  ctx.arc(topHalf + size * 0.02, cupLen * 0.4, size * 0.1, -Math.PI * 0.4, Math.PI * 0.4);
+  ctx.stroke();
+
+  ctx.restore();
+
+  return canvas;
+}
+
+// 보너스 버그를 잡았을 때 그냥 사라지지 않고 그 자리에 떨어뜨리는 보상 — 김이 모락모락 나는 커피 한 잔.
+export function createCoffeeCupCanvas(size) {
+  const cupColor = '#ffffff';
+  const cupStroke = '#c9c2a8';
+  const coffeeColor = '#5c3a1a';
+  const saucerColor = '#e8e4d8';
+  const steamColor = '#c9c2a8';
+
+  const canvas = createCanvas(size);
+  const ctx = canvas.getContext('2d');
+  const cx = size / 2;
+  const cupTop = size * 0.36;
+  const cupBottom = size * 0.78;
+  const topHalf = size * 0.22;
+  const bottomHalf = size * 0.16;
+
+  // 받침
+  ctx.fillStyle = saucerColor;
+  ctx.strokeStyle = cupStroke;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.beginPath();
+  ctx.ellipse(cx, cupBottom + size * 0.04, bottomHalf * 1.7, size * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 컵 몸통
+  ctx.fillStyle = cupColor;
+  ctx.beginPath();
+  ctx.moveTo(cx - topHalf, cupTop);
+  ctx.lineTo(cx + topHalf, cupTop);
+  ctx.lineTo(cx + bottomHalf, cupBottom);
+  ctx.lineTo(cx - bottomHalf, cupBottom);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 손잡이
+  ctx.beginPath();
+  ctx.arc(cx + topHalf + size * 0.06, (cupTop + cupBottom) / 2, size * 0.13, -Math.PI * 0.4, Math.PI * 0.4);
+  ctx.stroke();
+
+  // 커피 수면
+  ctx.fillStyle = coffeeColor;
+  ctx.beginPath();
+  ctx.ellipse(cx, cupTop, topHalf * 0.92, size * 0.035, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 김 — 위로 흔들리며 올라가는 물결선 2개
+  ctx.strokeStyle = steamColor;
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(cx + side * size * 0.08, cupTop - size * 0.06);
+    ctx.quadraticCurveTo(cx + side * size * 0.18, cupTop - size * 0.18, cx + side * size * 0.06, cupTop - size * 0.3);
+    ctx.stroke();
+  });
+
+  return canvas;
+}

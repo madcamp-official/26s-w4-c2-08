@@ -48,9 +48,11 @@ import {
   WASHING_MACHINE_POPUP_COLOR,
   WASHING_MACHINE_EJECT_MARGIN,
   HP_BAR_Y,
+  FLYING_BUG_CATCH_POPUP_COLOR,
 } from '../config/constants.js';
 import Boss from '../entities/Boss.js';
 import WeaponManager from '../entities/WeaponManager.js';
+import FlyingBug from '../entities/FlyingBug.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import Hud from '../ui/Hud.js';
 import { showUsernameModal } from '../ui/usernameModal.js';
@@ -149,6 +151,13 @@ export default class GameScene extends Phaser.Scene {
       this.hud.setActiveWeaponOption(null);
     };
 
+    // 화면 위쪽을 주기적으로 가로질러 날아다니는 보너스 버그 — 잡으면 점수 보너스, 놓치면 바닥에 잔해.
+    // CombatSystem을 거치지 않는 독립 미니게임이라 콜백으로만 점수/이펙트를 연결한다.
+    this.flyingBug = new FlyingBug(this, {
+      onCatch: (bonus, x, y) => this.onBugCatch(bonus, x, y),
+      onMiss: () => this.onBugMiss(),
+    });
+
     this.sniperScope = this.createSniperScope();
 
     // 보스를 잡을 때마다(dragstart) 흔들기 누적치를 새로 시작한다 — 이전에 잡았을 때의 흔들림이 이어지지 않게.
@@ -187,6 +196,9 @@ export default class GameScene extends Phaser.Scene {
       const wasIdleDrifting = this.isIdleDrifting;
       this.markInteraction();
       if (this.isEnded) return;
+      // 날아다니는 보너스 버그를 잡는 클릭은 무기 선택 여부와 무관하게 항상 우선 처리한다 — 잡혔으면
+      // 그 클릭으로 무기까지 같이 나가면 안 되므로 여기서 바로 return.
+      if (this.flyingBug.tryCatch(pointer.x, pointer.y)) return;
       // 나가기 버튼 쪽으로 몰래 걸어가던 도중 클릭에 걸리면 들킨 반응 대사를 띄운다 — 거의 항상
       // 걷는 중인 상태라 쿨다운 안에는 다시 띄우지 않는다.
       if (wasIdleDrifting && this.time.now - this.lastIdleCaughtTauntTime >= AGENT_TAUNT_IDLE_CAUGHT_COOLDOWN_MS) {
@@ -289,6 +301,7 @@ export default class GameScene extends Phaser.Scene {
     // checkBossAgainstPanel이 같은 프레임에 그 상태를 보고 flyOutToLeftWall을 건너뛸 수 있다.
     this.updateIdleDrift(time, delta);
     this.checkBossAgainstPanel();
+    this.flyingBug.update(time, delta);
     // 방패가 떠 있는 동안 지금 들고 있는 무기(=공격이 들어오는 쪽) 방향을 막도록 위치 갱신.
     // 무기를 안 들고 있는 프레임엔 aimPoint가 없어 Boss 내부에서 마지막 방향을 그대로 유지한다.
     // weapon.x/y 자체가 아니라 실제 타격 지점(getHitPoint)을 써야 한다 — 방망이(PORTABLE)는 회전
@@ -615,6 +628,7 @@ export default class GameScene extends Phaser.Scene {
     const overlay = this.hud.showGameEndOverlay(this.combat.score, () => this.onRestartButtonClick());
     this.physics.world.pause();
     this.weaponManager.stopAllFiring();
+    this.flyingBug.shutdown();
     this.setSniperScopeVisible(false);
     // 세탁기 데미지 틱/스핀 종료 타이머(scene.time)는 물리 pause와 무관하게 계속 돌아서, 정리하지
     // 않으면 결과 화면 위에서도 데미지가 계속 들어간다(bomb 퓨즈와 같은 이유, stopAllFiring 주석 참고).
@@ -794,6 +808,20 @@ export default class GameScene extends Phaser.Scene {
         onComplete: () => heart.destroy(),
       });
     }
+  }
+
+  // 보너스 버그(FlyingBug)를 잡았을 때 — 데미지/HP와 무관하게 점수만 더하고 골드색 팝업 + 반짝임을 띄운다.
+  onBugCatch(bonus, x, y) {
+    this.combat.addBonusScore(bonus);
+    this.hud.updateScoreText(this.combat.score);
+    this.sound.play('washing_machine_sparkle');
+    this.spawnDamagePopup({ amount: `+${bonus}`, x, y, color: FLYING_BUG_CATCH_POPUP_COLOR });
+    this.spawnHitSpark(x, y, 0xffd54a, 0.8);
+  }
+
+  // 놓친 버그가 반대쪽 끝에서 사라질 때 — 점수/HP는 그대로 두고 짧은 효과음만 재생한다(잔해는 FlyingBug가 직접 그린다).
+  onBugMiss() {
+    this.sound.play('thud_impact_hit', { volume: 0.4 });
   }
 
   // 패널 충돌로 왼쪽 벽까지 날아간 뒤(Boss.flyOutToLeftWall의 onComplete) 호출되는 보너스 데미지 처리.

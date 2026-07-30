@@ -169,6 +169,13 @@ export default class CombatSystem {
     this.onPet?.(amount, this.weaponManager.getHitPoint(weapon));
   }
 
+  // 보너스 버그(FlyingBug)를 잡았을 때 더하는 점수 — 무기 히트가 아니라 HP/넉백과 무관한 순수 점수 이벤트라
+  // rollDamage/takeDamage 파이프라인을 타지 않고 점수만 더한다.
+  addBonusScore(amount) {
+    this.score += amount;
+    return this.score;
+  }
+
   // 무기/배경 패널에 부딪혀 왼쪽 벽까지 날아갈 때 추가로 주는 보너스 데미지.
   // 연타 쿨다운(HIT_COOLDOWN)과 무관하게, 무기 히트와는 별개인 UI 충돌 이벤트로 취급한다.
   applyPanelPushDamage() {

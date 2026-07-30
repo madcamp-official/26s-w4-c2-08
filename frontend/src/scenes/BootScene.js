@@ -13,6 +13,7 @@ import {
   WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT,
   BOSS_BUMP_MAX_LEVEL,
   SLINGSHOT_FRAME_SIZE,
+  FLYING_BUG_WIDTH, FLYING_BUG_HEIGHT, FLYING_BUG_PROPELLER_SIZE, FLYING_BUG_DROP_SIZE, FLYING_BUG_CATCH_DROP_SIZE,
 } from '../config/constants.js';
 import { BACKGROUND_STYLES, createBackgroundCanvas } from '../config/backgrounds.js';
 import {
@@ -30,6 +31,7 @@ import {
   createWatermelonCanvas, createWatermelonSliceCanvas, createWaterBalloonCanvas, createUreaSolutionCanvas, createFryingPanCanvas, createSlipperCanvas,
   createBoxingGloveCanvas, createBeachBallCanvas, createBoomerangCanvas,
   createGrenadeCanvas, createDynamiteCanvas, createLipsCanvas, createBoredGirlCanvas, createWashingMachineCanvas, createHairDryerCanvas,
+  createFlyingBugBodyCanvas, createFlyingBugPropellerCanvas, createSpilledCoffeeCanvas, createCoffeeCupCanvas,
 } from '../entities/weaponSprites.js';
 import { assetUrl } from '../assetBase.js';
 
@@ -161,6 +163,12 @@ export default class BootScene extends Phaser.Scene {
     // setTexture로 갈아끼우기만 한다(재렌더링 없음).
     this.textures.addCanvas('weapon_washing_machine_closed', createWashingMachineCanvas(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT, { doorOpen: false }));
     this.textures.addCanvas('weapon_washing_machine_open', createWashingMachineCanvas(WASHING_MACHINE_WIDTH, WASHING_MACHINE_HEIGHT, { doorOpen: true }));
+
+    // 화면 위쪽을 가로질러 날아다니는 보너스 버그(FlyingBug)와, 놓쳤을 때 바닥에 떨어지는 잔해.
+    this.textures.addCanvas('flying_bug_body', createFlyingBugBodyCanvas(FLYING_BUG_WIDTH, FLYING_BUG_HEIGHT));
+    this.textures.addCanvas('flying_bug_propeller', createFlyingBugPropellerCanvas(FLYING_BUG_PROPELLER_SIZE));
+    this.textures.addCanvas('flying_bug_drop', createSpilledCoffeeCanvas(FLYING_BUG_DROP_SIZE));
+    this.textures.addCanvas('flying_bug_catch_drop', createCoffeeCupCanvas(FLYING_BUG_CATCH_DROP_SIZE));
 
     this.createThrowWeaponTexture();
   }

@@ -646,7 +646,7 @@ export const WEAPON_DEFINITIONS = {
     damageMultiplier: 0.8, // 감전 CC가 본체 역할이라 물리 데미지는 가볍게
   },
   [WEAPON_IDS.KEYBOARD]: {
-    name: 'KEYBOARD', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_keyboard', hitSound: 'keyboard_smash',
+    name: 'KEYBOARD', category: WEAPON_CATEGORIES.STATIC, texture: 'weapon_keyboard', hitSound: 'laptop_slam', hitVolume: 1.6, // 노트북 내려찍는 소리로 교체, 타격감 위해 볼륨 상향
   },
   // earBleed: 데미지 자체는 평범한 STATIC 무기와 같지만, 맞을 때마다 GameScene.onHit이 일반 스파크 대신
   // spawnEarBloodEffect(귀에서 피)를 띄운다 — heals/freezesBoss처럼 무기 특성을 나타내는 플래그.
@@ -836,3 +836,31 @@ export const AGENT_TAUNT_LINES_IDLE_CAUGHT = [
   '눈치챘네 ㅎㅎ',
   '아아아안녕',
 ];
+
+// 화면 위쪽을 가로질러 날아다니는 보너스 버그(FlyingBug) — 프로펠러 모자를 쓴 개발자가 노트북을 안고
+// 날아다닌다. 잡으면 보너스 점수 + 그 자리에 커피 한 잔을 떨어뜨리고, 놓치면 반대쪽 끝에서 놀라서
+// 쏟은 커피를 떨어뜨리고 사라진다 — 무기 판정(CombatSystem)과 무관한 별도의 클릭 미니게임이라
+// 점수만 CombatSystem.addBonusScore로 더한다.
+export const FLYING_BUG_WIDTH = 60; // px, 프로펠러 모자 개발자 + 품에 안은 노트북 캔버스 폭
+export const FLYING_BUG_HEIGHT = 100; // px, 세로로 긴 캔버스(모자~다리까지)
+export const FLYING_BUG_SPAWN_DELAY_MIN = 14000; // ms, 이전 버그가 사라진 뒤 다음 버그까지 최소 대기
+export const FLYING_BUG_SPAWN_DELAY_MAX = 26000; // ms
+export const FLYING_BUG_FLIGHT_Y_MIN = 70; // px, 날아다니는 y 범위(화면 위쪽 띠)
+export const FLYING_BUG_FLIGHT_Y_MAX = 150;
+export const FLYING_BUG_SPEED = 70; // px/sec, 가로 이동 속도
+export const FLYING_BUG_BOB_AMPLITUDE = 12; // px, 위아래로 까딱거리는 진폭
+export const FLYING_BUG_BOB_PERIOD_MS = 900; // ms, 한 번 까딱거리는 주기
+// 프로펠러는 body 텍스처와 별도 레이어(FlyingBug.js가 Container로 합성)라 자기 중심으로 계속 회전할 수 있다.
+export const FLYING_BUG_PROPELLER_SIZE = 46; // px, 프로펠러 레이어 캔버스 한 변
+// body 캔버스 중심 기준 프로펠러가 얹히는 y 오프셋 비율 — createFlyingBugBodyCanvas의 모자 기둥 끝
+// (propAttachY) 위치와 맞춰둔 값이라, 모자/머리 비율 공식을 바꾸면 이 값도 같이 조정해야 두 레이어가 안 어긋난다.
+export const FLYING_BUG_PROPELLER_OFFSET_RATIO = -0.46;
+export const FLYING_BUG_PROPELLER_SPIN_SPEED = 9; // rad/sec, 프로펠러 회전 속도
+export const FLYING_BUG_BONUS_SCORE_MIN = 40; // 잡았을 때 보너스 점수 범위
+export const FLYING_BUG_BONUS_SCORE_MAX = 80;
+export const FLYING_BUG_CATCH_COOLDOWN_MS = 250; // ms, 계속 클릭해서 연타로 여러 번 잡는 걸 허용하되 한 프레임에 중복 적립되는 것만 막는 최소 간격
+export const FLYING_BUG_CATCH_POPUP_COLOR = '#ffd54a'; // 보너스 점수 팝업 색(골드 계열, 데미지 팝업과 구분)
+export const FLYING_BUG_DROP_SIZE = 40; // px, 놓쳤을 때(쏟은 커피) 떨어지는 아이템 크기
+export const FLYING_BUG_DROP_FALL_DURATION = 450; // ms, 떨어지는 낙하 트윈 시간
+export const FLYING_BUG_DROP_LIFESPAN = 4000; // ms, 바닥에 남아있다 페이드아웃되기까지
+export const FLYING_BUG_CATCH_DROP_SIZE = 46; // px, 잡았을 때 그 자리에 떨어뜨리는 커피 한 잔 크기 — 작으면 뭘 떨어뜨렸는지 안 보여서 큼직하게

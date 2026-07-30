@@ -229,8 +229,8 @@ export default class Hud {
     const text = this.scene.add.text(x + 14, y + 12, [
       'VSCode 설정에서 "Hit the Agent: Enable',
       'Token Watch Hook"을 켜면, Claude Code',
-      '토큰 사용량이 임계치를 넘을 때 이 캐릭터가',
-      '실시간으로 말을 겁니다.',
+      '토큰 사용량에 따라 랜덤하게 나오는 agent의',
+      '실시간 대화를 볼 수 있습니다.',
     ].join('\n'), {
       fontSize: '11px',
       color: '#ffffff',

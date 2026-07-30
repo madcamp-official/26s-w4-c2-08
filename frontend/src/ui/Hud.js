@@ -35,16 +35,22 @@ const TAB_ORDER = ['weapon', 'boss', 'background'];
 const TAB_LABELS = { weapon: 'WEAPON', boss: 'AGENT', background: 'MAP' };
 
 // 체력바/점수/설정·종료 버튼처럼 화면에 고정된 HUD 요소가 항상 보스보다 위에 그려지도록 명시적으로
-// 주는 depth. sidePanel(패널) depth(1000)와 같은 층으로 맞춘다. 이 값을 명시하지 않으면 Phaser가
-// 같은 depth(기본 0)일 때 "가장 최근에 depth가 바뀐 순서"로 다시 정렬해버려서, 세탁기 무기가
-// 스핀 도중 보스 depth를 잠깐 올렸다가 되돌리는 것만으로도 그 정렬이 흐트러져 보스가 버튼/체력바보다
-// 위로 올라와 버리는 문제가 있었다 — HUD 쪽에 항상 더 높은 고정 depth를 줘서 그런 흔들림 자체를 없앤다.
+// 주는 depth. 이 값을 명시하지 않으면 Phaser가 같은 depth(기본 0)일 때 "가장 최근에 depth가 바뀐
+// 순서"로 다시 정렬해버려서, 세탁기 무기가 스핀 도중 보스 depth를 잠깐 올렸다가 되돌리는 것만으로도
+// 그 정렬이 흐트러져 보스가 버튼/체력바보다 위로 올라와 버리는 문제가 있었다 — HUD 쪽에 항상 더 높은
+// 고정 depth를 줘서 그런 흔들림 자체를 없앤다.
 const HUD_DEPTH = 1000;
 
-// 게임 종료 오버레이(showGameEndOverlay)가 항상 체력바/설정·나가기 버튼(HUD_DEPTH)보다 위에 그려지도록
-// 하는 depth. 이 값이 HUD_DEPTH보다 낮으면 오버레이의 반투명 dim이 저 버튼들 뒤로 깔려서, 결과 화면이
+// sidePanel(패널)이 열렸을 때 나가기/설정 버튼(HUD_DEPTH)보다 위에 그려지도록 하는 depth.
+// 나가기 버튼은 화면 오른쪽 끝 HP바 근처(createEndButton)에 있어 패널이 열리면 그 영역과 겹치는데,
+// 생성 순서상 endButton이 sidePanel보다 나중에 만들어져 depth가 같으면 나가기 버튼이 패널 위로
+// 떠 보인다 — 패널에 별도로 더 높은 depth를 줘서 항상 나가기 버튼이 패널 아래(뒤)로 가려지게 한다.
+const PANEL_DEPTH = HUD_DEPTH + 1;
+
+// 게임 종료 오버레이(showGameEndOverlay)가 항상 체력바/설정·나가기 버튼(HUD_DEPTH)과 패널(PANEL_DEPTH)보다
+// 위에 그려지도록 하는 depth. 이 값이 더 낮으면 오버레이의 반투명 dim이 저 요소들 뒤로 깔려서, 결과 화면이
 // 뜬 뒤에도 톱니바퀴/나가기 버튼과 체력바가 화면 맨 위에 또렷하게 남아있고 클릭까지 되어 버린다.
-const END_OVERLAY_DEPTH = HUD_DEPTH + 1;
+const END_OVERLAY_DEPTH = PANEL_DEPTH + 1;
 
 // 패널 안 선택/활성 상태를 나타내는 액센트 색. 라임 계열 형광 그린(기존보다 밝게).
 const PANEL_ACCENT = 0x99ff33;
@@ -305,7 +311,7 @@ export default class Hud {
     const startX = this.scene.scale.width + 16;
     const openX = this.scene.scale.width - panelWidth;
 
-    const container = this.scene.add.container(startX, 0).setDepth(1000);
+    const container = this.scene.add.container(startX, 0).setDepth(PANEL_DEPTH);
 
     const bg = this.scene.add.rectangle(0, 0, panelWidth, height, PANEL_BG, 0.96)
       .setOrigin(0, 0)

@@ -2,6 +2,8 @@
 
 VSCode 안에서 실행되는 보스 클리커 게임. 바이브 코딩 중 비는 시간에 잠깐 열어서 스트레스를 풀고, 같은 git repository를 쓰는 팀원끼리 자동으로 그룹이 묶여 랭킹을 겨룰 수 있습니다.
 
+![demo](https://raw.githubusercontent.com/madcamp-official/26s-w4-c2-08/main/extension/resources/game.gif)
+
 ## 시작하기
 
 커맨드 팔레트(`Ctrl+Shift+P` / `Cmd+Shift+P`)에서 `Hit the Agent: 게임 시작`을 실행하세요.

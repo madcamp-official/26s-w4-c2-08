@@ -420,7 +420,7 @@ export default class Boss {
       onComplete: () => {
         this.sprite.setAngle(0);
         this.isPanelBounceActive = false;
-        this.scene.sound.play('boss_wall_slam_scream');
+        this.scene.sound.play('sound_of_hitting_a_wall');
         onComplete?.(this.sprite.x, this.sprite.y);
       },
     });

@@ -236,14 +236,17 @@ export default class WeaponManager {
     if (!weapon) return;
     this.activeWeapon = null;
 
-    // 헤어드라이기처럼 hitSound/voiceSound 재생 시간이 HIT_COOLDOWN보다 훨씬 길면(예: 바람 소리 17초)
-    // 손을 뗀 뒤에도 계속 울린다 — 무기를 놓는 순간 그 무기가 쓰던 사운드 키를 전부 끊는다.
+    // 헤어드라이기(voiceSoundOnGrab)처럼 집는 순간부터 계속 울리는 사운드는
+    // 손을 뗀 뒤에도 계속 재생된다(바람 소리 17초 등) — 이런 무기만 놓는 순간 사운드를 끊는다.
+    // 다른 무기들의 hitSound/voiceSound는 원샷 재생이라 release와 무관하게 끝까지 나와야 한다.
     const releasedDefinition = WEAPON_DEFINITIONS[weapon.weaponId];
-    if (releasedDefinition?.hitSound) {
-      const hitSoundKeys = Array.isArray(releasedDefinition.hitSound) ? releasedDefinition.hitSound : [releasedDefinition.hitSound];
-      hitSoundKeys.forEach((key) => this.scene.sound.stopByKey(key));
+    if (releasedDefinition?.voiceSoundOnGrab) {
+      if (releasedDefinition.hitSound) {
+        const hitSoundKeys = Array.isArray(releasedDefinition.hitSound) ? releasedDefinition.hitSound : [releasedDefinition.hitSound];
+        hitSoundKeys.forEach((key) => this.scene.sound.stopByKey(key));
+      }
+      if (releasedDefinition.voiceSound) this.scene.sound.stopByKey(releasedDefinition.voiceSound);
     }
-    if (releasedDefinition?.voiceSound) this.scene.sound.stopByKey(releasedDefinition.voiceSound);
 
     if (weapon.category === WEAPON_CATEGORIES.BOOMERANG) {
       this.throwBoomerang(weapon);
@@ -548,21 +551,25 @@ export default class WeaponManager {
   // baseAngle: recoilKick이 반동 후 되돌아갈 기준 각도로 쓴다 — 저격총처럼 rotateToBoss인 THROW 무기는
   // 발사할 때마다 반동이 걸리는데, 이 값이 없으면 recoilKick이 매번 각도를 0(수평)으로 리셋해버려서
   // 보스를 향해 돌아간 총이 쐈다 하면 다시 수평으로 튕겨 보이는 문제가 있었다.
-  faceBoss(weapon, bakedRotation = 0) {
+  // applyFlip: 확성기/전기충격기/총기류처럼 손잡이가 몸통 아래에만 있는 비대칭 텍스처는, 보스가 왼쪽에
+  // 있어서 각도가 90도를 넘어가면 그대로 회전만 시켰을 때 손잡이가 위로 뒤집혀 보인다. 회전각은
+  // 그대로 두고 flipY(세로 반전)만 같이 걸어주면 끝(나팔 입구/총구) 방향은 그대로 유지되면서 손잡이는
+  // 계속 아래를 향한다 — 탑다운 슈팅 게임에서 무기 스프라이트 좌우 반전에 흔히 쓰는 방식.
+  // PORTABLE(방망이/골프채/마술봉/숟가락)은 손잡이~헤드가 일직선인 대칭 막대라 이 보정이 필요 없고,
+  // 오히려 회전 도중 flip이 끼어들면 캡슐 히트박스(getPortableAxis, flip과 무관하게 순수 각도로만 계산)와
+  // 그림이 어긋나 헤드가 순간적으로 반대쪽으로 뒤집혀 보이는 원인이 되므로 updatePortableRotation에서는 꺼둔다.
+  faceBoss(weapon, bakedRotation = 0, applyFlip = true) {
     const angle = this.getAngleToBoss(weapon.x, weapon.y) - bakedRotation;
-    // 확성기(손잡이가 몸통 아래에만 있는 비대칭 텍스처)처럼 위아래가 대칭이 아닌 무기는, 보스가 왼쪽에
-    // 있어서 각도가 90도를 넘어가면 그대로 회전만 시켰을 때 손잡이가 위로 뒤집혀 보인다. 회전각은
-    // 그대로 두고 flipY(세로 반전)만 같이 걸어주면 끝(나팔 입구) 방향은 그대로 유지되면서 손잡이는
-    // 계속 아래를 향한다 — 탑다운 슈팅 게임에서 무기 스프라이트 좌우 반전에 흔히 쓰는 방식.
-    weapon.setFlipY(Math.cos(angle) < 0);
+    if (applyFlip) weapon.setFlipY(Math.cos(angle) < 0);
     weapon.rotation = angle;
     weapon.baseAngle = weapon.angle;
   }
 
-  // 화면에 보이는 PORTABLE 무기(방망이/마술봉)가 항상 이 각도를 바라보도록 회전시킨다. 텍스처가 로컬
-  // -45도로 baked되어 있어 그만큼 보정해줘야 실제로 그려지는 헤드(끝)가 목표 각도를 향한다.
+  // 화면에 보이는 PORTABLE 무기(방망이/골프채/마술봉/숟가락)가 항상 이 각도를 바라보도록 회전시킨다.
+  // 텍스처가 로컬 -45도로 baked되어 있어 그만큼 보정해줘야 실제로 그려지는 헤드(끝)가 목표 각도를
+  // 향한다. flip은 끄고 순수 회전만 써서 360도 내내 헤드가 캐릭터(보스) 쪽을 안정적으로 향하게 한다.
   updatePortableRotation(weapon) {
-    this.faceBoss(weapon, PORTABLE_BAKED_ROTATION);
+    this.faceBoss(weapon, PORTABLE_BAKED_ROTATION, false);
   }
 
   // PORTABLE 무기의 손잡이 쪽 끝→헤드 쪽 끝을 잇는 중심축 (world 좌표). 헤드가 항상 보스를 향하도록

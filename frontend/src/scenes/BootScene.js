@@ -45,6 +45,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('boss_fire_roar', assetUrl('audio/boss_fire_roar.mp3'));
     // 날아가다 벽에 처박힐 때 전용 — fire_roar와 같은 소스지만 키를 분리해 의미 구분(권투장갑 hit_wall 벽 타격음과는 별개).
     this.load.audio('boss_wall_slam_scream', assetUrl('audio/boss_wall_slam_scream.mp3'));
+    // 패널에 밀려 왼쪽 벽에 부딪힐 때 전용(Boss.flyOutToLeftWall) — 비명이 아니라 순수 충돌음.
+    this.load.audio('sound_of_hitting_a_wall', assetUrl('audio/sound_of_hitting_a_wall.mp3'));
     this.load.audio('laptop_slam', assetUrl('audio/laptop_slam.mp3'));
     this.load.audio('developer_shout', assetUrl('audio/developer_shout.mp3'));
     this.load.audio('bamboo_whoosh', assetUrl('audio/bamboo_whoosh.mp3'));

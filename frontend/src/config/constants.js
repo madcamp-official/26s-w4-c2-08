@@ -331,6 +331,7 @@ export const WEAPON_DEFINITIONS = {
     fireInterval: PISTOL_FIRE_INTERVAL,
     damageMultiplier: PISTOL_DAMAGE_MULTIPLIER,
     rotateToTravel: true,
+    rotateToBoss: true,
     hitSound: 'pistol_shot',
     hitVolume: 1.4, // 강한 무기라 기본 볼륨(1)보다 크게
     bigImpact: true, // 데미지가 센 무기라 히트 스파크를 더 크게 띄운다 (GameScene.spawnHitSpark scale 참고)
@@ -349,6 +350,7 @@ export const WEAPON_DEFINITIONS = {
     // 쏘면서 매 발 랜덤하게 살짝 흔들리는 실제 기관총의 연사 부정확도를 표현한다.
     angleJitterDeg: MACHINE_GUN_ANGLE_JITTER_DEG,
     rotateToTravel: true,
+    rotateToBoss: true,
     hitSound: 'machine_gun_shot', // 전용 총성으로 교체
   },
   // pelletCount/spreadAngleDeg: WeaponManager.fireProjectile이 한 번 발사할 때 이 각도 범위 안에 고르게
@@ -365,6 +367,7 @@ export const WEAPON_DEFINITIONS = {
     pelletCount: SHOTGUN_PELLET_COUNT,
     spreadAngleDeg: SHOTGUN_SPREAD_ANGLE_DEG,
     recoilAngle: SHOTGUN_RECOIL_ANGLE,
+    rotateToBoss: true,
     hitSound: 'shotgun_blast', // 진짜 샷건 소리로 교체 — 다른 총기와 공용이던 사운드 대신 전용 사운드
   },
   [WEAPON_IDS.SNIPER]: {
@@ -399,6 +402,7 @@ export const WEAPON_DEFINITIONS = {
     damageMultiplier: REVOLVER_DAMAGE_MULTIPLIER,
     recoilAngle: REVOLVER_RECOIL_ANGLE,
     rotateToTravel: true,
+    rotateToBoss: true,
     hitSound: 'revolver_shot', // 전용 사운드로 교체 — 이제 총기 5종(PISTOL/MACHINE_GUN/SHOTGUN/SNIPER/REVOLVER) 전부 각자 전용 사운드
   },
 
@@ -412,6 +416,8 @@ export const WEAPON_DEFINITIONS = {
     fireSound: 'baseball_throw',
     hitSound: 'bat_hit', // 야구공 타격음은 방망이와 동일한 효과음을 그대로 쓴다.
     damageMultiplier: 0.9, // 단단하지만 배트보다 작고 가벼운 공
+    // 타자세(들고 있는 자세)가 항상 보스 쪽을 보도록 — TASER/MEGAPHONE과 같은 rotateToBoss.
+    rotateToBoss: true,
   },
   // 새총형(SLINGSHOT) — 잡은 자리(anchor)에서 뒤로 당긴 채 놓으면 당긴 반대 방향으로, 당긴 거리에
   // 비례한 속도(최대 projectileSpeed)로 날아간다(WeaponManager.throwSlingshot). 당구공처럼 벽(화면
@@ -438,6 +444,8 @@ export const WEAPON_DEFINITIONS = {
     stickOnHit: true,
     fireSound: 'dart_throw',
     damageMultiplier: 0.8, // 뾰족하지만 가벼운 투척물
+    // 들고 조준하는 다트 자체도 보스 쪽을 향하도록 — TASER/MEGAPHONE과 같은 rotateToBoss.
+    rotateToBoss: true,
   },
   // hitSound 없음(아직 맞는 효과음 에셋이 없어서 무음) — 이펙트(spawnSoundWaveEffect, GameScene)로만 구분.
   // 클릭한 자리와 상관없이 보스 방향으로 자동 발사되는 원거리형(THROW) — 소리 파동(동심원) 투사체가 날아간다.
@@ -463,6 +471,7 @@ export const WEAPON_DEFINITIONS = {
     fireSound: 'baseball_throw',
     hitSound: 'tomato_squish', // 터지는 순간 물컹한 소리
     damageMultiplier: 0.6, // 물러서 터지기만 할 뿐 단단하게 맞는 느낌이 아니다
+    rotateToBoss: true,
   },
   [WEAPON_IDS.WATERMELON]: {
     name: 'WATERMELON',
@@ -473,6 +482,7 @@ export const WEAPON_DEFINITIONS = {
     hitSound: ['watermelon_splat', 'watermelon_eating'],
     bigImpact: true,
     damageMultiplier: 1.5, // 크고 무거운 과일 — bigImpact 비주얼에 맞게 데미지도 확실히 무겁게
+    rotateToBoss: true,
   },
   [WEAPON_IDS.WATER_BALLOON]: {
     name: 'WATER BALLOON',
@@ -482,6 +492,7 @@ export const WEAPON_DEFINITIONS = {
     fireSound: 'baseball_throw',
     hitSound: 'water_balloon_pop',
     damageMultiplier: 0.5, // 거의 물 — 무기 중 가장 약하게
+    rotateToBoss: true,
   },
   [WEAPON_IDS.BEACH_BALL]: {
     name: 'BEACH BALL',
@@ -490,6 +501,7 @@ export const WEAPON_DEFINITIONS = {
     projectileTexture: 'weapon_beach_ball_projectile',
     fireSound: 'baseball_throw',
     damageMultiplier: 0.5, // 속이 빈 공기뿐이라 튕겨나가는 느낌이 맞지 세게 때리는 무기는 아니다
+    rotateToBoss: true,
   },
   // 요소수(AdBlue) 통 — 물풍선과 같은 파란 액체 테마라 GameScene.onHit에서도 spawnWaterSplashEffect를 그대로 재사용한다.
   // 단, 보스가 불 뿜기 중(Boss.fireBreathEvent)일 때 맞으면 CombatSystem.handleHit에서 damageMultiplier
@@ -502,6 +514,7 @@ export const WEAPON_DEFINITIONS = {
     projectileTexture: 'weapon_urea_solution_projectile',
     fireSound: 'baseball_throw',
     damageMultiplier: 0.5, // 물풍선과 같은 액체류라 약하게(평소, 인화 안 됐을 때)
+    rotateToBoss: true,
   },
 
   // ── 부메랑 ──
@@ -555,6 +568,7 @@ export const WEAPON_DEFINITIONS = {
   // 데미지는 전혀 들어가지 않는다(맞아도 카메라 흔들림/스파크/사운드 같은 타격 연출만 그대로 남음).
   [WEAPON_IDS.SPOON]: {
     name: 'SPOON by 도현', category: WEAPON_CATEGORIES.PORTABLE, texture: 'weapon_spoon', hitSound: 'spoon_hit', damageMultiplier: 0,
+    hitVolume: 4.0, // spoon_hit 원본 피크가 다른 타격음보다 낮게 녹음돼 있어(peak ~0.73) 기본 볼륨(1)로는 묻힘
   },
   // 방망이와 같은 PORTABLE 카테고리 — 검은 봉 + 양 끝 흰 캡 실루엣이라 방망이보다 얇은 균일한 두께의
   // 캡슐로 판정한다(WeaponManager의 PORTABLE_AXIS_CONFIG 참고). 들고 있는 동안 항상 끝(캡)이 보스 쪽을
